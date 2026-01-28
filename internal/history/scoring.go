@@ -28,14 +28,9 @@ func DefaultScoringOpts(cwd string) ScoringOpts {
 }
 
 func ScoreAndSort(entries []db.HistoryEntry, matches []match.Match, opts ScoringOpts) []ScoredEntry {
-	entryMap := map[int]db.HistoryEntry{}
-	for i, e := range entries {
-		entryMap[i] = e
-	}
-
 	scored := make([]ScoredEntry, len(matches))
 	for i, m := range matches {
-		entry := entryMap[m.Index]
+		entry := entries[m.Index]
 		score := m.Score
 
 		if opts.CWD != "" && entry.Directory == opts.CWD {
