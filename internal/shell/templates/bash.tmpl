@@ -22,6 +22,16 @@ __zgod_init() {
     fi
 }
 
+__zgod_get_time_ms() {
+    if [[ -n "$EPOCHREALTIME" ]]; then
+        local sec=${EPOCHREALTIME%.*}
+        local frac=${EPOCHREALTIME#*.}
+        printf '%s%s' "$sec" "${frac:0:3}"
+    else
+        printf '%ss' "$(date +%s)"
+    fi
+}
+
 __zgod_preexec() {
     if [[ -n "$__zgod_preexec_fired" ]]; then
         return
@@ -44,7 +54,7 @@ __zgod_preexec() {
     __zgod_preexec_fired=1
     __zgod_init
     __zgod_command="$BASH_COMMAND"
-    __zgod_start_ms=$(date +%s%3N)
+    __zgod_start_ms=$(__zgod_get_time_ms)
 }
 
 __zgod_prompt_command() {
@@ -56,12 +66,8 @@ __zgod_prompt_command() {
         return
     fi
 
-    local end_ms=$(date +%s%3N)
-    local duration=$(( end_ms - __zgod_start_ms ))
-
     zgod record \
         --ts "$__zgod_start_ms" \
-        --duration "$duration" \
         --exit-code "$exit_code" \
         --command "$__zgod_command" \
         --directory "$PWD" \

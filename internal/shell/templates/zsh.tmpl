@@ -18,10 +18,16 @@ __zgod_init() {
     fi
 }
 
+__zgod_get_time_ms() {
+    local sec=${EPOCHREALTIME%.*}
+    local frac=${EPOCHREALTIME#*.}
+    printf '%s%s' "$sec" "${frac:0:3}"
+}
+
 __zgod_preexec() {
     __zgod_init
     __zgod_command="$1"
-    __zgod_start_ms=$(( $(date +%s) * 1000 + $(date +%N | cut -c1-3) ))
+    __zgod_start_ms=$(__zgod_get_time_ms)
 }
 
 __zgod_precmd() {
@@ -30,12 +36,8 @@ __zgod_precmd() {
         return
     fi
 
-    local end_ms=$(( $(date +%s) * 1000 + $(date +%N | cut -c1-3) ))
-    local duration=$(( end_ms - __zgod_start_ms ))
-
     zgod record \
         --ts "$__zgod_start_ms" \
-        --duration "$duration" \
         --exit-code "$exit_code" \
         --command "$__zgod_command" \
         --directory "$PWD" \

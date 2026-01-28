@@ -6,7 +6,6 @@ set -gx ZGOD_CONFIG "{{.ConfigPath}}"
 
 set -g __zgod_session_id ""
 set -g __zgod_command ""
-set -g __zgod_start_ms ""
 
 function __zgod_init
     if test -z "$__zgod_session_id"
@@ -23,7 +22,6 @@ end
 function __zgod_preexec --on-event fish_preexec
     __zgod_init
     set -g __zgod_command "$argv"
-    set -g __zgod_start_ms (date +%s%3N)
 end
 
 function __zgod_postexec --on-event fish_postexec
@@ -32,12 +30,13 @@ function __zgod_postexec --on-event fish_postexec
         return
     end
 
-    set -l end_ms (date +%s%3N)
-    set -l duration (math "$end_ms - $__zgod_start_ms")
+    # Fish provides $CMD_DURATION in ms - use it to compute start time
+    set -l now_ms (math (date +%s) x 1000)
+    set -l start_ms (math "$now_ms - $CMD_DURATION")
 
     zgod record \
-        --ts "$__zgod_start_ms" \
-        --duration "$duration" \
+        --ts "$start_ms" \
+        --duration "$CMD_DURATION" \
         --exit-code "$exit_code" \
         --command "$__zgod_command" \
         --directory "$PWD" \

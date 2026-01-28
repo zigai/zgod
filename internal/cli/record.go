@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -21,8 +23,8 @@ var recordCmd = &cobra.Command{
 
 //nolint:gochecknoinits // cobra CLI pattern
 func init() {
-	recordCmd.Flags().Int64("ts", 0, "timestamp in milliseconds")
-	recordCmd.Flags().Int64("duration", 0, "duration in milliseconds")
+	recordCmd.Flags().String("ts", "", "start timestamp: milliseconds, seconds (with 's' suffix), or 'now'")
+	recordCmd.Flags().Int64("duration", -1, "duration in milliseconds (-1 to auto-compute from ts)")
 	recordCmd.Flags().Int("exit-code", 0, "exit code")
 	recordCmd.Flags().String("command", "", "command string")
 	recordCmd.Flags().String("directory", "", "working directory")
@@ -62,8 +64,16 @@ func runRecord(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = database.Close() }()
 
-	ts, _ := cmd.Flags().GetInt64("ts")
+	nowMs := time.Now().UnixMilli()
+	tsStr, _ := cmd.Flags().GetString("ts")
+	ts := parseTimestamp(tsStr, nowMs)
 	duration, _ := cmd.Flags().GetInt64("duration")
+	if duration < 0 && ts > 0 && ts < nowMs {
+		duration = nowMs - ts
+	}
+	if duration < 0 {
+		duration = 0
+	}
 	sessionID, _ := cmd.Flags().GetString("session")
 	hostname := getHostname()
 
@@ -83,4 +93,27 @@ func runRecord(cmd *cobra.Command, args []string) error {
 func getHostname() string {
 	h, _ := os.Hostname()
 	return h
+}
+
+// parseTimestamp parses a timestamp string into milliseconds.
+// Accepts: "now", milliseconds (13 digits), seconds (10 digits), or seconds with "s" suffix.
+func parseTimestamp(s string, nowMs int64) int64 {
+	if s == "" || s == "now" {
+		return nowMs
+	}
+	if len(s) > 1 && s[len(s)-1] == 's' {
+		sec, err := strconv.ParseInt(s[:len(s)-1], 10, 64)
+		if err != nil {
+			return nowMs
+		}
+		return sec * 1000
+	}
+	val, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return nowMs
+	}
+	if val < 1e12 {
+		return val * 1000
+	}
+	return val
 }
