@@ -198,6 +198,20 @@ func (m Model) renderResults() string {
 		if headerRows > 0 {
 			header = m.renderResultsHeader()
 		}
+		if m.dbError != nil {
+			msg := m.styles.ExitFail.Render("  Error: " + m.dbError.Error())
+			fill := m.height - 1
+			if headerRows > 0 {
+				fill = m.height - 2
+			}
+			if fill < 0 {
+				fill = 0
+			}
+			if headerRows > 0 {
+				return header + "\n" + msg + strings.Repeat("\n", fill)
+			}
+			return msg + strings.Repeat("\n", fill)
+		}
 		if m.input.Value() == "" {
 			msg := m.styles.Dimmed.Render("  No history entries found")
 			fill := m.height - 1

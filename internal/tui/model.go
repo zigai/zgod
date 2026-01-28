@@ -36,6 +36,7 @@ type Model struct {
 	cancelled      bool
 	showHelp       bool
 	repo           *db.HistoryRepo
+	dbError        error
 }
 
 func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir string, height int, cwdMode bool, initialQuery string) Model {
@@ -92,11 +93,18 @@ func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir strin
 }
 
 func (m *Model) loadEntries() {
-	entries, _ := history.FetchCandidates(m.repo, history.CandidateOpts{
+	entries, err := history.FetchCandidates(m.repo, history.CandidateOpts{
 		Limit:     10000,
 		Dedupe:    m.dedupe,
 		OnlyFails: m.onlyFails,
 	})
+	m.dbError = err
+	if err != nil {
+		m.allEntries = nil
+		m.candidates = nil
+		m.displayEntries = nil
+		return
+	}
 	if m.cwdMode && m.cwd != "" {
 		filtered := entries[:0:0]
 		for _, e := range entries {
