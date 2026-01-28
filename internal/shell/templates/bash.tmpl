@@ -1,0 +1,94 @@
+# zgod shell integration for bash
+# eval "$(zgod init bash)"
+{{if .ConfigPath}}
+export ZGOD_CONFIG="{{.ConfigPath}}"
+{{end}}
+
+__zgod_session_id=""
+__zgod_command=""
+__zgod_start_ms=""
+__zgod_preexec_fired=""
+__zgod_in_hook=""
+
+__zgod_init() {
+    if [[ -z "$__zgod_session_id" ]]; then
+        if [[ -r /proc/sys/kernel/random/uuid ]]; then
+            __zgod_session_id=$(cat /proc/sys/kernel/random/uuid)
+        elif command -v uuidgen &>/dev/null; then
+            __zgod_session_id=$(uuidgen)
+        else
+            __zgod_session_id="$$-$(date +%s)"
+        fi
+    fi
+}
+
+__zgod_preexec() {
+    if [[ -n "$__zgod_preexec_fired" ]]; then
+        return
+    fi
+    if [[ -n "$__zgod_in_hook" ]]; then
+        return
+    fi
+    if [[ -n "$COMP_LINE" ]]; then
+        return
+    fi
+    if [[ "$BASH_COMMAND" == "__zgod_prompt_command" ]]; then
+        return
+    fi
+    if [[ "$BASH_COMMAND" == "zgod" || "$BASH_COMMAND" == zgod\ * ]]; then
+        return
+    fi
+    if [[ "$BASH_COMMAND" == _* ]]; then
+        return
+    fi
+    __zgod_preexec_fired=1
+    __zgod_init
+    __zgod_command="$BASH_COMMAND"
+    __zgod_start_ms=$(date +%s%3N)
+}
+
+__zgod_prompt_command() {
+    local exit_code=$?
+    __zgod_in_hook=1
+    if [[ -z "$__zgod_command" ]]; then
+        __zgod_preexec_fired=""
+        __zgod_in_hook=""
+        return
+    fi
+
+    local end_ms=$(date +%s%3N)
+    local duration=$(( end_ms - __zgod_start_ms ))
+
+    zgod record \
+        --ts "$__zgod_start_ms" \
+        --duration "$duration" \
+        --exit-code "$exit_code" \
+        --command "$__zgod_command" \
+        --directory "$PWD" \
+        --session "$__zgod_session_id" & disown
+
+    __zgod_command=""
+    __zgod_preexec_fired=""
+    __zgod_in_hook=""
+}
+
+__zgod_search() {
+    __zgod_in_hook=1
+    local selected
+    selected=$(zgod search --cwd --height 15 --query "$READLINE_LINE" </dev/tty)
+    local rc=$?
+    if [[ $rc -eq 2 ]] && [[ -n "$selected" ]]; then
+        READLINE_LINE=""
+        READLINE_POINT=0
+        eval "$selected"
+    elif [[ $rc -eq 0 ]] && [[ -n "$selected" ]]; then
+        READLINE_LINE="$selected"
+        READLINE_POINT=${#selected}
+    fi
+    __zgod_in_hook=""
+}
+
+trap '__zgod_preexec' DEBUG
+PROMPT_COMMAND="__zgod_prompt_command;${PROMPT_COMMAND}"
+
+bind -x '"\C-r": __zgod_search'

@@ -1,0 +1,68 @@
+# zgod shell integration for zsh
+# eval "$(zgod init zsh)"
+{{if .ConfigPath}}
+export ZGOD_CONFIG="{{.ConfigPath}}"
+{{end}}
+
+__zgod_session_id=""
+
+__zgod_init() {
+    if [[ -z "$__zgod_session_id" ]]; then
+        if [[ -r /proc/sys/kernel/random/uuid ]]; then
+            __zgod_session_id=$(cat /proc/sys/kernel/random/uuid)
+        elif command -v uuidgen &>/dev/null; then
+            __zgod_session_id=$(uuidgen)
+        else
+            __zgod_session_id="$$-$(date +%s)"
+        fi
+    fi
+}
+
+__zgod_preexec() {
+    __zgod_init
+    __zgod_command="$1"
+    __zgod_start_ms=$(( $(date +%s) * 1000 + $(date +%N | cut -c1-3) ))
+}
+
+__zgod_precmd() {
+    local exit_code=$?
+    if [[ -z "$__zgod_command" ]]; then
+        return
+    fi
+
+    local end_ms=$(( $(date +%s) * 1000 + $(date +%N | cut -c1-3) ))
+    local duration=$(( end_ms - __zgod_start_ms ))
+
+    zgod record \
+        --ts "$__zgod_start_ms" \
+        --duration "$duration" \
+        --exit-code "$exit_code" \
+        --command "$__zgod_command" \
+        --directory "$PWD" \
+        --session "$__zgod_session_id" &!
+
+    __zgod_command=""
+}
+
+__zgod_search_widget() {
+    local selected
+    selected=$(zgod search --cwd --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
+    local rc=$?
+    if [[ $rc -eq 2 ]] && [[ -n "$selected" ]]; then
+        LBUFFER="$selected"
+        RBUFFER=""
+        zle accept-line
+    elif [[ $rc -eq 0 ]] && [[ -n "$selected" ]]; then
+        LBUFFER="$selected"
+        RBUFFER=""
+    fi
+    zle reset-prompt
+}
+
+zle -N __zgod_search_widget
+
+autoload -Uz add-zsh-hook
+add-zsh-hook preexec __zgod_preexec
+add-zsh-hook precmd __zgod_precmd
+
+bindkey '^R' __zgod_search_widget

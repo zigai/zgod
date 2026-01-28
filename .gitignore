@@ -24,9 +24,12 @@ profile.cov
 go.work
 go.work.sum
 
+# Built binary
+zgod
+
 # env file
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/

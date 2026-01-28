@@ -1,0 +1,61 @@
+# zgod shell integration for fish
+# zgod init fish | source
+{{if .ConfigPath}}
+set -gx ZGOD_CONFIG "{{.ConfigPath}}"
+{{end}}
+
+set -g __zgod_session_id ""
+set -g __zgod_command ""
+set -g __zgod_start_ms ""
+
+function __zgod_init
+    if test -z "$__zgod_session_id"
+        if test -r /proc/sys/kernel/random/uuid
+            set -g __zgod_session_id (cat /proc/sys/kernel/random/uuid)
+        else if command -v uuidgen &>/dev/null
+            set -g __zgod_session_id (uuidgen)
+        else
+            set -g __zgod_session_id (echo "$$-"(date +%s))
+        end
+    end
+end
+
+function __zgod_preexec --on-event fish_preexec
+    __zgod_init
+    set -g __zgod_command "$argv"
+    set -g __zgod_start_ms (date +%s%3N)
+end
+
+function __zgod_postexec --on-event fish_postexec
+    set -l exit_code $status
+    if test -z "$__zgod_command"
+        return
+    end
+
+    set -l end_ms (date +%s%3N)
+    set -l duration (math "$end_ms - $__zgod_start_ms")
+
+    zgod record \
+        --ts "$__zgod_start_ms" \
+        --duration "$duration" \
+        --exit-code "$exit_code" \
+        --command "$__zgod_command" \
+        --directory "$PWD" \
+        --session "$__zgod_session_id" &
+
+    set -g __zgod_command ""
+end
+
+function __zgod_search
+    set -l selected (zgod search --cwd --height 15 --query (commandline) </dev/tty)
+    set -l rc $status
+    if test $rc -eq 2; and test -n "$selected"
+        commandline -r "$selected"
+        commandline -f execute
+    else if test $rc -eq 0; and test -n "$selected"
+        commandline -r "$selected"
+    end
+    commandline -f repaint
+end
+
+bind \cr __zgod_search
