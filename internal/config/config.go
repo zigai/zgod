@@ -104,7 +104,7 @@ func (c Config) Save() error {
 	if err := paths.EnsureDirs(); err != nil {
 		return err
 	}
-	f, err := os.Create(paths.ConfigFile())
+	f, err := os.OpenFile(paths.ConfigFile(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
