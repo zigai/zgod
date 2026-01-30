@@ -3,6 +3,7 @@ package tui
 import (
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -35,6 +36,8 @@ type Model struct {
 	quitting       bool
 	cancelled      bool
 	showHelp       bool
+	showPreview    bool
+	previewCommand string
 	repo           *db.HistoryRepo
 	dbError        error
 }
@@ -109,6 +112,15 @@ func (m *Model) loadEntries() {
 		filtered := entries[:0:0]
 		for _, e := range entries {
 			if e.Directory == m.cwd {
+				filtered = append(filtered, e)
+			}
+		}
+		entries = filtered
+	}
+	if m.cfg.Display.HideMultiline {
+		filtered := entries[:0:0]
+		for _, e := range entries {
+			if !strings.Contains(e.Command, "\n") {
 				filtered = append(filtered, e)
 			}
 		}
@@ -192,6 +204,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.showPreview {
+		m.showPreview = false
+		m.previewCommand = ""
+		return m, nil
+	}
+
 	if m.showHelp {
 		m.showHelp = false
 		return m, nil
@@ -287,6 +305,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case matchKey(msg, m.cfg.Keys.ToggleFails):
 		m.onlyFails = !m.onlyFails
 		m.loadEntries()
+		return m, nil
+
+	case matchKey(msg, m.cfg.Keys.PreviewCommand):
+		if m.cfg.Display.MultilinePreview == "popup" && len(m.displayEntries) > 0 && m.cursor < len(m.displayEntries) {
+			cmd := m.displayEntries[m.cursor].Entry.Command
+			if strings.Contains(cmd, "\n") {
+				m.showPreview = true
+				m.previewCommand = cmd
+			}
+		}
 		return m, nil
 	}
 

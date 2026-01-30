@@ -18,11 +18,15 @@ const (
 	panelPaddingY     = 0
 	resultsHeaderRows = 1
 	minInputWidth     = 20
+	previewPaneHeight = 4
 )
 
 func (m Model) View() string {
 	if m.quitting {
 		return ""
+	}
+	if m.showPreview {
+		return m.renderPreviewPopup()
 	}
 	if m.showHelp {
 		return m.renderHelp()
@@ -35,6 +39,11 @@ func (m Model) View() string {
 
 	// Results list
 	sections = append(sections, m.renderResults())
+
+	// Preview pane (if enabled)
+	if m.cfg.Display.MultilinePreview == "preview_pane" {
+		sections = append(sections, m.renderPreviewPane())
+	}
 
 	// Footer with keybindings
 	if m.cfg.Display.ShowHints {
@@ -136,6 +145,9 @@ func (m Model) chromeHeight() int {
 	chrome := 1 // footer
 	if !m.cfg.Display.ShowHints {
 		chrome = 0
+	}
+	if m.cfg.Display.MultilinePreview == "preview_pane" {
+		chrome += previewPaneHeight
 	}
 	if m.isMerged() {
 		return chrome + 1
@@ -244,14 +256,22 @@ func (m Model) renderResults() string {
 	if headerRows > 0 {
 		lines = append(lines, m.renderResultsHeader())
 	}
+
+	expandMode := m.cfg.Display.MultilinePreview == "expand"
 	for _, idx := range visible {
-		line := m.renderResultLine(idx, idx == m.cursor)
-		// Pad or truncate to width
-		lineWidth := lipgloss.Width(line)
-		if lineWidth < width {
-			line += strings.Repeat(" ", width-lineWidth)
+		isSelected := idx == m.cursor
+
+		if expandMode && isSelected && m.entryIsMultiline(idx) {
+			expandedLines := m.renderExpandedResultLines(idx)
+			lines = append(lines, expandedLines...)
+		} else {
+			line := m.renderResultLine(idx, isSelected)
+			lineWidth := lipgloss.Width(line)
+			if lineWidth < width {
+				line += strings.Repeat(" ", width-lineWidth)
+			}
+			lines = append(lines, line)
 		}
-		lines = append(lines, line)
 	}
 
 	// Fill remaining lines
@@ -271,6 +291,7 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 	cmd := entry.Entry.Command
 	width := m.getWidth()
 
+	prefixWidth := 2 // "▌ " or "  "
 	exitWidth := 4
 	durWidth := 8
 	timeWidth := timeColumnWidth(m.cfg.Display.TimeFormat)
@@ -281,7 +302,7 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 		dirWidth = dirColumnWidth(width)
 	}
 
-	columnsWidth := exitWidth + durWidth + timeWidth + (len(sep) * 3)
+	columnsWidth := prefixWidth + exitWidth + durWidth + timeWidth + (len(sep) * 3)
 	if m.cfg.Display.ShowDirectory {
 		columnsWidth += dirWidth + len(sep)
 	}
@@ -297,6 +318,7 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 	}
 
 	var renderedCmd string
+	cmd, matchInfo = collapseMultiline(cmd, matchInfo, m.cfg.Display.MultilineCollapse)
 	cmd, matchInfo = truncateWithRanges(cmd, matchInfo, cmdWidth)
 	if matchInfo != nil && len(matchInfo.MatchedRanges) > 0 && m.input.Value() != "" {
 		renderedCmd = m.highlightMatches(cmd, matchInfo.MatchedRanges)
@@ -341,6 +363,110 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 	return "  " + line
 }
 
+func (m Model) entryIsMultiline(idx int) bool {
+	if idx >= len(m.displayEntries) {
+		return false
+	}
+	return strings.Contains(m.displayEntries[idx].Entry.Command, "\n")
+}
+
+func (m Model) renderExpandedResultLines(entryIdx int) []string {
+	if entryIdx >= len(m.displayEntries) {
+		return nil
+	}
+
+	entry := m.displayEntries[entryIdx]
+	cmd := entry.Entry.Command
+	width := m.getWidth()
+
+	prefixWidth := 2 // "▌ " or "  "
+	exitWidth := 4
+	durWidth := 8
+	timeWidth := timeColumnWidth(m.cfg.Display.TimeFormat)
+	sep := "  "
+
+	var dirWidth int
+	if m.cfg.Display.ShowDirectory {
+		dirWidth = dirColumnWidth(width)
+	}
+
+	columnsWidth := prefixWidth + exitWidth + durWidth + timeWidth + (len(sep) * 3)
+	if m.cfg.Display.ShowDirectory {
+		columnsWidth += dirWidth + len(sep)
+	}
+	cmdWidth := width - columnsWidth
+	if cmdWidth < 10 {
+		cmdWidth = width
+	}
+
+	cmdLines := strings.Split(cmd, "\n")
+	var result []string
+
+	for i, cmdLine := range cmdLines {
+		cmdLine = strings.ReplaceAll(cmdLine, "\t", "    ")
+		if len(cmdLine) > cmdWidth {
+			cmdLine = cmdLine[:cmdWidth]
+		}
+
+		var renderedCmd string
+		if i == 0 {
+			matchInfo := &entry.MatchInfo
+			cmdLine, matchInfo = truncateWithRanges(cmdLine, matchInfo, cmdWidth)
+			if matchInfo != nil && len(matchInfo.MatchedRanges) > 0 && m.input.Value() != "" {
+				renderedCmd = m.highlightMatches(cmdLine, matchInfo.MatchedRanges)
+			} else {
+				renderedCmd = cmdLine
+			}
+		} else {
+			renderedCmd = cmdLine
+		}
+		renderedCmd = m.styles.SelectedCmd.Render(renderedCmd)
+
+		var line string
+		if i == 0 {
+			exitStr := formatExit(entry.Entry.ExitCode, exitWidth)
+			durStr := formatDuration(entry.Entry.Duration, m.cfg.Display.DurationFormat, durWidth)
+			timeStr := formatWhen(entry.Entry.TsMs, m.cfg.Display.TimeFormat, timeWidth)
+
+			exitStyle := m.styles.ExitOk
+			if entry.Entry.ExitCode != 0 {
+				exitStyle = m.styles.ExitFail
+			}
+			exitStyled := exitStyle.Width(exitWidth).Align(lipgloss.Right).Render(exitStr)
+			durStyled := m.styles.Meta.Width(durWidth).Align(lipgloss.Right).Render(durStr)
+			timeStyled := m.styles.Meta.Width(timeWidth).Align(lipgloss.Right).Render(timeStr)
+			cmdStyled := lipgloss.NewStyle().Width(cmdWidth).Render(renderedCmd)
+
+			if m.cfg.Display.ShowDirectory {
+				dirStr := formatDirectory(entry.Entry.Directory, dirWidth, m.homeDir)
+				dirStyled := m.styles.Meta.Width(dirWidth).Align(lipgloss.Right).Render(dirStr)
+				line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled, dirStyled}, sep)
+			} else {
+				line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled}, sep)
+			}
+
+			bar := m.styles.SelectionBar.Render("▌ ")
+			line = bar + line
+		} else {
+			metaWidth := exitWidth + durWidth + timeWidth + (len(sep) * 3)
+			if m.cfg.Display.ShowDirectory {
+				metaWidth += dirWidth + len(sep)
+			}
+			padding := strings.Repeat(" ", metaWidth+2)
+			cmdStyled := lipgloss.NewStyle().Width(cmdWidth).Render(renderedCmd)
+			line = "│ " + padding[:metaWidth] + cmdStyled
+		}
+
+		lineWidth := lipgloss.Width(line)
+		if lineWidth < width {
+			line += strings.Repeat(" ", width-lineWidth)
+		}
+		result = append(result, line)
+	}
+
+	return result
+}
+
 func (m Model) renderFooter() string {
 	width := m.getWidth()
 	keys := []struct {
@@ -363,7 +489,63 @@ func (m Model) renderFooter() string {
 		parts = append(parts, key+" "+desc)
 	}
 
+	if m.cfg.Display.MultilinePreview == "popup" && m.selectedIsMultiline() {
+		key := m.styles.HelpKey.Render(m.cfg.Keys.PreviewCommand)
+		desc := m.styles.HelpDesc.Render("preview")
+		parts = append(parts, key+" "+desc)
+	}
+
 	return m.styles.Footer.Width(width).Render(strings.Join(parts, "  "))
+}
+
+func (m Model) selectedIsMultiline() bool {
+	if len(m.displayEntries) == 0 || m.cursor >= len(m.displayEntries) {
+		return false
+	}
+	return strings.Contains(m.displayEntries[m.cursor].Entry.Command, "\n")
+}
+
+func (m Model) renderPreviewPane() string {
+	width := m.getWidth()
+
+	if len(m.displayEntries) == 0 || m.cursor >= len(m.displayEntries) {
+		emptyLine := strings.Repeat(" ", width)
+		var lines []string
+		for range previewPaneHeight {
+			lines = append(lines, emptyLine)
+		}
+		return strings.Join(lines, "\n")
+	}
+
+	cmd := m.displayEntries[m.cursor].Entry.Command
+
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Bold(true)
+	header := headerStyle.Render("─ Preview ─")
+	headerLine := header + strings.Repeat("─", max(width-lipgloss.Width(header), 0))
+
+	cmd = strings.ReplaceAll(cmd, "\t", "    ")
+	cmdLines := strings.Split(cmd, "\n")
+
+	contentHeight := previewPaneHeight - 1
+	var displayLines []string
+	for i := 0; i < contentHeight && i < len(cmdLines); i++ {
+		line := cmdLines[i]
+		if len(line) > width {
+			line = line[:width]
+		}
+		if len(line) < width {
+			line += strings.Repeat(" ", width-len(line))
+		}
+		displayLines = append(displayLines, m.styles.Dimmed.Render(line))
+	}
+
+	for len(displayLines) < contentHeight {
+		displayLines = append(displayLines, strings.Repeat(" ", width))
+	}
+
+	return headerLine + "\n" + strings.Join(displayLines, "\n")
 }
 
 func (m Model) renderHelp() string {
@@ -387,6 +569,7 @@ func (m Model) renderHelp() string {
 		{m.cfg.Keys.ToggleCWD, "Filter to current directory"},
 		{m.cfg.Keys.ToggleDedupe, "Toggle command deduplication"},
 		{m.cfg.Keys.ToggleFails, "Show only failed commands"},
+		{m.cfg.Keys.PreviewCommand, "Preview multiline command"},
 		{m.cfg.Keys.Help, "Show/hide this help"},
 	}
 
@@ -398,6 +581,51 @@ func (m Model) renderHelp() string {
 	}
 
 	content := strings.Join(lines, "\n")
+	footer := m.styles.Dimmed.Render("  Press any key to dismiss")
+
+	boxContent := header + "\n\n" + content + "\n\n" + footer
+	boxWidth := width - 4
+	if boxWidth < 10 {
+		boxWidth = width
+	}
+	box := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(1, 2).
+		Width(boxWidth).
+		Render(boxContent)
+
+	return box
+}
+
+func (m Model) renderPreviewPopup() string {
+	width := m.getWidth()
+
+	header := m.styles.Title.Render(" Command Preview ")
+
+	contentWidth := width - 8
+	if contentWidth < 20 {
+		contentWidth = width - 4
+	}
+
+	lines := strings.Split(m.previewCommand, "\n")
+	var wrappedLines []string
+	for _, line := range lines {
+		line = strings.ReplaceAll(line, "\t", "    ")
+		if len(line) > contentWidth {
+			for len(line) > contentWidth {
+				wrappedLines = append(wrappedLines, line[:contentWidth])
+				line = line[contentWidth:]
+			}
+			if len(line) > 0 {
+				wrappedLines = append(wrappedLines, line)
+			}
+		} else {
+			wrappedLines = append(wrappedLines, line)
+		}
+	}
+
+	content := strings.Join(wrappedLines, "\n")
 	footer := m.styles.Dimmed.Render("  Press any key to dismiss")
 
 	boxContent := header + "\n\n" + content + "\n\n" + footer
@@ -457,6 +685,7 @@ func (m Model) visibleResults() []int {
 
 func (m Model) renderResultsHeader() string {
 	width := m.getWidth()
+	prefixWidth := 2 // "▌ " or "  "
 	exitWidth := 4
 	durWidth := 8
 	timeWidth := timeColumnWidth(m.cfg.Display.TimeFormat)
@@ -467,7 +696,7 @@ func (m Model) renderResultsHeader() string {
 		dirWidth = dirColumnWidth(width)
 	}
 
-	columnsWidth := exitWidth + durWidth + timeWidth + (len(sep) * 3)
+	columnsWidth := prefixWidth + exitWidth + durWidth + timeWidth + (len(sep) * 3)
 	if m.cfg.Display.ShowDirectory {
 		columnsWidth += dirWidth + len(sep)
 	}
@@ -484,9 +713,9 @@ func (m Model) renderResultsHeader() string {
 	var line string
 	if m.cfg.Display.ShowDirectory {
 		dir := m.styles.ColumnHeader.Width(dirWidth).Align(lipgloss.Right).Render("dir")
-		line = strings.Join([]string{exit, dur, when, cmd, dir}, sep)
+		line = "  " + strings.Join([]string{exit, dur, when, cmd, dir}, sep)
 	} else {
-		line = strings.Join([]string{exit, dur, when, cmd}, sep)
+		line = "  " + strings.Join([]string{exit, dur, when, cmd}, sep)
 	}
 
 	if lipgloss.Width(line) < width {
@@ -701,16 +930,21 @@ func truncateWithRanges(text string, info *match.Match, max int) (string, *match
 	if len(runes) <= max {
 		return text, info
 	}
-	truncated := string(runes[:max])
+	ellipsis := "..."
+	cutoff := max - len(ellipsis)
+	if cutoff < 0 {
+		cutoff = 0
+	}
+	truncated := string(runes[:cutoff]) + ellipsis
 	if info == nil || len(info.MatchedRanges) == 0 {
 		return truncated, info
 	}
 	var ranges []match.Range
 	for _, r := range info.MatchedRanges {
-		if r.Start >= max {
+		if r.Start >= cutoff {
 			continue
 		}
-		end := min(r.End, max)
+		end := min(r.End, cutoff)
 		if end > r.Start {
 			ranges = append(ranges, match.Range{Start: r.Start, End: end})
 		}
@@ -718,4 +952,73 @@ func truncateWithRanges(text string, info *match.Match, max int) (string, *match
 	infoCopy := *info
 	infoCopy.MatchedRanges = ranges
 	return truncated, &infoCopy
+}
+
+func collapseMultiline(text string, info *match.Match, collapseSymbol string) (string, *match.Match) {
+	if !strings.ContainsAny(text, "\n\r\t") {
+		return text, info
+	}
+
+	symbolRunes := []rune(collapseSymbol)
+	if len(symbolRunes) == 0 {
+		symbolRunes = []rune{' '}
+	}
+
+	textRunes := []rune(text)
+	var collapsed []rune
+	runeMap := make([]int, 0, len(textRunes))
+
+	for i, r := range textRunes {
+		switch r {
+		case '\n', '\r':
+			collapsed = append(collapsed, symbolRunes...)
+			for range symbolRunes {
+				runeMap = append(runeMap, i)
+			}
+		case '\t':
+			collapsed = append(collapsed, ' ', ' ', ' ', ' ')
+			for range 4 {
+				runeMap = append(runeMap, i)
+			}
+		default:
+			collapsed = append(collapsed, r)
+			runeMap = append(runeMap, i)
+		}
+	}
+
+	if info == nil || len(info.MatchedRanges) == 0 {
+		return string(collapsed), info
+	}
+
+	reverseMap := make(map[int]int)
+	for newIdx, oldIdx := range runeMap {
+		reverseMap[oldIdx] = newIdx
+	}
+
+	var newRanges []match.Range
+	for _, r := range info.MatchedRanges {
+		newStart, okStart := reverseMap[r.Start]
+		if !okStart {
+			for i := r.Start; i < len(textRunes); i++ {
+				if ns, ok := reverseMap[i]; ok {
+					newStart = ns
+					okStart = true
+					break
+				}
+			}
+		}
+		newEnd := newStart
+		for i := r.Start; i < r.End && i < len(textRunes); i++ {
+			if ne, ok := reverseMap[i]; ok {
+				newEnd = ne + 1
+			}
+		}
+		if okStart && newEnd > newStart {
+			newRanges = append(newRanges, match.Range{Start: newStart, End: newEnd})
+		}
+	}
+
+	infoCopy := *info
+	infoCopy.MatchedRanges = newRanges
+	return string(collapsed), &infoCopy
 }
