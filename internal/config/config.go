@@ -23,12 +23,13 @@ type DBConfig struct {
 }
 
 type FilterConfig struct {
-	IgnoreSpace    bool     `toml:"ignore_space"`
-	ExitCode       []int    `toml:"exit_code"`
-	CommandGlob    []string `toml:"command_glob"`
-	CommandRegex   []string `toml:"command_regex"`
-	DirectoryGlob  []string `toml:"directory_glob"`
-	DirectoryRegex []string `toml:"directory_regex"`
+	IgnoreSpace      bool     `toml:"ignore_space"`
+	ExitCode         []int    `toml:"exit_code"`
+	CommandGlob      []string `toml:"command_glob"`
+	CommandRegex     []string `toml:"command_regex"`
+	DirectoryGlob    []string `toml:"directory_glob"`
+	DirectoryRegex   []string `toml:"directory_regex"`
+	MaxCommandLength int      `toml:"max_command_length"`
 }
 
 func Default() Config {
@@ -95,6 +96,12 @@ func (c Config) Validate() error {
 		}
 	default:
 		return fmt.Errorf("invalid default_mode %q: must be \"fuzzy\", \"regex\", or \"glob\"", c.Display.DefaultMode)
+	}
+
+	switch c.Display.MultilinePreview {
+	case "", "popup", "preview_pane", "expand", "collapsed":
+	default:
+		return fmt.Errorf("invalid multiline_preview %q: must be \"popup\", \"preview_pane\", \"expand\", or \"collapsed\"", c.Display.MultilinePreview)
 	}
 
 	return nil
