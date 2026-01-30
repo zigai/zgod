@@ -11,12 +11,13 @@ import (
 )
 
 type Filter struct {
-	ignoreSpace    bool
-	exitCode       map[int]bool
-	commandGlob    []*regexp.Regexp
-	commandRegex   []*regexp.Regexp
-	directoryGlob  []string
-	directoryRegex []*regexp.Regexp
+	ignoreSpace      bool
+	exitCode         map[int]bool
+	commandGlob      []*regexp.Regexp
+	commandRegex     []*regexp.Regexp
+	directoryGlob    []string
+	directoryRegex   []*regexp.Regexp
+	maxCommandLength int
 }
 
 func NewFilter(cfg config.FilterConfig) (*Filter, error) {
@@ -57,17 +58,21 @@ func NewFilter(cfg config.FilterConfig) (*Filter, error) {
 	}
 
 	return &Filter{
-		ignoreSpace:    cfg.IgnoreSpace,
-		exitCode:       codes,
-		commandGlob:    cmdGlobs,
-		commandRegex:   cmdRegexps,
-		directoryGlob:  cfg.DirectoryGlob,
-		directoryRegex: dirRegexps,
+		ignoreSpace:      cfg.IgnoreSpace,
+		exitCode:         codes,
+		commandGlob:      cmdGlobs,
+		commandRegex:     cmdRegexps,
+		directoryGlob:    cfg.DirectoryGlob,
+		directoryRegex:   dirRegexps,
+		maxCommandLength: cfg.MaxCommandLength,
 	}, nil
 }
 
 func (f *Filter) ShouldRecord(command string, exitCode int, directory string) bool {
 	if strings.TrimSpace(command) == "" {
+		return false
+	}
+	if f.maxCommandLength > 0 && len(command) > f.maxCommandLength {
 		return false
 	}
 	if f.ignoreSpace && strings.HasPrefix(command, " ") {
