@@ -69,6 +69,7 @@ Press `Ctrl+R` in your shell to open the search interface. Start typing to filte
 | `ctrl+g` | Toggle CWD filter |
 | `ctrl+d` | Toggle deduplication |
 | `ctrl+f` | Toggle failed commands only |
+| `alt+p` | Preview multiline command (popup mode only) |
 | `?` | Help overlay |
 
 ## Configuration
@@ -87,6 +88,7 @@ command_glob = []         # command glob patterns to skip, e.g. ["cd *", "ls", "
 command_regex = []        # command regex patterns to skip, e.g. ["^sudo "]
 directory_glob = []       # directory glob patterns to skip, e.g. ["/tmp/**"]
 directory_regex = []      # directory regex patterns to skip, e.g. ["^/tmp"]
+max_command_length = 0    # skip commands longer than this (0 = disabled)
 
 [theme]
 prompt = "> "
@@ -98,9 +100,12 @@ mode_color = "240"
 border_color = ""
 
 [display]
-time_format = "relative"     # relative | absolute
-duration_format = "auto"     # auto | ms | s
-show_directory = false       # show directory column in search results
+time_format = "relative"       # relative | absolute
+duration_format = "auto"       # auto | ms | s
+show_directory = false         # show directory column in search results
+hide_multiline = false         # hide multiline commands from results
+multiline_preview = "popup"    # popup | preview_pane | expand | collapsed
+multiline_collapse = " "       # symbol to replace newlines in collapsed view
 
 [keys]
 mode_next = "ctrl+s"
@@ -115,4 +120,5 @@ cancel = "esc"
 up = "up"
 down = "down"
 help = "?"
+preview_command = "alt+p"
 ```
