@@ -94,8 +94,15 @@ max_command_length = 0    # skip commands longer than this (0 = disabled)
 prompt = "> "
 prompt_color = "cyan"
 match_color = "yellow"
-selected_bg = "236"
+match_bold = true
+match_underline = true
+match_bg = ""
+selected_bg = "24"
 selected_fg = ""
+selection_bar_show = true
+selection_bar_char = "▌ "
+selection_bar_color = "14"
+selection_full_line = true
 mode_color = "240"
 border_color = ""
 
