@@ -8,17 +8,19 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/zigai/zgod/internal/config"
 	"github.com/zigai/zgod/internal/match"
 )
 
 const (
-	panelBorderW      = 2
-	panelBorderH      = 2
-	panelPaddingX     = 1
-	panelPaddingY     = 0
-	resultsHeaderRows = 1
-	minInputWidth     = 20
-	previewPaneHeight = 4
+	panelBorderW         = 2
+	panelBorderH         = 2
+	panelPaddingX        = 1
+	panelPaddingY        = 0
+	resultsHeaderRows    = 1
+	minInputWidth        = 20
+	previewPaneHeight    = 4
+	defaultSelectionChar = "▌ "
 )
 
 func (m Model) View() string {
@@ -33,19 +35,13 @@ func (m Model) View() string {
 	}
 
 	var sections []string
-
-	// Combined input bar (or split header + input on narrow terminals)
 	sections = append(sections, m.renderInputBar())
-
-	// Results list
 	sections = append(sections, m.renderResults())
 
-	// Preview pane (if enabled)
 	if m.cfg.Display.MultilinePreview == "preview_pane" {
 		sections = append(sections, m.renderPreviewPane())
 	}
 
-	// Footer with keybindings
 	if m.cfg.Display.ShowHints {
 		sections = append(sections, m.renderFooter())
 	}
@@ -142,7 +138,7 @@ func (m Model) isMerged() bool {
 }
 
 func (m Model) chromeHeight() int {
-	chrome := 1 // footer
+	chrome := 1
 	if !m.cfg.Display.ShowHints {
 		chrome = 0
 	}
@@ -189,7 +185,6 @@ func (m Model) renderInput() string {
 	prompt := m.styles.Prompt.Render(m.cfg.Theme.Prompt)
 	input := m.input.View()
 
-	// Calculate remaining width for padding
 	contentWidth := lipgloss.Width(prompt) + lipgloss.Width(input)
 	padding := max(width-contentWidth, 0)
 
@@ -274,7 +269,6 @@ func (m Model) renderResults() string {
 		}
 	}
 
-	// Fill remaining lines
 	for len(lines) < m.height {
 		lines = append(lines, strings.Repeat(" ", width))
 	}
@@ -291,7 +285,11 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 	cmd := entry.Entry.Command
 	width := m.getWidth()
 
-	prefixWidth := 2 // "▌ " or "  "
+	barChar := m.cfg.Theme.SelectionBarChar
+	if barChar == "" {
+		barChar = defaultSelectionChar
+	}
+	prefixWidth := lipgloss.Width(barChar)
 	exitWidth := 4
 	durWidth := 8
 	timeWidth := timeColumnWidth(m.cfg.Display.TimeFormat)
@@ -311,11 +309,13 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 		cmdWidth = width
 	}
 
-	// Handle selection styling
 	var matchInfo *match.Match
 	if entryIdx < len(m.displayEntries) {
 		matchInfo = &entry.MatchInfo
 	}
+
+	fullLineBg := isSelected && config.BoolDefault(m.cfg.Theme.SelectionFullLine, true)
+	selBg := parseColor(m.cfg.Theme.SelectedBg)
 
 	var renderedCmd string
 	cmd, matchInfo = collapseMultiline(cmd, matchInfo, m.cfg.Display.MultilineCollapse)
@@ -325,11 +325,14 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 	} else {
 		renderedCmd = cmd
 	}
+	cmdStyle := m.styles.Cmd
 	if isSelected {
-		renderedCmd = m.styles.SelectedCmd.Render(renderedCmd)
-	} else {
-		renderedCmd = m.styles.Cmd.Render(renderedCmd)
+		cmdStyle = m.styles.SelectedCmd
 	}
+	if fullLineBg {
+		cmdStyle = cmdStyle.Background(selBg)
+	}
+	renderedCmd = cmdStyle.Render(renderedCmd)
 
 	exitStr := formatExit(entry.Entry.ExitCode, exitWidth)
 	durStr := formatDuration(entry.Entry.Duration, m.cfg.Display.DurationFormat, durWidth)
@@ -339,28 +342,58 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 	if entry.Entry.ExitCode != 0 {
 		exitStyle = m.styles.ExitFail
 	}
+	metaStyle := m.styles.Meta
+	if fullLineBg {
+		exitStyle = exitStyle.Background(selBg)
+		metaStyle = metaStyle.Background(selBg)
+	}
+
 	exitStyled := exitStyle.Width(exitWidth).Align(lipgloss.Right).Render(exitStr)
-	durStyled := m.styles.Meta.Width(durWidth).Align(lipgloss.Right).Render(durStr)
-	timeStyled := m.styles.Meta.Width(timeWidth).Align(lipgloss.Right).Render(timeStr)
+	durStyled := metaStyle.Width(durWidth).Align(lipgloss.Right).Render(durStr)
+	timeStyled := metaStyle.Width(timeWidth).Align(lipgloss.Right).Render(timeStr)
 	cmdStyled := lipgloss.NewStyle().Width(cmdWidth).Render(renderedCmd)
 
-	// Build the line
+	styledSep := sep
+	if fullLineBg {
+		styledSep = lipgloss.NewStyle().Background(selBg).Render(sep)
+	}
+
 	var line string
 	if m.cfg.Display.ShowDirectory {
 		dirStr := formatDirectory(entry.Entry.Directory, dirWidth, m.homeDir)
-		dirStyled := m.styles.Meta.Width(dirWidth).Align(lipgloss.Right).Render(dirStr)
-		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled, dirStyled}, sep)
+		dirStyled := metaStyle.Width(dirWidth).Align(lipgloss.Right).Render(dirStr)
+		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled, dirStyled}, styledSep)
 	} else {
-		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled}, sep)
+		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled}, styledSep)
 	}
 
 	if isSelected {
-		bar := m.styles.SelectionBar.Render("▌ ")
-		line = bar + line
-		return line
+		var prefix string
+		if config.BoolDefault(m.cfg.Theme.SelectionBarShow, true) {
+			barStyle := m.styles.SelectionBar
+			if fullLineBg {
+				barStyle = barStyle.Background(selBg)
+			}
+			prefix = barStyle.Render(barChar)
+		} else {
+			if fullLineBg {
+				prefix = lipgloss.NewStyle().Background(selBg).Render(strings.Repeat(" ", prefixWidth))
+			} else {
+				prefix = strings.Repeat(" ", prefixWidth)
+			}
+		}
+		fullLine := prefix + line
+		if fullLineBg {
+			lineWidth := lipgloss.Width(fullLine)
+			if lineWidth < width {
+				padding := lipgloss.NewStyle().Background(selBg).Render(strings.Repeat(" ", width-lineWidth))
+				fullLine += padding
+			}
+		}
+		return fullLine
 	}
 
-	return "  " + line
+	return strings.Repeat(" ", prefixWidth) + line
 }
 
 func (m Model) entryIsMultiline(idx int) bool {
@@ -379,7 +412,11 @@ func (m Model) renderExpandedResultLines(entryIdx int) []string {
 	cmd := entry.Entry.Command
 	width := m.getWidth()
 
-	prefixWidth := 2 // "▌ " or "  "
+	barChar := m.cfg.Theme.SelectionBarChar
+	if barChar == "" {
+		barChar = defaultSelectionChar
+	}
+	prefixWidth := lipgloss.Width(barChar)
 	exitWidth := 4
 	durWidth := 8
 	timeWidth := timeColumnWidth(m.cfg.Display.TimeFormat)
@@ -398,6 +435,9 @@ func (m Model) renderExpandedResultLines(entryIdx int) []string {
 	if cmdWidth < 10 {
 		cmdWidth = width
 	}
+
+	fullLineBg := config.BoolDefault(m.cfg.Theme.SelectionFullLine, true)
+	selBg := parseColor(m.cfg.Theme.SelectedBg)
 
 	cmdLines := strings.Split(cmd, "\n")
 	var result []string
@@ -420,7 +460,11 @@ func (m Model) renderExpandedResultLines(entryIdx int) []string {
 		} else {
 			renderedCmd = cmdLine
 		}
-		renderedCmd = m.styles.SelectedCmd.Render(renderedCmd)
+		cmdStyle := m.styles.SelectedCmd
+		if fullLineBg {
+			cmdStyle = cmdStyle.Background(selBg)
+		}
+		renderedCmd = cmdStyle.Render(renderedCmd)
 
 		var line string
 		if i == 0 {
@@ -432,34 +476,71 @@ func (m Model) renderExpandedResultLines(entryIdx int) []string {
 			if entry.Entry.ExitCode != 0 {
 				exitStyle = m.styles.ExitFail
 			}
+			metaStyle := m.styles.Meta
+			if fullLineBg {
+				exitStyle = exitStyle.Background(selBg)
+				metaStyle = metaStyle.Background(selBg)
+			}
+
 			exitStyled := exitStyle.Width(exitWidth).Align(lipgloss.Right).Render(exitStr)
-			durStyled := m.styles.Meta.Width(durWidth).Align(lipgloss.Right).Render(durStr)
-			timeStyled := m.styles.Meta.Width(timeWidth).Align(lipgloss.Right).Render(timeStr)
+			durStyled := metaStyle.Width(durWidth).Align(lipgloss.Right).Render(durStr)
+			timeStyled := metaStyle.Width(timeWidth).Align(lipgloss.Right).Render(timeStr)
 			cmdStyled := lipgloss.NewStyle().Width(cmdWidth).Render(renderedCmd)
+
+			styledSep := sep
+			if fullLineBg {
+				styledSep = lipgloss.NewStyle().Background(selBg).Render(sep)
+			}
 
 			if m.cfg.Display.ShowDirectory {
 				dirStr := formatDirectory(entry.Entry.Directory, dirWidth, m.homeDir)
-				dirStyled := m.styles.Meta.Width(dirWidth).Align(lipgloss.Right).Render(dirStr)
-				line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled, dirStyled}, sep)
+				dirStyled := metaStyle.Width(dirWidth).Align(lipgloss.Right).Render(dirStr)
+				line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled, dirStyled}, styledSep)
 			} else {
-				line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled}, sep)
+				line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled}, styledSep)
 			}
 
-			bar := m.styles.SelectionBar.Render("▌ ")
-			line = bar + line
+			var prefix string
+			if config.BoolDefault(m.cfg.Theme.SelectionBarShow, true) {
+				barStyle := m.styles.SelectionBar
+				if fullLineBg {
+					barStyle = barStyle.Background(selBg)
+				}
+				prefix = barStyle.Render(barChar)
+			} else {
+				if fullLineBg {
+					prefix = lipgloss.NewStyle().Background(selBg).Render(strings.Repeat(" ", prefixWidth))
+				} else {
+					prefix = strings.Repeat(" ", prefixWidth)
+				}
+			}
+			line = prefix + line
 		} else {
 			metaWidth := exitWidth + durWidth + timeWidth + (len(sep) * 3)
 			if m.cfg.Display.ShowDirectory {
 				metaWidth += dirWidth + len(sep)
 			}
-			padding := strings.Repeat(" ", metaWidth+2)
+			continuationChar := "│ "
+			if !config.BoolDefault(m.cfg.Theme.SelectionBarShow, true) {
+				continuationChar = "  "
+			}
+			padding := strings.Repeat(" ", metaWidth)
 			cmdStyled := lipgloss.NewStyle().Width(cmdWidth).Render(renderedCmd)
-			line = "│ " + padding[:metaWidth] + cmdStyled
+			lineContent := continuationChar + padding + cmdStyled
+			if fullLineBg {
+				line = lipgloss.NewStyle().Background(selBg).Render(lineContent)
+			} else {
+				line = lineContent
+			}
 		}
 
 		lineWidth := lipgloss.Width(line)
 		if lineWidth < width {
-			line += strings.Repeat(" ", width-lineWidth)
+			if fullLineBg {
+				line += lipgloss.NewStyle().Background(selBg).Render(strings.Repeat(" ", width-lineWidth))
+			} else {
+				line += strings.Repeat(" ", width-lineWidth)
+			}
 		}
 		result = append(result, line)
 	}
@@ -685,7 +766,11 @@ func (m Model) visibleResults() []int {
 
 func (m Model) renderResultsHeader() string {
 	width := m.getWidth()
-	prefixWidth := 2 // "▌ " or "  "
+	barChar := m.cfg.Theme.SelectionBarChar
+	if barChar == "" {
+		barChar = defaultSelectionChar
+	}
+	prefixWidth := lipgloss.Width(barChar)
 	exitWidth := 4
 	durWidth := 8
 	timeWidth := timeColumnWidth(m.cfg.Display.TimeFormat)

@@ -43,16 +43,32 @@ func NewStyles(theme config.ThemeConfig) Styles {
 		}
 	}
 
+	matchStyle := lipgloss.NewStyle().Foreground(parseColor(theme.MatchColor))
+	if config.BoolDefault(theme.MatchBold, true) {
+		matchStyle = matchStyle.Bold(true)
+	}
+	if config.BoolDefault(theme.MatchUnderline, true) {
+		matchStyle = matchStyle.Underline(true)
+	}
+	if theme.MatchBg != "" {
+		matchStyle = matchStyle.Background(parseColor(theme.MatchBg))
+	}
+
+	barColor := theme.SelectionBarColor
+	if barColor == "" {
+		barColor = "14"
+	}
+	selectionBarStyle := lipgloss.NewStyle().
+		Foreground(parseColor(barColor)).
+		Bold(true)
+
 	return Styles{
 		Prompt: lipgloss.NewStyle().
 			Foreground(parseColor(theme.PromptColor)).
 			Bold(true).
 			PaddingRight(1),
 
-		Match: lipgloss.NewStyle().
-			Foreground(parseColor(theme.MatchColor)).
-			Bold(true).
-			Underline(true),
+		Match: matchStyle,
 
 		Selected: lipgloss.NewStyle().
 			Background(parseColor(theme.SelectedBg)).
@@ -119,9 +135,7 @@ func NewStyles(theme config.ThemeConfig) Styles {
 		ColumnHeaderBar: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("244")).
 			Padding(0, 1),
-		SelectionBar: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("14")).
-			Bold(true),
+		SelectionBar: selectionBarStyle,
 		SelectedCmd: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("15")).
 			Bold(true),
