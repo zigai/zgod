@@ -93,7 +93,6 @@ linters:
       packages:
         - github.com/jmoiron/sqlx
 
-    # your existing gosec policy overrides (kept)
     gosec:
       excludes:
         - G204 # exec.Command from $EDITOR is user-controlled by design
@@ -103,9 +102,6 @@ linters:
 
   exclusions:
     warn-unused: true
-
-    # v2 replacement for your old `issues.exclude-use-default: false` behavior:
-    # make presets explicit (empty means "no preset exclusions").
     presets: []
 
     rules:
@@ -118,7 +114,3 @@ linters:
           - errcheck
           - goconst
           - gosec
-
-      # If you enable revive later:
-      # - path: "^internal/"
-      #   linters: [revive]
