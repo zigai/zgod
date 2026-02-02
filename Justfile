@@ -63,7 +63,7 @@ _release-check:
         fi
     fi
 
-# Release a new patch version (v1.0.0 -> v1.0.1)
+# Release a new patch version (eg. v1.0.0 -> v1.0.1)
 release-patch: _release-check
     #!/usr/bin/env sh
     set -e
@@ -76,7 +76,7 @@ release-patch: _release-check
     git tag "$new"
     git push origin "$new"
 
-# Release a new minor version (v1.0.0 -> v1.1.0)
+# Release a new minor version (eg. v1.0.0 -> v1.1.0)
 release-minor: _release-check
     #!/usr/bin/env sh
     set -e
@@ -88,7 +88,7 @@ release-minor: _release-check
     git tag "$new"
     git push origin "$new"
 
-# Release a new major version (v1.0.0 -> v2.0.0)
+# Release a new major version (eg. v1.0.0 -> v2.0.0)
 release-major: _release-check
     #!/usr/bin/env sh
     set -e
