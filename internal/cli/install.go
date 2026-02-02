@@ -11,8 +11,8 @@ var installConfigPath string
 var installCmd = &cobra.Command{
 	Use:          "install <shell>",
 	Short:        "Install zgod shell integration",
-	Long:         "Install zgod shell integration by adding the setup to your shell config file. Supported shells: bash, zsh, fish.",
-	ValidArgs:    []string{"zsh", "bash", "fish"},
+	Long:         "Install zgod shell integration by adding the setup to your shell config file. Supported shells: bash, zsh, fish, powershell.",
+	ValidArgs:    []string{"zsh", "bash", "fish", "powershell", "pwsh"},
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {

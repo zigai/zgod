@@ -8,6 +8,7 @@ const (
 	Zsh Shell = iota
 	Bash
 	Fish
+	PowerShell
 )
 
 func Parse(name string) (Shell, error) {
@@ -18,8 +19,10 @@ func Parse(name string) (Shell, error) {
 		return Bash, nil
 	case "fish":
 		return Fish, nil
+	case "powershell", "pwsh":
+		return PowerShell, nil
 	default:
-		return 0, fmt.Errorf("unsupported shell: %s (supported: zsh, bash, fish)", name)
+		return 0, fmt.Errorf("unsupported shell: %s (supported: zsh, bash, fish, powershell)", name)
 	}
 }
 
@@ -31,6 +34,8 @@ func (s Shell) String() string {
 		return "bash"
 	case Fish:
 		return "fish"
+	case PowerShell:
+		return "powershell"
 	default:
 		return "unknown"
 	}

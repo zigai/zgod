@@ -13,8 +13,8 @@ var initConfigPath string
 var initCmd = &cobra.Command{
 	Use:       "init <shell>",
 	Short:     "Print shell integration script",
-	Long:      "Print shell integration script. Supported shells: bash, zsh, fish.",
-	ValidArgs: []string{"zsh", "bash", "fish"},
+	Long:      "Print shell integration script. Supported shells: bash, zsh, fish, powershell.",
+	ValidArgs: []string{"zsh", "bash", "fish", "powershell", "pwsh"},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			_ = cmd.Help()

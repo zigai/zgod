@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"text/template"
 )
@@ -34,6 +35,17 @@ func InitScript(s Shell, opts InitOptions) (string, error) {
 	return buf.String(), nil
 }
 
+func getPowerShellProfilePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if runtime.GOOS == "windows" {
+		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"), nil
+	}
+	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1"), nil
+}
+
 func ConfigFilePath(s Shell) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -47,6 +59,8 @@ func ConfigFilePath(s Shell) (string, error) {
 		return filepath.Join(home, ".zshrc"), nil
 	case Fish:
 		return filepath.Join(home, ".config", "fish", "config.fish"), nil
+	case PowerShell:
+		return getPowerShellProfilePath()
 	default:
 		return "", fmt.Errorf("unknown shell: %s", s)
 	}
@@ -75,6 +89,12 @@ func Install(s Shell, customConfigPath string) error {
 			setupLine = fmt.Sprintf(`zgod init %s --config '%s' | source`, s.String(), customConfigPath)
 		} else {
 			setupLine = fmt.Sprintf(`zgod init %s | source`, s.String())
+		}
+	case PowerShell:
+		if customConfigPath != "" {
+			setupLine = fmt.Sprintf(`. (zgod init powershell --config '%s')`, customConfigPath)
+		} else {
+			setupLine = `. (zgod init powershell)`
 		}
 	}
 
@@ -106,6 +126,10 @@ func Install(s Shell, customConfigPath string) error {
 	}
 
 	fmt.Printf("Added zgod to %s\n", configPath)
-	fmt.Println("Restart your shell or run: source " + configPath)
+	if s == PowerShell {
+		fmt.Println("Restart PowerShell or run: . $PROFILE")
+	} else {
+		fmt.Println("Restart your shell or run: source " + configPath)
+	}
 	return nil
 }

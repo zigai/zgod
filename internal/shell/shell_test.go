@@ -14,7 +14,9 @@ func TestParse(t *testing.T) {
 		{"zsh", Zsh, false},
 		{"bash", Bash, false},
 		{"fish", Fish, false},
-		{"powershell", 0, true},
+		{"powershell", PowerShell, false},
+		{"pwsh", PowerShell, false},
+		{"nushell", 0, true},
 	}
 	for _, tt := range tests {
 		got, err := Parse(tt.input)
@@ -29,7 +31,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestInitScript(t *testing.T) {
-	for _, s := range []Shell{Zsh, Bash, Fish} {
+	for _, s := range []Shell{Zsh, Bash, Fish, PowerShell} {
 		script, err := InitScript(s, InitOptions{})
 		if err != nil {
 			t.Errorf("InitScript(%v) error: %v", s, err)
@@ -43,7 +45,7 @@ func TestInitScript(t *testing.T) {
 
 func TestInitScriptWithConfig(t *testing.T) {
 	opts := InitOptions{ConfigPath: "/custom/config.toml"}
-	for _, s := range []Shell{Zsh, Bash, Fish} {
+	for _, s := range []Shell{Zsh, Bash, Fish, PowerShell} {
 		script, err := InitScript(s, opts)
 		if err != nil {
 			t.Errorf("InitScript(%v) error: %v", s, err)
