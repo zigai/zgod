@@ -15,6 +15,8 @@ linters:
   enable:
     - asasalint
     - bodyclose
+    - copyloopvar
+    - dogsled
     - errcheck
     - errname
     - errorlint
@@ -22,10 +24,12 @@ linters:
     - exptostd
     - gochecknoinits
     - gochecksumtype
+    - gocognit
     - goconst
     - gocritic
     - godoclint
     - godot
+    - goprintffuncname
     - gosec
     - govet
     - iface
@@ -34,8 +38,11 @@ linters:
     - iotamixing
     - makezero
     - mirror
+    - misspell
     - modernize
+    - nakedret
     - nolintlint
+    - revive
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
@@ -57,6 +64,9 @@ linters:
     gochecksumtype:
       default-signifies-exhaustive: false
 
+    gocognit:
+      min-complexity: 20
+
     gocritic:
       settings:
         captLocal:
@@ -77,6 +87,31 @@ linters:
         shadow:
           strict: true
 
+    misspell:
+      locale: US
+
+    nakedret:
+      max-func-lines: 5
+
+    revive:
+      rules:
+        - name: error-naming
+        - name: if-return
+        - name: var-naming
+        - name: error-strings
+        - name: receiver-naming
+        - name: indent-error-flow
+        - name: superfluous-else
+        - name: modifies-parameter
+        - name: unreachable-code
+          disabled: true
+        - name: redefines-builtin-id
+          disabled: true
+
+    rowserrcheck:
+      packages:
+        - github.com/jmoiron/sqlx
+
     staticcheck:
       checks:
         - all
@@ -88,10 +123,6 @@ linters:
       allow-no-explanation: [funlen, gocognit, golines]
       require-explanation: true
       require-specific: true
-
-    rowserrcheck:
-      packages:
-        - github.com/jmoiron/sqlx
 
     gosec:
       excludes:
@@ -114,3 +145,5 @@ linters:
           - errcheck
           - goconst
           - gosec
+          - dogsled
+          - gocognit
