@@ -34,7 +34,7 @@ type Model struct {
 	cwd            string
 	homeDir        string
 	quitting       bool
-	cancelled      bool
+	canceled       bool
 	showHelp       bool
 	showPreview    bool
 	previewCommand string
@@ -203,6 +203,68 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m *Model) handleNavigation(msg tea.KeyMsg) bool {
+	switch {
+	case matchKey(msg, m.cfg.Keys.Up) || matchKeyStr(msg, "ctrl+p"):
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case matchKey(msg, m.cfg.Keys.Down) || matchKeyStr(msg, "ctrl+n"):
+		if m.cursor < len(m.displayEntries)-1 {
+			m.cursor++
+		}
+	case matchKey(msg, m.cfg.Keys.PageUp):
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case matchKey(msg, m.cfg.Keys.PageDown):
+		if m.cursor < len(m.displayEntries)-1 {
+			m.cursor++
+		}
+	case matchKey(msg, m.cfg.Keys.Top):
+		m.cursor = 0
+	case matchKey(msg, m.cfg.Keys.Bottom):
+		if len(m.displayEntries) > 0 {
+			m.cursor = len(m.displayEntries) - 1
+		}
+	default:
+		return false
+	}
+	return true
+}
+
+func (m *Model) handleModeSwitch(msg tea.KeyMsg) bool {
+	switch {
+	case matchKey(msg, m.cfg.Keys.ModeNext):
+		m.mode = m.mode.Next(m.enabledModes)
+	case matchKey(msg, m.cfg.Keys.ModeFuzzy) && m.cfg.Display.EnableFuzzy:
+		m.mode = match.ModeFuzzy
+	case matchKey(msg, m.cfg.Keys.ModeRegex) && m.cfg.Display.EnableRegex:
+		m.mode = match.ModeRegex
+	case matchKey(msg, m.cfg.Keys.ModeGlob) && m.cfg.Display.EnableGlob:
+		m.mode = match.ModeGlob
+	default:
+		return false
+	}
+	m.updateMatches()
+	return true
+}
+
+func (m *Model) handleToggle(msg tea.KeyMsg) bool {
+	switch {
+	case matchKey(msg, m.cfg.Keys.ToggleCWD):
+		m.cwdMode = !m.cwdMode
+	case matchKey(msg, m.cfg.Keys.ToggleDedupe):
+		m.dedupe = !m.dedupe
+	case matchKey(msg, m.cfg.Keys.ToggleFails):
+		m.onlyFails = !m.onlyFails
+	default:
+		return false
+	}
+	m.loadEntries()
+	return true
+}
+
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.showPreview {
 		m.showPreview = false
@@ -215,99 +277,38 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch {
-	case matchKey(msg, m.cfg.Keys.Help):
+	if matchKey(msg, m.cfg.Keys.Help) {
 		m.showHelp = true
 		return m, nil
+	}
 
-	case matchKey(msg, m.cfg.Keys.Cancel) || matchKeyStr(msg, "ctrl+c"):
+	if matchKey(msg, m.cfg.Keys.Cancel) || matchKeyStr(msg, "ctrl+c") {
 		m.quitting = true
-		m.cancelled = true
+		m.canceled = true
 		return m, tea.Quit
+	}
 
-	case matchKey(msg, m.cfg.Keys.Accept):
+	if matchKey(msg, m.cfg.Keys.Accept) {
 		if len(m.displayEntries) > 0 && m.cursor < len(m.displayEntries) {
 			m.selected = m.displayEntries[m.cursor].Entry.Command
 		}
 		m.quitting = true
 		return m, tea.Quit
+	}
 
-	case matchKey(msg, m.cfg.Keys.Up) || matchKeyStr(msg, "ctrl+p"):
-		if m.cursor > 0 {
-			m.cursor--
-		}
+	if m.handleNavigation(msg) {
 		return m, nil
+	}
 
-	case matchKey(msg, m.cfg.Keys.Down) || matchKeyStr(msg, "ctrl+n"):
-		if m.cursor < len(m.displayEntries)-1 {
-			m.cursor++
-		}
+	if m.handleModeSwitch(msg) {
 		return m, nil
+	}
 
-	case matchKey(msg, m.cfg.Keys.PageUp):
-		if m.cursor > 0 {
-			m.cursor--
-		}
+	if m.handleToggle(msg) {
 		return m, nil
+	}
 
-	case matchKey(msg, m.cfg.Keys.PageDown):
-		if m.cursor < len(m.displayEntries)-1 {
-			m.cursor++
-		}
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.Top):
-		m.cursor = 0
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.Bottom):
-		if len(m.displayEntries) > 0 {
-			m.cursor = len(m.displayEntries) - 1
-		}
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.ModeNext):
-		m.mode = m.mode.Next(m.enabledModes)
-		m.updateMatches()
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.ModeFuzzy):
-		if m.cfg.Display.EnableFuzzy {
-			m.mode = match.ModeFuzzy
-			m.updateMatches()
-		}
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.ModeRegex):
-		if m.cfg.Display.EnableRegex {
-			m.mode = match.ModeRegex
-			m.updateMatches()
-		}
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.ModeGlob):
-		if m.cfg.Display.EnableGlob {
-			m.mode = match.ModeGlob
-			m.updateMatches()
-		}
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.ToggleCWD):
-		m.cwdMode = !m.cwdMode
-		m.loadEntries()
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.ToggleDedupe):
-		m.dedupe = !m.dedupe
-		m.loadEntries()
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.ToggleFails):
-		m.onlyFails = !m.onlyFails
-		m.loadEntries()
-		return m, nil
-
-	case matchKey(msg, m.cfg.Keys.PreviewCommand):
+	if matchKey(msg, m.cfg.Keys.PreviewCommand) {
 		if m.cfg.Display.MultilinePreview == "popup" && len(m.displayEntries) > 0 && m.cursor < len(m.displayEntries) {
 			cmd := m.displayEntries[m.cursor].Entry.Command
 			if strings.Contains(cmd, "\n") {
@@ -331,8 +332,8 @@ func (m Model) Selected() string {
 	return m.selected
 }
 
-func (m Model) Cancelled() bool {
-	return m.cancelled
+func (m Model) Canceled() bool {
+	return m.canceled
 }
 
 func matchKey(msg tea.KeyMsg, spec string) bool {

@@ -93,7 +93,7 @@ func doSearch(cmd *cobra.Command) (int, error) {
 	if !ok {
 		return 0, fmt.Errorf("unexpected model type: %T", finalModel)
 	}
-	if m.Cancelled() {
+	if m.Canceled() {
 		return 1, nil
 	}
 	if selected := m.Selected(); selected != "" {
