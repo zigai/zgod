@@ -66,8 +66,8 @@ Press `Ctrl+R` in your shell to open the search interface. Start typing to filte
 | `alt+f` | Fuzzy mode |
 | `alt+r` | Regex mode |
 | `alt+g` | Glob mode |
-| `ctrl+g` | Toggle CWD filter |
-| `ctrl+d` | Toggle deduplication |
+| `ctrl+d` | Toggle CWD filter |
+| `ctrl+g` | Toggle deduplication |
 | `ctrl+f` | Toggle failed commands only |
 | `alt+p` | Preview multiline command (popup mode only) |
 | `?` | Help overlay |
@@ -119,8 +119,8 @@ mode_next = "ctrl+s"
 mode_fuzzy = "alt+f"
 mode_regex = "alt+r"
 mode_glob = "alt+g"
-toggle_cwd = "ctrl+g"
-toggle_dedupe = "ctrl+d"
+toggle_cwd = "ctrl+d"
+toggle_dedupe = "ctrl+g"
 toggle_fails = "ctrl+f"
 accept = "enter"
 cancel = "esc"
