@@ -70,9 +70,9 @@ func (m Model) renderIndicators() string {
 		enabled bool
 	}
 	modes := []modeIndicator{
-		{match.ModeFuzzy, "fuzzy", "207", m.cfg.Display.EnableFuzzy},
+		{match.ModeFuzzy, "fuzzy", "39", m.cfg.Display.EnableFuzzy},
 		{match.ModeRegex, "regex", "208", m.cfg.Display.EnableRegex},
-		{match.ModeGlob, "glob", "39", m.cfg.Display.EnableGlob},
+		{match.ModeGlob, "glob", "207", m.cfg.Display.EnableGlob},
 	}
 	for _, mi := range modes {
 		if !mi.enabled {
@@ -97,8 +97,8 @@ func (m Model) renderIndicators() string {
 	}
 	toggles := []toggleIndicator{
 		{"cwd", "10", m.cwdMode},
-		{"dedup", "11", m.dedupe},
 		{"fails", "9", m.onlyFails},
+		{"dedup", "11", m.dedupe},
 	}
 	for _, ti := range toggles {
 		if ti.active {
