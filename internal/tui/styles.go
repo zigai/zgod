@@ -133,8 +133,7 @@ func NewStyles(theme config.ThemeConfig) Styles {
 			Foreground(lipgloss.Color("244")).
 			Bold(true),
 		ColumnHeaderBar: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("244")).
-			Padding(0, 1),
+			Foreground(lipgloss.Color("244")),
 		SelectionBar: selectionBarStyle,
 		SelectedCmd: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("15")).
