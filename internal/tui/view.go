@@ -795,12 +795,13 @@ func (m Model) renderResultsHeader() string {
 	when := m.styles.ColumnHeader.Width(timeWidth).Align(lipgloss.Right).Render("when")
 	cmd := m.styles.ColumnHeader.Width(cmdWidth).Render("command")
 
+	prefix := strings.Repeat(" ", prefixWidth)
 	var line string
 	if m.cfg.Display.ShowDirectory {
 		dir := m.styles.ColumnHeader.Width(dirWidth).Align(lipgloss.Right).Render("dir")
-		line = "  " + strings.Join([]string{exit, dur, when, cmd, dir}, sep)
+		line = prefix + strings.Join([]string{exit, dur, when, cmd, dir}, sep)
 	} else {
-		line = "  " + strings.Join([]string{exit, dur, when, cmd}, sep)
+		line = prefix + strings.Join([]string{exit, dur, when, cmd}, sep)
 	}
 
 	if lipgloss.Width(line) < width {
