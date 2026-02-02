@@ -26,9 +26,6 @@ install:
 clean:
     rm -rf zgod zgod.exe dist/
 
-# Run all checks (fmt, lint, test)
-check: lint test
-
 # Build with version info (local dev)
 build-dev:
     go build -ldflags "-X github.com/zigai/zgod/internal/cli.version=dev -X github.com/zigai/zgod/internal/cli.commit=$(git rev-parse --short HEAD) -X github.com/zigai/zgod/internal/cli.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o zgod .
