@@ -6,7 +6,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.1.0"
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "zgod",
@@ -16,7 +20,7 @@ var rootCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if v, _ := cmd.Flags().GetBool("version"); v {
-			cmd.Printf("zgod %s\n", version)
+			cmd.Printf("zgod %s (commit: %s, built: %s)\n", version, commit, date)
 			return
 		}
 		_ = cmd.Help()
