@@ -33,3 +33,6 @@ zgod
 # Editor/IDE
 .idea/
 .vscode/
+
+# GoReleaser
+dist/
