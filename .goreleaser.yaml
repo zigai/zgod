@@ -41,6 +41,8 @@ checksum:
 
 changelog:
   sort: asc
+  abbrev: 7
+  format: "- [`{{ .SHA | trunc 7 }}`](https://github.com/zigai/zgod/commit/{{ .SHA }}) {{ .Message }}"
   filters:
     exclude:
       - "^docs:"
