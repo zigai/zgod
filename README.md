@@ -6,11 +6,27 @@ zgod records every command you run, stores it in a local SQLite database, and gi
 
 ## Install
 
+### Quick install
+
+**Unix (Linux/macOS):**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/zigai/zgod/master/install.sh | sh
+```
+
+**Windows:**
+
+```powershell
+irm https://raw.githubusercontent.com/zigai/zgod/master/install.ps1 | iex
+```
+
+### Go install
+
 ```sh
 go install github.com/zigai/zgod@latest
 ```
 
-Or build from source:
+### Build from source
 
 ```sh
 git clone https://github.com/zigai/zgod.git
