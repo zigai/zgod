@@ -6,22 +6,6 @@ import (
 	"strings"
 )
 
-func ConfigDir() string {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "zgod")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "zgod")
-}
-
-func DataDir() string {
-	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
-		return filepath.Join(dir, "zgod")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "zgod")
-}
-
 func ConfigFile() string {
 	if path := os.Getenv("ZGOD_CONFIG"); path != "" {
 		return ExpandTilde(path)
