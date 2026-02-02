@@ -60,8 +60,7 @@ func doSearch(cmd *cobra.Command) (int, error) {
 	height, _ := cmd.Flags().GetInt("height")
 	query, _ := cmd.Flags().GetString("query")
 
-	// Open TTY for output since stdout is captured by shell
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	tty, err := openTTY()
 	if err != nil {
 		return 0, fmt.Errorf("opening TTY: %w", err)
 	}
