@@ -4,7 +4,7 @@ import "database/sql"
 
 type HistoryEntry struct {
 	ID        int64
-	TsMs      int64 //nolint:revive,staticcheck // TsMs is clearer than TSMs
+	TsMs      int64 //nolint:staticcheck // TsMs is clearer than TSMs
 	Duration  int64
 	ExitCode  int
 	Command   string
