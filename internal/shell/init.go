@@ -66,48 +66,29 @@ func ConfigFilePath(s Shell) (string, error) {
 	}
 }
 
-func Install(s Shell, customConfigPath string) error {
-	configPath, err := ConfigFilePath(s)
-	if err != nil {
-		return err
-	}
-
-	if err = os.MkdirAll(filepath.Dir(configPath), 0750); err != nil {
-		return fmt.Errorf("creating config directory: %w", err)
-	}
-
-	var setupLine string
+func setupLine(s Shell, customConfigPath string) string {
+	shellName := s.String()
 	switch s {
 	case Bash, Zsh:
 		if customConfigPath != "" {
-			setupLine = fmt.Sprintf(`eval "$(zgod init %s --config '%s')"`, s.String(), customConfigPath)
-		} else {
-			setupLine = fmt.Sprintf(`eval "$(zgod init %s)"`, s.String())
+			return fmt.Sprintf(`eval "$(zgod init %s --config '%s')"`, shellName, customConfigPath)
 		}
+		return fmt.Sprintf(`eval "$(zgod init %s)"`, shellName)
 	case Fish:
 		if customConfigPath != "" {
-			setupLine = fmt.Sprintf(`zgod init %s --config '%s' | source`, s.String(), customConfigPath)
-		} else {
-			setupLine = fmt.Sprintf(`zgod init %s | source`, s.String())
+			return fmt.Sprintf(`zgod init %s --config '%s' | source`, shellName, customConfigPath)
 		}
+		return fmt.Sprintf(`zgod init %s | source`, shellName)
 	case PowerShell:
 		if customConfigPath != "" {
-			setupLine = fmt.Sprintf(`. (zgod init powershell --config '%s')`, customConfigPath)
-		} else {
-			setupLine = `. (zgod init powershell)`
+			return fmt.Sprintf(`. (zgod init powershell --config '%s')`, customConfigPath)
 		}
+		return `. (zgod init powershell)`
 	}
+	return ""
+}
 
-	// #nosec G304 -- configPath is derived from known shell config locations
-	content, err := os.ReadFile(configPath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("reading config file: %w", err)
-	}
-
-	if strings.Contains(string(content), setupLine) {
-		return fmt.Errorf("zgod is already installed in %s", configPath)
-	}
-
+func writeSetupLine(configPath string, content []byte, line string) error {
 	// #nosec G304,G302 -- configPath is derived from known shell config locations, 0644 needed for shell configs
 	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -121,8 +102,36 @@ func Install(s Shell, customConfigPath string) error {
 		}
 	}
 
-	if _, err = f.WriteString("# zgod shell integration\n" + setupLine + "\n"); err != nil {
+	if _, err = f.WriteString("# zgod shell integration\n" + line + "\n"); err != nil {
 		return fmt.Errorf("writing to config file: %w", err)
+	}
+	return nil
+}
+
+func Install(s Shell, customConfigPath string) error {
+	configPath, err := ConfigFilePath(s)
+	if err != nil {
+		return err
+	}
+
+	if err = os.MkdirAll(filepath.Dir(configPath), 0750); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+
+	line := setupLine(s, customConfigPath)
+
+	// #nosec G304 -- configPath is derived from known shell config locations
+	content, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reading config file: %w", err)
+	}
+
+	if strings.Contains(string(content), line) {
+		return fmt.Errorf("zgod is already installed in %s", configPath)
+	}
+
+	if err = writeSetupLine(configPath, content, line); err != nil {
+		return err
 	}
 
 	fmt.Printf("Added zgod to %s\n", configPath)
