@@ -336,12 +336,6 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 	cmd, matchInfo = collapseMultiline(cmd, matchInfo, m.cfg.Display.MultilineCollapse)
 	cmd, matchInfo = truncateWithRanges(cmd, matchInfo, layout.cmdWidth)
 
-	var renderedCmd string
-	if matchInfo != nil && len(matchInfo.MatchedRanges) > 0 && m.input.Value() != "" {
-		renderedCmd = m.highlightMatches(cmd, matchInfo.MatchedRanges)
-	} else {
-		renderedCmd = cmd
-	}
 	cmdStyle := m.styles.Cmd
 	if isSelected {
 		cmdStyle = m.styles.SelectedCmd
@@ -349,7 +343,17 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 	if fullLineBg {
 		cmdStyle = cmdStyle.Background(selBg)
 	}
-	renderedCmd = cmdStyle.Render(renderedCmd)
+	matchStyle := m.styles.Match
+	if fullLineBg && m.cfg.Theme.MatchBg == "" {
+		matchStyle = matchStyle.Background(selBg)
+	}
+
+	var renderedCmd string
+	if matchInfo != nil && len(matchInfo.MatchedRanges) > 0 && m.input.Value() != "" {
+		renderedCmd = m.highlightMatches(cmd, matchInfo.MatchedRanges, cmdStyle, matchStyle)
+	} else {
+		renderedCmd = cmdStyle.Render(cmd)
+	}
 
 	exitStyle := m.styles.ExitOk
 	if entry.Entry.ExitCode != 0 {
@@ -404,17 +408,21 @@ func (m Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout result
 	matchInfo := &entry.MatchInfo
 	cmdLine, matchInfo = truncateWithRanges(cmdLine, matchInfo, layout.cmdWidth)
 
-	var renderedCmd string
-	if matchInfo != nil && len(matchInfo.MatchedRanges) > 0 && m.input.Value() != "" {
-		renderedCmd = m.highlightMatches(cmdLine, matchInfo.MatchedRanges)
-	} else {
-		renderedCmd = cmdLine
-	}
 	cmdStyle := m.styles.SelectedCmd
 	if fullLineBg {
 		cmdStyle = cmdStyle.Background(selBg)
 	}
-	renderedCmd = cmdStyle.Render(renderedCmd)
+	matchStyle := m.styles.Match
+	if fullLineBg && m.cfg.Theme.MatchBg == "" {
+		matchStyle = matchStyle.Background(selBg)
+	}
+
+	var renderedCmd string
+	if matchInfo != nil && len(matchInfo.MatchedRanges) > 0 && m.input.Value() != "" {
+		renderedCmd = m.highlightMatches(cmdLine, matchInfo.MatchedRanges, cmdStyle, matchStyle)
+	} else {
+		renderedCmd = cmdStyle.Render(cmdLine)
+	}
 
 	exitStyle := m.styles.ExitOk
 	if entry.Entry.ExitCode != 0 {
@@ -797,9 +805,9 @@ func (m Model) fitIndicators(indicators []string, width int) string {
 	return ""
 }
 
-func (m Model) highlightMatches(text string, ranges []match.Range) string {
+func (m Model) highlightMatches(text string, ranges []match.Range, baseStyle lipgloss.Style, matchStyle lipgloss.Style) string {
 	if len(ranges) == 0 {
-		return text
+		return baseStyle.Render(text)
 	}
 
 	runes := []rune(text)
@@ -820,9 +828,9 @@ func (m Model) highlightMatches(text string, ranges []match.Range) string {
 			if i > runStart {
 				chunk := string(runes[runStart:i])
 				if inRun {
-					b.WriteString(m.styles.Match.Render(chunk))
+					b.WriteString(matchStyle.Render(chunk))
 				} else {
-					b.WriteString(chunk)
+					b.WriteString(baseStyle.Render(chunk))
 				}
 			}
 			inRun = current
