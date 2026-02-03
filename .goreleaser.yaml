@@ -40,7 +40,7 @@ checksum:
   algorithm: sha256
 
 changelog:
-  sort: asc
+  sort: desc
   abbrev: 7
   format: "[`{{ printf \"%.7s\" .SHA }}`](https://github.com/zigai/zgod/commit/{{ .SHA }}) {{ .Message }}"
   filters:
