@@ -8,15 +8,19 @@ Interactive shell history search with **fuzzy**, **regex**, and **glob** matchin
 
 ## Features
 
-- **Match modes:** fuzzy / regex / glob
+- **Match modes:** `fuzzy` / `regex` / `glob`
 - **Filters:** current directory, deduplication, failed commands only
 - **History exclusion filters:** exclude commands from history recording
-- **Persistent storage:** history is stored locally in SQLite
+- **Persistent storage:** history is stored locally in `SQLite`
 - **Configurable UI:** prompt, colors, layout, multiline behavior
 - **Custom keybindings**
-- Works with **bash**, **zsh**, **fish**, and **powershell**
+- **Supported shells:**  `bash`, `zsh`, `fish`, and `powershell`
 
-## Install
+## Usage
+
+Press `Ctrl+R` to open the search UI. Start typing to filter results.
+
+## Installation
 
 ### Quick install
 
@@ -54,21 +58,9 @@ go build -o zgod .
 zgod install bash   # or zsh, fish, powershell
 ```
 
-This:
-
-- enables automatic command recording
-- binds Ctrl+R to the zgod search UI
-- updates your shell config for you
-
 ### Manual
 
 If you prefer manual setup, add the snippet for your shell to your shell config file.
-
-```sh
-zgod --version
-```
-
-If `zgod` is available, press `Ctrl+R` to open the search UI.
 
 **Bash** (`~/.bashrc`)
 
@@ -94,9 +86,8 @@ zgod init fish | source
 . (zgod init powershell)
 ```
 
-## Keybindings
 
-Press `Ctrl+R` to open the search UI. Start typing to filter results.
+## Keybindings
 
 | Key | Action |
 |---|---|
