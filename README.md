@@ -42,6 +42,10 @@ irm https://raw.githubusercontent.com/zigai/zgod/master/install.ps1 | iex
 go install github.com/zigai/zgod@latest
 ```
 
+### Prebuilt binaries
+
+Download the latest binaries from the [GitHub Releases page](https://github.com/zigai/zgod/releases/latest).
+
 ### Build from source
 
 ```sh
