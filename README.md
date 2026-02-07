@@ -86,7 +86,6 @@ zgod init fish | source
 . (zgod init powershell)
 ```
 
-
 ## Keybindings
 
 | Key | Action |
@@ -107,13 +106,20 @@ zgod init fish | source
 
 ## Configuration
 
-History is stored in a SQLite database at `~/.local/share/zgod/history.db`.
+Default paths:
 
-Configuration file lives in `~/.config/zgod/config.toml`. All fields are optional.
+- **Unix (Linux/macOS):**
+  - config file: `~/.config/zgod/config.toml`
+  - history database: `~/.local/share/zgod/history.db`
+- **Windows:**
+  - config file: `%APPDATA%\zgod\config.toml`
+  - history database: `%LOCALAPPDATA%\zgod\history.db`
+
+All fields are optional.
 
 ```toml
 [db]
-path = ""  # default: ~/.local/share/zgod/history.db
+path = ""  # default: platform-specific history path (see above)
 
 [filters]
 ignore_space = true       # skip commands starting with a space
