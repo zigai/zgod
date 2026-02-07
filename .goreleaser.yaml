@@ -35,6 +35,19 @@ archives:
       - LICENSE
       - README.md
 
+nfpms:
+  - id: zgod
+    package_name: zgod
+    vendor: zigai
+    homepage: https://github.com/zigai/zgod
+    maintainer: zigai
+    description: Interactive shell history search with fuzzy, regex, and glob matching
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
