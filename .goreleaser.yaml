@@ -42,7 +42,7 @@ checksum:
 changelog:
   sort: desc
   abbrev: 7
-  format: "[`{{ printf \"%.7s\" .SHA }}`](https://github.com/zigai/zgod/commit/{{ .SHA }}) {{ .Message }}"
+  format: '[`{{ printf "%.7s" .SHA }}`](https://github.com/zigai/zgod/commit/{{ .SHA }}) {{ .Message }}'
   filters:
     exclude:
       - "^docs:"
