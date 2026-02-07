@@ -1,8 +1,20 @@
 # zgod
 
-Highly customizable interactive shell history search with fuzzy, regex, and glob matching.
+Interactive shell history search with **fuzzy**, **regex**, and **glob** matching.
 
-zgod records every command you run, stores it in a local SQLite database, and gives you an interactive search interface bound to `Ctrl+R`.
+<p align="center">
+  <img src="assets/zgod-ui.png" alt="zgod interactive shell history search UI" width="952">
+</p>
+
+## Features
+
+- **Match modes:** fuzzy / regex / glob
+- **Filters:** current directory, deduplication, failed commands only
+- **History exclusion filters:** exclude commands from history recording
+- **Persistent storage:** history is stored locally in SQLite
+- **Configurable UI:** prompt, colors, layout, multiline behavior
+- **Custom keybindings**
+- Works with **bash**, **zsh**, **fish**, and **powershell**
 
 ## Install
 
@@ -31,20 +43,32 @@ go install github.com/zigai/zgod@latest
 ```sh
 git clone https://github.com/zigai/zgod.git
 cd zgod
-go build
+go build -o zgod .
 ```
 
-## Shell setup
+## Setup
 
-The easiest way to set up zgod is to use the install command:
+### Automatic
 
 ```sh
-zgod install bash   # or zsh, fish
+zgod install bash   # or zsh, fish, powershell
 ```
 
-This will automatically add the required configuration to your shell's config file.
+This:
 
-If you prefer to set it up manually, add one of the following to your shell configuration file:
+- enables automatic command recording
+- binds Ctrl+R to the zgod search UI
+- updates your shell config for you
+
+### Manual
+
+If you prefer manual setup, add the snippet for your shell to your shell config file.
+
+```sh
+zgod --version
+```
+
+If `zgod` is available, press `Ctrl+R` to open the search UI.
 
 **Bash** (`~/.bashrc`)
 
@@ -64,34 +88,37 @@ eval "$(zgod init zsh)"
 zgod init fish | source
 ```
 
-This hooks into your shell to automatically record commands and binds `Ctrl+R` to the interactive search.
+**PowerShell** (`$PROFILE`)
 
-## Usage
+```powershell
+. (zgod init powershell)
+```
 
-Press `Ctrl+R` in your shell to open the search interface. Start typing to filter your history. Press `Enter` to select a command, `Esc` to cancel.
+## Keybindings
 
-### Keybindings
+Press `Ctrl+R` to open the search UI. Start typing to filter results.
 
 | Key | Action |
 |---|---|
+| `enter` | Accept selection |
+| `esc` / `ctrl+c` | Cancel |
 | `up` / `ctrl+p` | Move up |
 | `down` / `ctrl+n` | Move down |
-| `enter` | Accept selection |
-| `esc` | Cancel |
 | `ctrl+s` | Cycle match mode (fuzzy / regex / glob) |
-| `alt+f` | Fuzzy mode |
-| `alt+r` | Regex mode |
-| `alt+g` | Glob mode |
 | `ctrl+d` | Toggle CWD filter |
 | `ctrl+g` | Toggle deduplication |
 | `ctrl+f` | Toggle failed commands only |
+| `alt+f` | Fuzzy mode |
+| `alt+r` | Regex mode |
+| `alt+g` | Glob mode |
 | `alt+p` | Preview multiline command (popup mode only) |
 | `?` | Help overlay |
 
 ## Configuration
 
-zgod is configured via `~/.config/zgod/config.toml`. All fields are optional.
 History is stored in a SQLite database at `~/.local/share/zgod/history.db`.
+
+Configuration file lives in `~/.config/zgod/config.toml`. All fields are optional.
 
 ```toml
 [db]
@@ -145,3 +172,7 @@ down = "down"
 help = "?"
 preview_command = "alt+p"
 ```
+
+## License
+
+[MIT](LICENSE)
