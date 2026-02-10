@@ -51,7 +51,11 @@ func Default() Config {
 
 func Load() (Config, error) {
 	cfg := Default()
-	data, err := os.ReadFile(paths.ConfigFile())
+	configPath, err := paths.ConfigFile()
+	if err != nil {
+		return cfg, fmt.Errorf("resolving config file path: %w", err)
+	}
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			if err = cfg.Save(); err != nil {
@@ -111,7 +115,11 @@ func (c Config) Save() error {
 	if err := paths.EnsureDirs(); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(paths.ConfigFile(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	configPath, err := paths.ConfigFile()
+	if err != nil {
+		return fmt.Errorf("resolving config file path: %w", err)
+	}
+	f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}
@@ -119,7 +127,7 @@ func (c Config) Save() error {
 	return toml.NewEncoder(f).Encode(c)
 }
 
-func (c Config) DatabasePath() string {
+func (c Config) DatabasePath() (string, error) {
 	if c.DB.Path != "" {
 		return paths.ExpandTilde(c.DB.Path)
 	}

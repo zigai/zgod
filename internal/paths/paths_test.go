@@ -9,7 +9,10 @@ import (
 
 func TestConfigDir(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg-config")
-	got := ConfigDir()
+	got, err := ConfigDir()
+	if err != nil {
+		t.Fatalf("ConfigDir() error: %v", err)
+	}
 	if got != "/tmp/xdg-config/zgod" {
 		t.Errorf("ConfigDir() = %q, want /tmp/xdg-config/zgod", got)
 	}
@@ -17,7 +20,10 @@ func TestConfigDir(t *testing.T) {
 
 func TestDataDir(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/tmp/xdg-data")
-	got := DataDir()
+	got, err := DataDir()
+	if err != nil {
+		t.Fatalf("DataDir() error: %v", err)
+	}
 	if got != "/tmp/xdg-data/zgod" {
 		t.Errorf("DataDir() = %q, want /tmp/xdg-data/zgod", got)
 	}
@@ -46,7 +52,10 @@ func TestEnsureDirs(t *testing.T) {
 }
 
 func TestExpandTilde(t *testing.T) {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("os.UserHomeDir() error: %v", err)
+	}
 	tests := []struct {
 		input string
 		want  string
@@ -56,7 +65,10 @@ func TestExpandTilde(t *testing.T) {
 		{"relative", "relative"},
 	}
 	for _, tt := range tests {
-		got := ExpandTilde(tt.input)
+		got, err := ExpandTilde(tt.input)
+		if err != nil {
+			t.Fatalf("ExpandTilde(%q) error: %v", tt.input, err)
+		}
 		if got != tt.want {
 			t.Errorf("ExpandTilde(%q) = %q, want %q", tt.input, got, tt.want)
 		}
@@ -65,7 +77,10 @@ func TestExpandTilde(t *testing.T) {
 
 func TestConfigFile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg")
-	got := ConfigFile()
+	got, err := ConfigFile()
+	if err != nil {
+		t.Fatalf("ConfigFile() error: %v", err)
+	}
 	if !strings.HasSuffix(got, "config.toml") {
 		t.Errorf("ConfigFile() = %q, expected config.toml suffix", got)
 	}
@@ -73,7 +88,10 @@ func TestConfigFile(t *testing.T) {
 
 func TestDatabaseFile(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/tmp/xdg")
-	got := DatabaseFile()
+	got, err := DatabaseFile()
+	if err != nil {
+		t.Fatalf("DatabaseFile() error: %v", err)
+	}
 	if !strings.HasSuffix(got, "history.db") {
 		t.Errorf("DatabaseFile() = %q, expected history.db suffix", got)
 	}

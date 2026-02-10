@@ -50,7 +50,11 @@ func doSearch(cmd *cobra.Command) (int, error) {
 		return 0, fmt.Errorf("ensuring directories: %w", err)
 	}
 
-	database, err := db.Open(cfg.DatabasePath())
+	dbPath, err := cfg.DatabasePath()
+	if err != nil {
+		return 0, fmt.Errorf("resolving database path: %w", err)
+	}
+	database, err := db.Open(dbPath)
 	if err != nil {
 		return 0, fmt.Errorf("opening database: %w", err)
 	}
@@ -73,8 +77,14 @@ func doSearch(cmd *cobra.Command) (int, error) {
 	renderer.SetColorProfile(profile)
 	lipgloss.SetDefaultRenderer(renderer)
 
-	cwd, _ := os.Getwd()
-	homeDir, _ := os.UserHomeDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return 0, fmt.Errorf("getting current directory: %w", err)
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return 0, fmt.Errorf("getting home directory: %w", err)
+	}
 	repo := db.NewHistoryRepo(database)
 	model := tui.NewModel(cfg, repo, cwd, homeDir, height, cwdFlag, query)
 

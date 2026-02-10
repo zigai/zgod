@@ -3,22 +3,35 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
 
-func ConfigDir() string {
+func ConfigDir() (string, error) {
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "zgod")
+		return filepath.Join(dir, "zgod"), nil
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "zgod")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("getting home directory: %w", err)
+	}
+	if home == "" {
+		return "", fmt.Errorf("home directory is empty")
+	}
+	return filepath.Join(home, ".config", "zgod"), nil
 }
 
-func DataDir() string {
+func DataDir() (string, error) {
 	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
-		return filepath.Join(dir, "zgod")
+		return filepath.Join(dir, "zgod"), nil
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".local", "share", "zgod")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("getting home directory: %w", err)
+	}
+	if home == "" {
+		return "", fmt.Errorf("home directory is empty")
+	}
+	return filepath.Join(home, ".local", "share", "zgod"), nil
 }

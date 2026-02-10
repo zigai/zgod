@@ -58,7 +58,11 @@ func runRecord(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("ensuring directories: %w", err)
 	}
 
-	database, err := db.Open(cfg.DatabasePath())
+	dbPath, err := cfg.DatabasePath()
+	if err != nil {
+		return fmt.Errorf("resolving database path: %w", err)
+	}
+	database, err := db.Open(dbPath)
 	if err != nil {
 		return fmt.Errorf("opening database: %w", err)
 	}

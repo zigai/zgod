@@ -1,39 +1,62 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func ConfigFile() string {
+func ConfigFile() (string, error) {
 	if path := os.Getenv("ZGOD_CONFIG"); path != "" {
 		return ExpandTilde(path)
 	}
-	return filepath.Join(ConfigDir(), "config.toml")
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.toml"), nil
 }
 
-func DatabaseFile() string {
-	return filepath.Join(DataDir(), "history.db")
+func DatabaseFile() (string, error) {
+	dir, err := DataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "history.db"), nil
 }
 
 func EnsureDirs() error {
-	if err := os.MkdirAll(ConfigDir(), 0700); err != nil {
+	configDir, err := ConfigDir()
+	if err != nil {
 		return err
 	}
-	return os.MkdirAll(DataDir(), 0700)
+	dataDir, err := DataDir()
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(configDir, 0700); err != nil {
+		return err
+	}
+	return os.MkdirAll(dataDir, 0700)
 }
 
-func ExpandTilde(path string) string {
+func ExpandTilde(path string) (string, error) {
 	if !strings.HasPrefix(path, "~") {
-		return path
+		return path, nil
 	}
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("getting home directory: %w", err)
+	}
+	if home == "" {
+		return "", fmt.Errorf("home directory is empty")
+	}
 	if path == "~" {
-		return home
+		return home, nil
 	}
 	if strings.HasPrefix(path, "~/") {
-		return filepath.Join(home, path[2:])
+		return filepath.Join(home, path[2:]), nil
 	}
-	return filepath.Join(home, path[1:])
+	return filepath.Join(home, path[1:]), nil
 }

@@ -70,13 +70,20 @@ prompt = "$ "
 func TestDatabasePath(t *testing.T) {
 	cfg := Default()
 	cfg.DB.Path = ""
-	path := cfg.DatabasePath()
+	path, err := cfg.DatabasePath()
+	if err != nil {
+		t.Fatalf("DatabasePath() error: %v", err)
+	}
 	if path == "" {
 		t.Error("DatabasePath() should not be empty with default config")
 	}
 
 	cfg.DB.Path = "/custom/path.db"
-	if cfg.DatabasePath() != "/custom/path.db" {
-		t.Errorf("DatabasePath() = %q, want /custom/path.db", cfg.DatabasePath())
+	path, err = cfg.DatabasePath()
+	if err != nil {
+		t.Fatalf("DatabasePath() error: %v", err)
+	}
+	if path != "/custom/path.db" {
+		t.Errorf("DatabasePath() = %q, want /custom/path.db", path)
 	}
 }

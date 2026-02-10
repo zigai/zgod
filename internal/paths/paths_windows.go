@@ -3,24 +3,37 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
 
-func ConfigDir() string {
+func ConfigDir() (string, error) {
 	appData := os.Getenv("APPDATA")
 	if appData == "" {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("getting home directory: %w", err)
+		}
+		if home == "" {
+			return "", fmt.Errorf("home directory is empty")
+		}
 		appData = filepath.Join(home, "AppData", "Roaming")
 	}
-	return filepath.Join(appData, "zgod")
+	return filepath.Join(appData, "zgod"), nil
 }
 
-func DataDir() string {
+func DataDir() (string, error) {
 	localAppData := os.Getenv("LOCALAPPDATA")
 	if localAppData == "" {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("getting home directory: %w", err)
+		}
+		if home == "" {
+			return "", fmt.Errorf("home directory is empty")
+		}
 		localAppData = filepath.Join(home, "AppData", "Local")
 	}
-	return filepath.Join(localAppData, "zgod")
+	return filepath.Join(localAppData, "zgod"), nil
 }

@@ -26,7 +26,11 @@ var configShowCmd = &cobra.Command{
 		if _, err := config.Load(); err != nil {
 			return fmt.Errorf("loading config: %w", err)
 		}
-		data, err := os.ReadFile(paths.ConfigFile())
+		configPath, err := paths.ConfigFile()
+		if err != nil {
+			return fmt.Errorf("resolving config file path: %w", err)
+		}
+		data, err := os.ReadFile(configPath)
 		if err != nil {
 			return fmt.Errorf("reading config file: %w", err)
 		}
@@ -49,7 +53,10 @@ var configEditCmd = &cobra.Command{
 		if editor == "" {
 			return fmt.Errorf("no editor found: set $EDITOR or $VISUAL")
 		}
-		path := paths.ConfigFile()
+		path, err := paths.ConfigFile()
+		if err != nil {
+			return fmt.Errorf("resolving config file path: %w", err)
+		}
 		// #nosec G204 -- $EDITOR/$VISUAL is user-controlled by design for a local CLI
 		c := exec.Command(editor, path)
 		c.Stdin = os.Stdin
