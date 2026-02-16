@@ -6,6 +6,14 @@ import (
 	"testing"
 )
 
+func setTestHomes(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("APPDATA", dir)
+	t.Setenv("LOCALAPPDATA", dir)
+}
+
 func TestDefault(t *testing.T) {
 	cfg := Default()
 	if !cfg.Filters.IgnoreSpace {
@@ -21,7 +29,7 @@ func TestDefault(t *testing.T) {
 
 func TestLoadMissingFile(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	setTestHomes(t, dir)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
@@ -33,7 +41,7 @@ func TestLoadMissingFile(t *testing.T) {
 
 func TestLoadTOML(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	setTestHomes(t, dir)
 	zgodDir := filepath.Join(dir, "zgod")
 	if err := os.MkdirAll(zgodDir, 0700); err != nil {
 		t.Fatal(err)

@@ -3,43 +3,67 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
+func setConfigHome(t *testing.T, dir string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Setenv("APPDATA", dir)
+		return filepath.Join(dir, "zgod")
+	}
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	return filepath.Join(dir, "zgod")
+}
+
+func setDataHome(t *testing.T, dir string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Setenv("LOCALAPPDATA", dir)
+		return filepath.Join(dir, "zgod")
+	}
+	t.Setenv("XDG_DATA_HOME", dir)
+	return filepath.Join(dir, "zgod")
+}
+
 func TestConfigDir(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg-config")
+	dir := filepath.Join(t.TempDir(), "xdg-config")
+	want := setConfigHome(t, dir)
 	got, err := ConfigDir()
 	if err != nil {
 		t.Fatalf("ConfigDir() error: %v", err)
 	}
-	if got != "/tmp/xdg-config/zgod" {
-		t.Errorf("ConfigDir() = %q, want /tmp/xdg-config/zgod", got)
+	if got != want {
+		t.Errorf("ConfigDir() = %q, want %q", got, want)
 	}
 }
 
 func TestDataDir(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", "/tmp/xdg-data")
+	dir := filepath.Join(t.TempDir(), "xdg-data")
+	want := setDataHome(t, dir)
 	got, err := DataDir()
 	if err != nil {
 		t.Fatalf("DataDir() error: %v", err)
 	}
-	if got != "/tmp/xdg-data/zgod" {
-		t.Errorf("DataDir() = %q, want /tmp/xdg-data/zgod", got)
+	if got != want {
+		t.Errorf("DataDir() = %q, want %q", got, want)
 	}
 }
 
 func TestEnsureDirs(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(dir, "data"))
+	configHome := filepath.Join(dir, "config")
+	dataHome := filepath.Join(dir, "data")
+	configDir := setConfigHome(t, configHome)
+	dataDir := setDataHome(t, dataHome)
 
 	if err := EnsureDirs(); err != nil {
 		t.Fatalf("EnsureDirs() error: %v", err)
 	}
 
-	for _, sub := range []string{"config/zgod", "data/zgod"} {
-		path := filepath.Join(dir, sub)
+	for _, path := range []string{configDir, dataDir} {
 		info, err := os.Stat(path)
 		if err != nil {
 			t.Errorf("expected dir %s to exist: %v", path, err)
