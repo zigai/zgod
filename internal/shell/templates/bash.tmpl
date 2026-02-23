@@ -81,7 +81,7 @@ __zgod_prompt_command() {
 __zgod_search() {
     __zgod_in_hook=1
     local selected
-    selected=$(zgod search --cwd --height 15 --query "$READLINE_LINE" </dev/tty)
+    selected=$(zgod search --height 15 --query "$READLINE_LINE" </dev/tty)
     local rc=$?
     if [[ $rc -eq 2 ]] && [[ -n "$selected" ]]; then
         READLINE_LINE=""

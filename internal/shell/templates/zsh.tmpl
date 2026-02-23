@@ -48,7 +48,7 @@ __zgod_precmd() {
 
 __zgod_search_widget() {
     local selected
-    selected=$(zgod search --cwd --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
+    selected=$(zgod search --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
     local rc=$?
     if [[ $rc -eq 2 ]] && [[ -n "$selected" ]]; then
         LBUFFER="$selected"

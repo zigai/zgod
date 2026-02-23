@@ -55,7 +55,7 @@ function __zgod_search {
     $currentLine = $null
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$currentLine, [ref]$null)
 
-    $selected = zgod search --cwd --height 15 --query $currentLine
+    $selected = zgod search --height 15 --query $currentLine
     $rc = $LASTEXITCODE
 
     if ($rc -eq 2 -and $selected) {

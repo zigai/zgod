@@ -46,7 +46,7 @@ function __zgod_postexec --on-event fish_postexec
 end
 
 function __zgod_search
-    set -l selected (zgod search --cwd --height 15 --query (commandline) </dev/tty)
+    set -l selected (zgod search --height 15 --query (commandline) </dev/tty)
     set -l rc $status
     if test $rc -eq 2; and test -n "$selected"
         commandline -r "$selected"
