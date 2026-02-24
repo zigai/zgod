@@ -20,16 +20,21 @@ var initCmd = &cobra.Command{
 			_ = cmd.Help()
 			return nil
 		}
+
 		s, err := shell.Parse(args[0])
 		if err != nil {
 			return fmt.Errorf("parsing shell %q: %w", args[0], err)
 		}
+
 		opts := shell.InitOptions{ConfigPath: initConfigPath}
+
 		script, err := shell.InitScript(s, opts)
 		if err != nil {
 			return fmt.Errorf("building init script for %s: %w", s, err)
 		}
+
 		fmt.Print(script)
+
 		return nil
 	},
 }

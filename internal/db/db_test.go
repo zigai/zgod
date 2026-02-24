@@ -7,10 +7,12 @@ import (
 
 func TestOpenAndInsert(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
+
 	database, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Open() error: %v", err)
 	}
+
 	defer func() { _ = database.Close() }()
 
 	repo := NewHistoryRepo(database)
@@ -27,6 +29,7 @@ func TestOpenAndInsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Insert() error: %v", err)
 	}
+
 	if id < 1 {
 		t.Errorf("Insert() returned id=%d, want >= 1", id)
 	}
@@ -34,10 +37,12 @@ func TestOpenAndInsert(t *testing.T) {
 
 func TestRecent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
+
 	database, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Open() error: %v", err)
 	}
+
 	defer func() { _ = database.Close() }()
 
 	repo := NewHistoryRepo(database)
@@ -55,9 +60,11 @@ func TestRecent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Recent() error: %v", err)
 	}
+
 	if len(entries) != 3 {
 		t.Fatalf("Recent() returned %d entries, want 3", len(entries))
 	}
+
 	if entries[0].Command != "third" {
 		t.Errorf("Recent()[0].Command = %q, want 'third'", entries[0].Command)
 	}
@@ -65,13 +72,16 @@ func TestRecent(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
+
 	database, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Open() error: %v", err)
 	}
+
 	defer func() { _ = database.Close() }()
 
 	repo := NewHistoryRepo(database)
+
 	id, err := repo.Insert(HistoryEntry{TsMs: 1000, Command: "delete me"})
 	if err != nil {
 		t.Fatal(err)
@@ -91,16 +101,19 @@ func TestDelete(t *testing.T) {
 
 func TestRecentInDir(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
+
 	database, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Open() error: %v", err)
 	}
+
 	defer func() { _ = database.Close() }()
 
 	repo := NewHistoryRepo(database)
 	if _, err = repo.Insert(HistoryEntry{TsMs: 1000, Command: "in dir", Directory: "/home"}); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err = repo.Insert(HistoryEntry{TsMs: 2000, Command: "other dir", Directory: "/tmp"}); err != nil {
 		t.Fatal(err)
 	}
@@ -109,9 +122,11 @@ func TestRecentInDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecentInDir() error: %v", err)
 	}
+
 	if len(entries) != 1 {
 		t.Fatalf("RecentInDir() returned %d entries, want 1", len(entries))
 	}
+
 	if entries[0].Command != "in dir" {
 		t.Errorf("got command %q, want 'in dir'", entries[0].Command)
 	}
@@ -119,19 +134,23 @@ func TestRecentInDir(t *testing.T) {
 
 func TestFetchCandidatesDedupe(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
+
 	database, err := Open(dbPath)
 	if err != nil {
 		t.Fatalf("Open() error: %v", err)
 	}
+
 	defer func() { _ = database.Close() }()
 
 	repo := NewHistoryRepo(database)
 	if _, err = repo.Insert(HistoryEntry{TsMs: 1000, Command: "echo hello"}); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err = repo.Insert(HistoryEntry{TsMs: 2000, Command: "echo hello"}); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err = repo.Insert(HistoryEntry{TsMs: 3000, Command: "echo world"}); err != nil {
 		t.Fatal(err)
 	}

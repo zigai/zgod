@@ -24,6 +24,7 @@ func TestParse(t *testing.T) {
 			t.Errorf("Parse(%q) error = %v, wantErr %v", tt.input, err, tt.err)
 			continue
 		}
+
 		if !tt.err && got != tt.want {
 			t.Errorf("Parse(%q) = %v, want %v", tt.input, got, tt.want)
 		}
@@ -37,6 +38,7 @@ func TestInitScript(t *testing.T) {
 			t.Errorf("InitScript(%v) error: %v", s, err)
 			continue
 		}
+
 		if !strings.Contains(script, "zgod") {
 			t.Errorf("InitScript(%v) output doesn't contain 'zgod'", s)
 		}
@@ -51,9 +53,11 @@ func TestInitScriptWithConfig(t *testing.T) {
 			t.Errorf("InitScript(%v) error: %v", s, err)
 			continue
 		}
+
 		if !strings.Contains(script, "ZGOD_CONFIG") {
 			t.Errorf("InitScript(%v) output doesn't contain 'ZGOD_CONFIG'", s)
 		}
+
 		if !strings.Contains(script, "/custom/config.toml") {
 			t.Errorf("InitScript(%v) output doesn't contain config path", s)
 		}

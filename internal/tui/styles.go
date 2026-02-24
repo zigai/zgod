@@ -35,6 +35,7 @@ type Styles struct {
 
 func NewStyles(theme config.ThemeConfig) Styles {
 	base := lipgloss.NewStyle()
+
 	borderColor := parseColor(theme.BorderColor)
 	if theme.BorderColor == "" {
 		borderColor = parseColor(theme.ModeColor)
@@ -47,9 +48,11 @@ func NewStyles(theme config.ThemeConfig) Styles {
 	if config.BoolDefault(theme.MatchBold, true) {
 		matchStyle = matchStyle.Bold(true)
 	}
+
 	if config.BoolDefault(theme.MatchUnderline, true) {
 		matchStyle = matchStyle.Underline(true)
 	}
+
 	if theme.MatchBg != "" {
 		matchStyle = matchStyle.Background(parseColor(theme.MatchBg))
 	}
@@ -58,6 +61,7 @@ func NewStyles(theme config.ThemeConfig) Styles {
 	if barColor == "" {
 		barColor = "14"
 	}
+
 	selectionBarStyle := lipgloss.NewStyle().
 		Foreground(parseColor(barColor)).
 		Bold(true)
@@ -147,5 +151,6 @@ func parseColor(s string) lipgloss.TerminalColor {
 	if s == "" {
 		return lipgloss.NoColor{}
 	}
+
 	return lipgloss.Color(s)
 }

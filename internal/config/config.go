@@ -62,10 +62,12 @@ func Default() Config {
 
 func Load() (Config, error) {
 	cfg := Default()
+
 	configPath, err := paths.ConfigFile()
 	if err != nil {
 		return cfg, fmt.Errorf("resolving config file path: %w", err)
 	}
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -73,16 +75,21 @@ func Load() (Config, error) {
 			if err != nil {
 				return cfg, err
 			}
+
 			return cfg, nil
 		}
+
 		return cfg, err
 	}
+
 	if _, err = toml.Decode(string(data), &cfg); err != nil {
 		return cfg, fmt.Errorf("decoding config TOML: %w", err)
 	}
+
 	if err = cfg.Validate(); err != nil {
 		return cfg, err
 	}
+
 	return cfg, nil
 }
 
@@ -91,14 +98,17 @@ func (c Config) Validate() error {
 	if err != nil {
 		return err
 	}
+
 	err = c.validateDefaultScope()
 	if err != nil {
 		return err
 	}
+
 	err = c.validateDefaultMode()
 	if err != nil {
 		return err
 	}
+
 	return c.validateMultilinePreview()
 }
 
@@ -106,18 +116,23 @@ func (c Config) Save() error {
 	if err := paths.EnsureDirs(); err != nil {
 		return fmt.Errorf("ensuring config directories: %w", err)
 	}
+
 	configPath, err := paths.ConfigFile()
 	if err != nil {
 		return fmt.Errorf("resolving config file path: %w", err)
 	}
+
 	f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("opening config file %q: %w", configPath, err)
 	}
+
 	defer func() { _ = f.Close() }()
+
 	if err = toml.NewEncoder(f).Encode(c); err != nil {
 		return fmt.Errorf("encoding config TOML: %w", err)
 	}
+
 	return nil
 }
 
@@ -127,12 +142,15 @@ func (c Config) DatabasePath() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("expanding database path %q: %w", c.DB.Path, err)
 		}
+
 		return path, nil
 	}
+
 	path, err := paths.DatabaseFile()
 	if err != nil {
 		return "", fmt.Errorf("resolving default database path: %w", err)
 	}
+
 	return path, nil
 }
 
@@ -140,6 +158,7 @@ func (c Config) validateEnabledModes() error {
 	if !c.Display.EnableFuzzy && !c.Display.EnableRegex && !c.Display.EnableGlob {
 		return errNoMatchModeEnabled
 	}
+
 	return nil
 }
 
@@ -158,16 +177,19 @@ func (c Config) validateDefaultMode() error {
 		if c.Display.DefaultMode == "fuzzy" && !c.Display.EnableFuzzy {
 			return fmt.Errorf("%w: %q", errDefaultModeNotEnabled, c.Display.DefaultMode)
 		}
+
 		return nil
 	case "regex":
 		if !c.Display.EnableRegex {
 			return fmt.Errorf("%w: %q", errDefaultModeNotEnabled, c.Display.DefaultMode)
 		}
+
 		return nil
 	case "glob":
 		if !c.Display.EnableGlob {
 			return fmt.Errorf("%w: %q", errDefaultModeNotEnabled, c.Display.DefaultMode)
 		}
+
 		return nil
 	default:
 		return fmt.Errorf("%w %q: must be \"fuzzy\", \"regex\", or \"glob\"", errInvalidDefaultMode, c.Display.DefaultMode)

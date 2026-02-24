@@ -15,8 +15,10 @@ func (m *FuzzyMatcher) Match(pattern string, candidates []string) []Match {
 	matches := make([]Match, len(results))
 	for i, r := range results {
 		ranges := make([]Range, 0)
+
 		if len(r.MatchedIndexes) > 0 {
 			start := r.MatchedIndexes[0]
+
 			end := start + 1
 			for _, idx := range r.MatchedIndexes[1:] {
 				if idx == end {
@@ -27,13 +29,16 @@ func (m *FuzzyMatcher) Match(pattern string, candidates []string) []Match {
 					end = idx + 1
 				}
 			}
+
 			ranges = append(ranges, Range{Start: start, End: end})
 		}
+
 		matches[i] = Match{
 			Index:         r.Index,
 			Score:         r.Score,
 			MatchedRanges: ranges,
 		}
 	}
+
 	return matches
 }

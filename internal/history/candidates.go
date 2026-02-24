@@ -17,9 +17,11 @@ func FetchCandidates(repo *db.HistoryRepo, opts CandidateOpts) ([]db.HistoryEntr
 	if limit <= 0 {
 		limit = 10000
 	}
+
 	entries, err := repo.FetchCandidates(limit, opts.Dedupe, opts.OnlyFails)
 	if err != nil {
 		return nil, fmt.Errorf("fetching history candidates: %w", err)
 	}
+
 	return entries, nil
 }

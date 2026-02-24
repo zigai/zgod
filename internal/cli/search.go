@@ -49,9 +49,11 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	if exitCode != 0 {
 		os.Exit(exitCode)
 	}
+
 	return nil
 }
 
@@ -90,6 +92,7 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	if err != nil {
 		return searchContext{}, fmt.Errorf("resolving database path: %w", err)
 	}
+
 	database, err := db.Open(dbPath)
 	if err != nil {
 		return searchContext{}, fmt.Errorf("opening database: %w", err)
@@ -108,6 +111,7 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	profile := termenv.TrueColor
 	output := termenv.NewOutput(tty, termenv.WithProfile(profile))
 	termenv.SetDefaultOutput(output)
+
 	renderer := lipgloss.NewRenderer(tty)
 	renderer.SetColorProfile(profile)
 	lipgloss.SetDefaultRenderer(renderer)
@@ -116,20 +120,25 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	if err != nil {
 		_ = tty.Close()
 		_ = database.Close()
+
 		return searchContext{}, fmt.Errorf("getting current directory: %w", err)
 	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		_ = tty.Close()
 		_ = database.Close()
+
 		return searchContext{}, fmt.Errorf("getting home directory: %w", err)
 	}
+
 	repo := db.NewHistoryRepo(database)
 	model := tui.NewModel(cfg, repo, cwd, homeDir, height, cwdFlag, query)
 	cleanup := func() {
 		_ = tty.Close()
 		_ = database.Close()
 	}
+
 	return searchContext{
 		cfg:     cfg,
 		model:   model,
@@ -143,14 +152,18 @@ func resolveSearchResult(cfg config.Config, finalModel tea.Model) (int, error) {
 	if !ok {
 		return 0, fmt.Errorf("%w: %T", errUnexpectedModelType, finalModel)
 	}
+
 	if m.Canceled() {
 		return searchExitCodeCanceled, nil
 	}
+
 	if selected := m.Selected(); selected != "" {
 		fmt.Print(selected)
+
 		if cfg.Display.InstantExecute {
 			return searchExitCodeInstantExec, nil
 		}
 	}
+
 	return 0, nil
 }

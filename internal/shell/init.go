@@ -23,18 +23,22 @@ type InitOptions struct {
 
 func InitScript(s Shell, opts InitOptions) (string, error) {
 	name := fmt.Sprintf("templates/%s.tmpl", s.String())
+
 	data, err := templateFS.ReadFile(name)
 	if err != nil {
 		return "", fmt.Errorf("reading template for %s: %w", s, err)
 	}
+
 	tmpl, err := template.New(s.String()).Parse(string(data))
 	if err != nil {
 		return "", fmt.Errorf("parsing template for %s: %w", s, err)
 	}
+
 	var buf bytes.Buffer
 	if err = tmpl.Execute(&buf, opts); err != nil {
 		return "", fmt.Errorf("executing template for %s: %w", s, err)
 	}
+
 	return buf.String(), nil
 }
 
@@ -43,9 +47,11 @@ func getPowerShellProfilePath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("getting home directory for PowerShell profile: %w", err)
 	}
+
 	if runtime.GOOS == "windows" {
 		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"), nil
 	}
+
 	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1"), nil
 }
 
@@ -76,18 +82,22 @@ func setupLine(s Shell, customConfigPath string) string {
 		if customConfigPath != "" {
 			return fmt.Sprintf(`eval "$(zgod init %s --config '%s')"`, shellName, customConfigPath)
 		}
+
 		return fmt.Sprintf(`eval "$(zgod init %s)"`, shellName)
 	case Fish:
 		if customConfigPath != "" {
 			return fmt.Sprintf(`zgod init %s --config '%s' | source`, shellName, customConfigPath)
 		}
+
 		return fmt.Sprintf(`zgod init %s | source`, shellName)
 	case PowerShell:
 		if customConfigPath != "" {
 			return fmt.Sprintf(`. (zgod init powershell --config '%s')`, customConfigPath)
 		}
+
 		return `. (zgod init powershell)`
 	}
+
 	return ""
 }
 
@@ -97,6 +107,7 @@ func writeSetupLine(configPath string, content []byte, line string) error {
 	if err != nil {
 		return fmt.Errorf("opening config file: %w", err)
 	}
+
 	defer func() { _ = f.Close() }()
 
 	if len(content) > 0 && !strings.HasSuffix(string(content), "\n") {
@@ -108,6 +119,7 @@ func writeSetupLine(configPath string, content []byte, line string) error {
 	if _, err = f.WriteString("# zgod shell integration\n" + line + "\n"); err != nil {
 		return fmt.Errorf("writing to config file: %w", err)
 	}
+
 	return nil
 }
 
@@ -138,10 +150,12 @@ func Install(s Shell, customConfigPath string) error {
 	}
 
 	fmt.Printf("Added zgod to %s\n", configPath)
+
 	if s == PowerShell {
 		fmt.Println("Restart PowerShell or run: . $PROFILE")
 	} else {
 		fmt.Println("Restart your shell or run: source " + configPath)
 	}
+
 	return nil
 }

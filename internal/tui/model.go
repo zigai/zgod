@@ -44,9 +44,11 @@ type Model struct {
 
 func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir string, height int, cwdMode bool, initialQuery string) *Model {
 	width := 80
+
 	if height < 1 {
 		height = 1
 	}
+
 	ti := textinput.New()
 	ti.Focus()
 	ti.CharLimit = 256
@@ -58,9 +60,11 @@ func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir strin
 	if cfg.Display.EnableFuzzy {
 		enabledModes = append(enabledModes, match.ModeFuzzy)
 	}
+
 	if cfg.Display.EnableRegex {
 		enabledModes = append(enabledModes, match.ModeRegex)
 	}
+
 	if cfg.Display.EnableGlob {
 		enabledModes = append(enabledModes, match.ModeGlob)
 	}
@@ -92,6 +96,7 @@ func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir strin
 		repo:         repo,
 	}
 	m.loadEntries()
+
 	return &m
 }
 
@@ -114,20 +119,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		innerWidth := max(msg.Width-panelBorderW-(panelPaddingX*2), 1)
 		m.width = innerWidth
+
 		available := max(msg.Height-m.chromeHeight()-panelBorderH-(panelPaddingY*2), 1)
 		if m.maxHeight < 1 {
 			m.maxHeight = 1
 		}
+
 		if available > m.maxHeight {
 			available = m.maxHeight
 		}
+
 		m.height = available
 		m.input.Width = max(m.width-4, 1)
+
 		return m, nil
 	}
 
 	var cmd tea.Cmd
+
 	m.input, cmd = m.input.Update(msg)
+
 	return m, cmd
 }
 
@@ -137,13 +148,16 @@ func (m *Model) loadEntries() {
 		Dedupe:    m.dedupe,
 		OnlyFails: m.onlyFails,
 	})
+
 	m.dbError = err
 	if err != nil {
 		m.allEntries = nil
 		m.candidates = nil
 		m.displayEntries = nil
+
 		return
 	}
+
 	if m.cwdMode && m.cwd != "" {
 		filtered := entries[:0:0]
 		for _, e := range entries {
@@ -151,8 +165,10 @@ func (m *Model) loadEntries() {
 				filtered = append(filtered, e)
 			}
 		}
+
 		entries = filtered
 	}
+
 	if m.cfg.Display.HideMultiline {
 		filtered := entries[:0:0]
 		for _, e := range entries {
@@ -160,31 +176,39 @@ func (m *Model) loadEntries() {
 				filtered = append(filtered, e)
 			}
 		}
+
 		entries = filtered
 	}
+
 	m.allEntries = entries
+
 	m.candidates = make([]string, len(entries))
 	for i, e := range entries {
 		m.candidates[i] = e.Command
 	}
+
 	m.updateMatches()
 }
 
 func (m *Model) updateMatches() {
 	query := m.input.Value()
+
 	cwdBonus := m.cfg.Display.CWDBoost
 	if m.cwdMode {
 		cwdBonus = 0
 	}
+
 	if query == "" {
 		opts := history.DefaultScoringOpts(m.cwd)
 		opts.CWDBonus = cwdBonus
+
 		scored := make([]history.ScoredEntry, len(m.allEntries))
 		for i, e := range m.allEntries {
 			score := 0
 			if opts.CWD != "" && e.Directory == opts.CWD {
 				score += opts.CWDBonus
 			}
+
 			recency := max(opts.RecencyBase-(i/100), 0)
 			score += recency
 			scored[i] = history.ScoredEntry{
@@ -193,11 +217,13 @@ func (m *Model) updateMatches() {
 				FinalScore: score,
 			}
 		}
+
 		sort.SliceStable(scored, func(a, b int) bool {
 			return scored[a].FinalScore > scored[b].FinalScore
 		})
 		m.displayEntries = scored
 		m.cursor = 0
+
 		return
 	}
 
@@ -238,6 +264,7 @@ func (m *Model) handleNavigation(msg tea.KeyMsg) bool {
 	default:
 		return false
 	}
+
 	return true
 }
 
@@ -254,7 +281,9 @@ func (m *Model) handleModeSwitch(msg tea.KeyMsg) bool {
 	default:
 		return false
 	}
+
 	m.updateMatches()
+
 	return true
 }
 
@@ -269,7 +298,9 @@ func (m *Model) handleToggle(msg tea.KeyMsg) bool {
 	default:
 		return false
 	}
+
 	m.loadEntries()
+
 	return true
 }
 
@@ -277,6 +308,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.showPreview {
 		m.showPreview = false
 		m.previewCommand = ""
+
 		return m, nil
 	}
 
@@ -293,6 +325,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if matchKey(msg, m.cfg.Keys.Cancel) || matchKeyStr(msg, "ctrl+c") {
 		m.quitting = true
 		m.canceled = true
+
 		return m, tea.Quit
 	}
 
@@ -300,7 +333,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.displayEntries) > 0 && m.cursor < len(m.displayEntries) {
 			m.selected = m.displayEntries[m.cursor].Entry.Command
 		}
+
 		m.quitting = true
+
 		return m, tea.Quit
 	}
 
@@ -324,15 +359,19 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.previewCommand = cmd
 			}
 		}
+
 		return m, nil
 	}
 
 	prevValue := m.input.Value()
+
 	var cmd tea.Cmd
+
 	m.input, cmd = m.input.Update(msg)
 	if m.input.Value() != prevValue {
 		m.updateMatches()
 	}
+
 	return m, cmd
 }
 

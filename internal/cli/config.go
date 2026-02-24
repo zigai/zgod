@@ -29,15 +29,19 @@ var configShowCmd = &cobra.Command{
 		if _, err := config.Load(); err != nil {
 			return fmt.Errorf("loading config: %w", err)
 		}
+
 		configPath, err := paths.ConfigFile()
 		if err != nil {
 			return fmt.Errorf("resolving config file path: %w", err)
 		}
+
 		data, err := os.ReadFile(configPath)
 		if err != nil {
 			return fmt.Errorf("reading config file: %w", err)
 		}
+
 		fmt.Print(string(data))
+
 		return nil
 	},
 }
@@ -49,13 +53,16 @@ var configEditCmd = &cobra.Command{
 		if _, err := config.Load(); err != nil {
 			return fmt.Errorf("loading config: %w", err)
 		}
+
 		editor := os.Getenv("EDITOR")
 		if editor == "" {
 			editor = os.Getenv("VISUAL")
 		}
+
 		if editor == "" {
 			return errNoEditorConfigured
 		}
+
 		path, err := paths.ConfigFile()
 		if err != nil {
 			return fmt.Errorf("resolving config file path: %w", err)
@@ -65,6 +72,7 @@ var configEditCmd = &cobra.Command{
 		c.Stdin = os.Stdin
 		c.Stdout = os.Stdout
 		c.Stderr = os.Stderr
+
 		return c.Run()
 	},
 }

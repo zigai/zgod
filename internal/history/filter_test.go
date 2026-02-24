@@ -11,6 +11,7 @@ func TestFilterEmpty(t *testing.T) {
 	if f.ShouldRecord("", 0, "") {
 		t.Error("empty command should not be recorded")
 	}
+
 	if f.ShouldRecord("   ", 0, "") {
 		t.Error("whitespace-only command should not be recorded")
 	}
@@ -21,6 +22,7 @@ func TestFilterLeadingSpace(t *testing.T) {
 	if f.ShouldRecord(" ls", 0, "") {
 		t.Error("leading space command should not be recorded when IgnoreSpace=true")
 	}
+
 	if !f.ShouldRecord("ls", 0, "") {
 		t.Error("normal command should be recorded")
 	}
@@ -31,6 +33,7 @@ func TestFilterExitCode(t *testing.T) {
 	if f.ShouldRecord("interrupted", 130, "") {
 		t.Error("exit code 130 should be filtered")
 	}
+
 	if !f.ShouldRecord("success", 0, "") {
 		t.Error("exit code 0 should not be filtered")
 	}
@@ -41,9 +44,11 @@ func TestFilterGlob(t *testing.T) {
 	if f.ShouldRecord("cd /tmp", 0, "") {
 		t.Error("'cd /tmp' should be filtered by glob 'cd *'")
 	}
+
 	if f.ShouldRecord("ls", 0, "") {
 		t.Error("'ls' should be filtered by glob 'ls'")
 	}
+
 	if !f.ShouldRecord("git status", 0, "") {
 		t.Error("'git status' should not be filtered")
 	}
@@ -79,6 +84,7 @@ func TestFilterDirGlob(t *testing.T) {
 	if f.ShouldRecord("ls", 0, "/tmp/foo/bar") {
 		t.Error("command in /tmp/foo/bar should be filtered by dir glob '/tmp/**'")
 	}
+
 	if !f.ShouldRecord("ls", 0, "/home/user") {
 		t.Error("command in /home/user should not be filtered")
 	}
@@ -89,6 +95,7 @@ func TestFilterDirRegexp(t *testing.T) {
 	if f.ShouldRecord("ls", 0, "/tmp/test") {
 		t.Error("command in /tmp/test should be filtered by dir regexp '^/tmp'")
 	}
+
 	if !f.ShouldRecord("ls", 0, "/home/user") {
 		t.Error("command in /home/user should not be filtered")
 	}

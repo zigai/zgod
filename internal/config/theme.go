@@ -19,6 +19,7 @@ type ThemeConfig struct {
 
 func DefaultTheme() ThemeConfig {
 	t := true
+
 	return ThemeConfig{
 		Prompt:      "> ",
 		PromptColor: "cyan",
@@ -43,5 +44,6 @@ func BoolDefault(b *bool, def bool) bool {
 	if b == nil {
 		return def
 	}
+
 	return *b
 }

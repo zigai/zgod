@@ -12,5 +12,6 @@ func openTTY() (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening /dev/tty: %w", err)
 	}
+
 	return f, nil
 }

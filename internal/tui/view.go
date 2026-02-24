@@ -28,14 +28,17 @@ func (m *Model) View() string {
 	if m.quitting {
 		return ""
 	}
+
 	if m.showPreview {
 		return m.renderPreviewPopup()
 	}
+
 	if m.showHelp {
 		return m.renderHelp()
 	}
 
 	var sections []string
+
 	sections = append(sections, m.renderInputBar())
 	sections = append(sections, m.renderResults())
 
@@ -48,6 +51,7 @@ func (m *Model) View() string {
 	}
 
 	body := strings.Join(sections, "\n")
+
 	return m.styles.Border.
 		Width(m.width+panelPaddingX*2).
 		Padding(panelPaddingY, panelPaddingX).
@@ -70,6 +74,7 @@ func (m *Model) renderIndicators() string {
 		bg      string
 		enabled bool
 	}
+
 	modes := []modeIndicator{
 		{match.ModeFuzzy, "fuzzy", "39", m.cfg.Display.EnableFuzzy},
 		{match.ModeRegex, "regex", "208", m.cfg.Display.EnableRegex},
@@ -79,6 +84,7 @@ func (m *Model) renderIndicators() string {
 		if !mi.enabled {
 			continue
 		}
+
 		if m.mode == mi.mode {
 			indicators = append(indicators, lipgloss.NewStyle().
 				Foreground(lipgloss.Color("0")).
@@ -96,6 +102,7 @@ func (m *Model) renderIndicators() string {
 		bg     string
 		active bool
 	}
+
 	toggles := []toggleIndicator{
 		{"cwd", "10", m.cwdMode},
 		{"fails", "9", m.onlyFails},
@@ -124,6 +131,7 @@ func (m *Model) renderHeader() string {
 	fillWidth := max(width-lipgloss.Width(indicatorStr), 0)
 
 	line := indicatorStr + strings.Repeat(" ", fillWidth)
+
 	return m.styles.HeaderBar.Width(width).Render(line)
 }
 
@@ -135,6 +143,7 @@ func (m *Model) isMerged() bool {
 	indicatorWidth := lipgloss.Width(indicatorStr)
 	gap := 2
 	remaining := width - promptWidth - indicatorWidth - gap
+
 	return remaining >= minInputWidth
 }
 
@@ -143,12 +152,15 @@ func (m *Model) chromeHeight() int {
 	if !m.cfg.Display.ShowHints {
 		chrome = 0
 	}
+
 	if m.cfg.Display.MultilinePreview == "preview_pane" {
 		chrome += previewPaneHeight
 	}
+
 	if m.isMerged() {
 		return chrome + 1
 	}
+
 	return chrome + 2
 }
 
@@ -178,6 +190,7 @@ func (m *Model) renderInputBar() string {
 	fillWidth := max(width-leftWidth-indicatorWidth, 0)
 
 	line := leftContent + strings.Repeat(" ", fillWidth) + indicatorStr
+
 	return m.styles.Input.Width(width).Render(line)
 }
 
@@ -190,6 +203,7 @@ func (m *Model) renderInput() string {
 	padding := max(width-contentWidth, 0)
 
 	line := prompt + input + strings.Repeat(" ", padding)
+
 	return m.styles.Input.Width(width).Render(line)
 }
 
@@ -211,15 +225,18 @@ func (m *Model) renderEmptyState(headerRows int) string {
 	if headerRows > 0 {
 		return m.renderResultsHeader() + "\n" + msg + strings.Repeat("\n", fill)
 	}
+
 	return msg + strings.Repeat("\n", fill)
 }
 
 func (m *Model) renderResults() string {
 	width := m.getWidth()
+
 	headerRows := resultsHeaderRows
 	if m.height <= resultsHeaderRows {
 		headerRows = 0
 	}
+
 	visible := m.visibleResults()
 
 	if len(visible) == 0 {
@@ -239,10 +256,12 @@ func (m *Model) renderResults() string {
 			lines = append(lines, m.renderExpandedResultLines(idx)...)
 			continue
 		}
+
 		line := m.renderResultLine(idx, isSelected)
 		if lineWidth := lipgloss.Width(line); lineWidth < width {
 			line += strings.Repeat(" ", width-lineWidth)
 		}
+
 		lines = append(lines, line)
 	}
 
@@ -268,10 +287,12 @@ type resultLayout struct {
 
 func (m *Model) calcResultLayout() resultLayout {
 	width := m.getWidth()
+
 	barChar := m.cfg.Theme.SelectionBarChar
 	if barChar == "" {
 		barChar = defaultSelectionChar
 	}
+
 	prefixWidth := lipgloss.Width(barChar)
 	exitWidth := 4
 	durWidth := 8
@@ -287,6 +308,7 @@ func (m *Model) calcResultLayout() resultLayout {
 	if m.cfg.Display.ShowDirectory {
 		columnsWidth += dirWidth + len(sep)
 	}
+
 	cmdWidth := width - columnsWidth
 	if cmdWidth < 10 {
 		cmdWidth = width
@@ -311,12 +333,15 @@ func (m *Model) renderSelectionPrefix(layout resultLayout, fullLineBg bool, selB
 		if fullLineBg {
 			return lipgloss.NewStyle().Background(selBg).Render(strings.Repeat(" ", layout.prefixWidth))
 		}
+
 		return strings.Repeat(" ", layout.prefixWidth)
 	}
+
 	barStyle := m.styles.SelectionBar
 	if fullLineBg {
 		barStyle = barStyle.Background(selBg)
 	}
+
 	return barStyle.Render(layout.barChar)
 }
 
@@ -340,9 +365,11 @@ func (m *Model) renderResultLine(entryIdx int, isSelected bool) string {
 	if isSelected {
 		cmdStyle = m.styles.SelectedCmd
 	}
+
 	if fullLineBg {
 		cmdStyle = cmdStyle.Background(selBg)
 	}
+
 	matchStyle := m.styles.Match
 	if fullLineBg && m.cfg.Theme.MatchBg == "" {
 		matchStyle = matchStyle.Background(selBg)
@@ -359,7 +386,9 @@ func (m *Model) renderResultLine(entryIdx int, isSelected bool) string {
 	if entry.Entry.ExitCode != 0 {
 		exitStyle = m.styles.ExitFail
 	}
+
 	metaStyle := m.styles.Meta
+
 	if fullLineBg {
 		exitStyle = exitStyle.Background(selBg)
 		metaStyle = metaStyle.Background(selBg)
@@ -376,6 +405,7 @@ func (m *Model) renderResultLine(entryIdx int, isSelected bool) string {
 	}
 
 	var line string
+
 	if layout.showDir {
 		dirStyled := metaStyle.Width(layout.dirWidth).Align(lipgloss.Right).Render(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir))
 		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled, dirStyled}, styledSep)
@@ -388,12 +418,14 @@ func (m *Model) renderResultLine(entryIdx int, isSelected bool) string {
 	}
 
 	prefix := m.renderSelectionPrefix(layout, fullLineBg, selBg)
+
 	fullLine := prefix + line
 	if fullLineBg {
 		if lineWidth := lipgloss.Width(fullLine); lineWidth < layout.width {
 			fullLine += lipgloss.NewStyle().Background(selBg).Render(strings.Repeat(" ", layout.width-lineWidth))
 		}
 	}
+
 	return fullLine
 }
 
@@ -401,6 +433,7 @@ func (m *Model) entryIsMultiline(idx int) bool {
 	if idx >= len(m.displayEntries) {
 		return false
 	}
+
 	return strings.Contains(m.displayEntries[idx].Entry.Command, "\n")
 }
 
@@ -412,6 +445,7 @@ func (m *Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout resul
 	if fullLineBg {
 		cmdStyle = cmdStyle.Background(selBg)
 	}
+
 	matchStyle := m.styles.Match
 	if fullLineBg && m.cfg.Theme.MatchBg == "" {
 		matchStyle = matchStyle.Background(selBg)
@@ -428,7 +462,9 @@ func (m *Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout resul
 	if entry.Entry.ExitCode != 0 {
 		exitStyle = m.styles.ExitFail
 	}
+
 	metaStyle := m.styles.Meta
+
 	if fullLineBg {
 		exitStyle = exitStyle.Background(selBg)
 		metaStyle = metaStyle.Background(selBg)
@@ -445,6 +481,7 @@ func (m *Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout resul
 	}
 
 	var line string
+
 	if layout.showDir {
 		dirStyled := metaStyle.Width(layout.dirWidth).Align(lipgloss.Right).Render(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir))
 		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled, dirStyled}, styledSep)
@@ -453,6 +490,7 @@ func (m *Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout resul
 	}
 
 	prefix := m.renderSelectionPrefix(layout, fullLineBg, selBg)
+
 	return prefix + line
 }
 
@@ -461,6 +499,7 @@ func (m *Model) renderExpandedContinuationLine(layout resultLayout, fullLineBg b
 	if fullLineBg {
 		cmdStyle = cmdStyle.Background(selBg)
 	}
+
 	renderedCmd := cmdStyle.Render(cmdLine)
 
 	metaWidth := layout.exitWidth + layout.durWidth + layout.timeWidth + (len(layout.sep) * 3)
@@ -480,6 +519,7 @@ func (m *Model) renderExpandedContinuationLine(layout resultLayout, fullLineBg b
 	if fullLineBg {
 		return lipgloss.NewStyle().Background(selBg).Render(lineContent)
 	}
+
 	return lineContent
 }
 
@@ -488,10 +528,12 @@ func (m *Model) padLine(line string, width int, fullLineBg bool, selBg lipgloss.
 	if lineWidth >= width {
 		return line
 	}
+
 	padding := strings.Repeat(" ", width-lineWidth)
 	if fullLineBg {
 		return line + lipgloss.NewStyle().Background(selBg).Render(padding)
 	}
+
 	return line + padding
 }
 
@@ -520,6 +562,7 @@ func (m *Model) renderExpandedResultLines(entryIdx int) []string {
 		} else {
 			line = m.renderExpandedContinuationLine(layout, fullLineBg, selBg, cmdLine)
 		}
+
 		result = append(result, m.padLine(line, layout.width, fullLineBg, selBg))
 	}
 
@@ -542,6 +585,7 @@ func (m *Model) renderFooter() string {
 	}
 
 	var parts []string
+
 	for _, k := range keys {
 		key := m.styles.HelpKey.Render(k.key)
 		desc := m.styles.HelpDesc.Render(k.desc)
@@ -561,6 +605,7 @@ func (m *Model) selectedIsMultiline() bool {
 	if len(m.displayEntries) == 0 || m.cursor >= len(m.displayEntries) {
 		return false
 	}
+
 	return strings.Contains(m.displayEntries[m.cursor].Entry.Command, "\n")
 }
 
@@ -569,10 +614,12 @@ func (m *Model) renderPreviewPane() string {
 
 	if len(m.displayEntries) == 0 || m.cursor >= len(m.displayEntries) {
 		emptyLine := strings.Repeat(" ", width)
+
 		lines := make([]string, 0, previewPaneHeight)
 		for range previewPaneHeight {
 			lines = append(lines, emptyLine)
 		}
+
 		return strings.Join(lines, "\n")
 	}
 
@@ -588,15 +635,19 @@ func (m *Model) renderPreviewPane() string {
 	cmdLines := strings.Split(cmd, "\n")
 
 	contentHeight := previewPaneHeight - 1
+
 	var displayLines []string
+
 	for i := 0; i < contentHeight && i < len(cmdLines); i++ {
 		line := cmdLines[i]
 		if len(line) > width {
 			line = line[:width]
 		}
+
 		if len(line) < width {
 			line += strings.Repeat(" ", width-len(line))
 		}
+
 		displayLines = append(displayLines, m.styles.Dimmed.Render(line))
 	}
 
@@ -643,10 +694,12 @@ func (m *Model) renderHelp() string {
 	footer := m.styles.Dimmed.Render("  Press any key to dismiss")
 
 	boxContent := header + "\n\n" + content + "\n\n" + footer
+
 	boxWidth := width - 4
 	if boxWidth < 10 {
 		boxWidth = width
 	}
+
 	box := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240")).
@@ -668,7 +721,9 @@ func (m *Model) renderPreviewPopup() string {
 	}
 
 	lines := strings.Split(m.previewCommand, "\n")
+
 	var wrappedLines []string
+
 	for _, line := range lines {
 		line = strings.ReplaceAll(line, "\t", "    ")
 		if len(line) > contentWidth {
@@ -676,6 +731,7 @@ func (m *Model) renderPreviewPopup() string {
 				wrappedLines = append(wrappedLines, line[:contentWidth])
 				line = line[contentWidth:]
 			}
+
 			if len(line) > 0 {
 				wrappedLines = append(wrappedLines, line)
 			}
@@ -688,10 +744,12 @@ func (m *Model) renderPreviewPopup() string {
 	footer := m.styles.Dimmed.Render("  Press any key to dismiss")
 
 	boxContent := header + "\n\n" + content + "\n\n" + footer
+
 	boxWidth := width - 4
 	if boxWidth < 10 {
 		boxWidth = width
 	}
+
 	box := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("240")).
@@ -716,10 +774,12 @@ func (m *Model) visibleResults() []int {
 	if m.height <= resultsHeaderRows {
 		headerRows = 0
 	}
+
 	maxVisible := min(m.height-headerRows, count)
 	if maxVisible < 1 {
 		maxVisible = 0
 	}
+
 	if maxVisible == 0 {
 		return nil
 	}
@@ -729,6 +789,7 @@ func (m *Model) visibleResults() []int {
 	if m.cursor >= maxVisible {
 		start = m.cursor - maxVisible + 1
 	}
+
 	end := start + maxVisible
 	if end > count {
 		end = count
@@ -739,15 +800,18 @@ func (m *Model) visibleResults() []int {
 	for i := range indices {
 		indices[i] = start + i
 	}
+
 	return indices
 }
 
 func (m *Model) renderResultsHeader() string {
 	width := m.getWidth()
+
 	barChar := m.cfg.Theme.SelectionBarChar
 	if barChar == "" {
 		barChar = defaultSelectionChar
 	}
+
 	prefixWidth := lipgloss.Width(barChar)
 	exitWidth := 4
 	durWidth := 8
@@ -763,6 +827,7 @@ func (m *Model) renderResultsHeader() string {
 	if m.cfg.Display.ShowDirectory {
 		columnsWidth += dirWidth + len(sep)
 	}
+
 	cmdWidth := width - columnsWidth
 	if cmdWidth < 10 {
 		cmdWidth = width
@@ -774,7 +839,9 @@ func (m *Model) renderResultsHeader() string {
 	cmd := m.styles.ColumnHeader.Width(cmdWidth).Render("command")
 
 	prefix := strings.Repeat(" ", prefixWidth)
+
 	var line string
+
 	if m.cfg.Display.ShowDirectory {
 		dir := m.styles.ColumnHeader.Width(dirWidth).Align(lipgloss.Right).Render("dir")
 		line = prefix + strings.Join([]string{exit, dur, when, cmd, dir}, sep)
@@ -785,6 +852,7 @@ func (m *Model) renderResultsHeader() string {
 	if lipgloss.Width(line) < width {
 		line += strings.Repeat(" ", width-lipgloss.Width(line))
 	}
+
 	return m.styles.ColumnHeaderBar.Width(width).Render(line)
 }
 
@@ -792,16 +860,19 @@ func (m *Model) fitIndicators(indicators []string, width int) string {
 	if len(indicators) == 0 {
 		return ""
 	}
+
 	best := strings.Join(indicators, " ")
 	if lipgloss.Width(best) <= width {
 		return best
 	}
+
 	for i := len(indicators) - 1; i >= 0; i-- {
 		candidate := strings.Join(indicators[:i], " ")
 		if lipgloss.Width(candidate) <= width {
 			return candidate
 		}
 	}
+
 	return ""
 }
 
@@ -812,6 +883,7 @@ func (m *Model) highlightMatches(text string, ranges []match.Range, baseStyle li
 
 	runes := []rune(text)
 	inMatch := map[int]bool{}
+
 	for _, r := range ranges {
 		for i := r.Start; i < r.End && i < len(runes); i++ {
 			inMatch[i] = true
@@ -819,6 +891,7 @@ func (m *Model) highlightMatches(text string, ranges []match.Range, baseStyle li
 	}
 
 	var b strings.Builder
+
 	inRun := false
 	runStart := 0
 
@@ -833,10 +906,12 @@ func (m *Model) highlightMatches(text string, ranges []match.Range, baseStyle li
 					b.WriteString(baseStyle.Render(chunk))
 				}
 			}
+
 			inRun = current
 			runStart = i
 		}
 	}
+
 	return b.String()
 }
 
@@ -854,9 +929,11 @@ func dirColumnWidth(width int) int {
 	if w < 12 {
 		return 12
 	}
+
 	if w > 30 {
 		return 30
 	}
+
 	return w
 }
 
@@ -864,10 +941,13 @@ func formatDirectory(dir string, width int, home string) string {
 	if home != "" && strings.HasPrefix(dir, home) {
 		dir = "~" + dir[len(home):]
 	}
+
 	if len(dir) <= width {
 		return dir
 	}
+
 	runes := []rune(dir)
+
 	return "…" + string(runes[len(runes)-width+1:])
 }
 
@@ -877,6 +957,7 @@ func formatExit(code int, width int) string {
 
 func formatDuration(ms int64, mode string, width int) string {
 	var s string
+
 	switch mode {
 	case "ms":
 		s = fmt.Sprintf("%dms", ms)
@@ -885,7 +966,9 @@ func formatDuration(ms int64, mode string, width int) string {
 	default:
 		s = humanDuration(ms)
 	}
+
 	s = trimToWidth(s, width)
+
 	return fmt.Sprintf("%*s", width, s)
 }
 
@@ -894,16 +977,21 @@ func formatWhen(tsMs int64, mode string, width int) string {
 	if tsMs <= 0 {
 		return fmt.Sprintf("%*s", width, trimToWidth("n/a", width))
 	}
+
 	t := time.UnixMilli(tsMs)
 	now := time.Now()
+
 	var s string
+
 	switch mode {
 	case "absolute":
 		s = t.Format("2006-01-02 15:04")
 	default:
 		s = humanSince(safeSub(now, t))
 	}
+
 	s = trimToWidth(s, width)
+
 	return fmt.Sprintf("%*s", width, s)
 }
 
@@ -911,15 +999,19 @@ func humanDuration(ms int64) string {
 	if ms < 1000 {
 		return fmt.Sprintf("%dms", ms)
 	}
+
 	sec := float64(ms) / 1000.0
 	if sec < 60 {
 		return fmt.Sprintf("%.1fs", sec)
 	}
+
 	minutes := sec / 60.0
 	if minutes < 60 {
 		return fmt.Sprintf("%.1fm", minutes)
 	}
+
 	h := minutes / 60.0
+
 	return fmt.Sprintf("%.1fh", h)
 }
 
@@ -927,9 +1019,11 @@ func humanSince(d time.Duration) string {
 	if d == math.MinInt64 {
 		d = math.MaxInt64
 	}
+
 	if d < 0 {
 		d = -d
 	}
+
 	switch {
 	case d < time.Minute:
 		return fmt.Sprintf("%ds ago", int(d.Seconds()))
@@ -953,6 +1047,7 @@ func safeSub(a, b time.Time) time.Duration {
 	if d == math.MinInt64 {
 		return math.MaxInt64
 	}
+
 	return d
 }
 
@@ -960,6 +1055,7 @@ func normalizeTimestampMs(tsMs int64) int64 {
 	if tsMs <= 0 {
 		return tsMs
 	}
+
 	nowMs := time.Now().UnixMilli()
 	if tsMs > nowMs*1000 {
 		if tsMs > nowMs*1_000_000 {
@@ -968,10 +1064,12 @@ func normalizeTimestampMs(tsMs int64) int64 {
 			tsMs /= 1000
 		}
 	}
+
 	maxUnixMs := int64(math.MaxInt64) / int64(time.Millisecond)
 	if tsMs > maxUnixMs {
 		return nowMs
 	}
+
 	return tsMs
 }
 
@@ -979,10 +1077,12 @@ func trimToWidth(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
+
 	runes := []rune(s)
 	if len(runes) <= width {
 		return s
 	}
+
 	return string(runes[:width])
 }
 
@@ -990,29 +1090,37 @@ func truncateWithRanges(text string, info *match.Match, maxLen int) (string, *ma
 	if maxLen <= 0 || len(text) <= maxLen {
 		return text, info
 	}
+
 	runes := []rune(text)
 	if len(runes) <= maxLen {
 		return text, info
 	}
+
 	ellipsis := "..."
 	cutoff := maxLen - len(ellipsis)
 	cutoff = max(cutoff, 0)
+
 	truncated := string(runes[:cutoff]) + ellipsis
 	if info == nil || len(info.MatchedRanges) == 0 {
 		return truncated, info
 	}
+
 	var ranges []match.Range
+
 	for _, r := range info.MatchedRanges {
 		if r.Start >= cutoff {
 			continue
 		}
+
 		end := min(r.End, cutoff)
 		if end > r.Start {
 			ranges = append(ranges, match.Range{Start: r.Start, End: end})
 		}
 	}
+
 	infoCopy := *info
 	infoCopy.MatchedRanges = ranges
+
 	return truncated, &infoCopy
 }
 
@@ -1037,6 +1145,7 @@ func collapseRunes(textRunes []rune, symbolRunes []rune) ([]rune, []int) {
 			runeMap = append(runeMap, i)
 		}
 	}
+
 	return collapsed, runeMap
 }
 
@@ -1045,6 +1154,7 @@ func buildReverseMap(runeMap []int) map[int]int {
 	for newIdx, oldIdx := range runeMap {
 		reverseMap[oldIdx] = newIdx
 	}
+
 	return reverseMap
 }
 
@@ -1052,26 +1162,31 @@ func findMappedStart(reverseMap map[int]int, start int, textLen int) (int, bool)
 	if newStart, ok := reverseMap[start]; ok {
 		return newStart, true
 	}
+
 	for i := start; i < textLen; i++ {
 		if ns, ok := reverseMap[i]; ok {
 			return ns, true
 		}
 	}
+
 	return 0, false
 }
 
 func findMappedEnd(reverseMap map[int]int, start int, end int, textLen int, newStart int) int {
 	newEnd := newStart
+
 	for i := start; i < end && i < textLen; i++ {
 		if ne, ok := reverseMap[i]; ok {
 			newEnd = ne + 1
 		}
 	}
+
 	return newEnd
 }
 
 func remapMatchRanges(ranges []match.Range, runeMap []int, textLen int) []match.Range {
 	reverseMap := buildReverseMap(runeMap)
+
 	var newRanges []match.Range
 
 	for _, r := range ranges {
@@ -1079,11 +1194,13 @@ func remapMatchRanges(ranges []match.Range, runeMap []int, textLen int) []match.
 		if !ok {
 			continue
 		}
+
 		newEnd := findMappedEnd(reverseMap, r.Start, r.End, textLen, newStart)
 		if newEnd > newStart {
 			newRanges = append(newRanges, match.Range{Start: newStart, End: newEnd})
 		}
 	}
+
 	return newRanges
 }
 
@@ -1106,5 +1223,6 @@ func collapseMultiline(text string, info *match.Match, collapseSymbol string) (s
 
 	infoCopy := *info
 	infoCopy.MatchedRanges = remapMatchRanges(info.MatchedRanges, runeMap, len(textRunes))
+
 	return string(collapsed), &infoCopy
 }

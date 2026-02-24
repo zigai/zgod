@@ -38,11 +38,13 @@ func (m Mode) Next(enabled []Mode) Mode {
 	if len(enabled) == 0 {
 		return m
 	}
+
 	for i, mode := range enabled {
 		if mode == m {
 			return enabled[(i+1)%len(enabled)]
 		}
 	}
+
 	return enabled[0]
 }
 

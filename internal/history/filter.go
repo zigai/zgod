@@ -28,20 +28,24 @@ func NewFilter(cfg config.FilterConfig) (*Filter, error) {
 	for _, c := range cfg.ExitCode {
 		codes[c] = true
 	}
+
 	cmdGlobs := make([]*regexp.Regexp, 0, len(cfg.CommandGlob))
 	for _, g := range cfg.CommandGlob {
 		re, err := globToRegexp(g)
 		if err != nil {
 			return nil, err
 		}
+
 		cmdGlobs = append(cmdGlobs, re)
 	}
+
 	cmdRegexps := make([]*regexp.Regexp, 0, len(cfg.CommandRegex))
 	for _, pattern := range cfg.CommandRegex {
 		re, err := regexp.Compile(pattern)
 		if err != nil {
 			return nil, fmt.Errorf("compiling command regex %q: %w", pattern, err)
 		}
+
 		cmdRegexps = append(cmdRegexps, re)
 	}
 
@@ -57,6 +61,7 @@ func NewFilter(cfg config.FilterConfig) (*Filter, error) {
 		if err != nil {
 			return nil, fmt.Errorf("compiling directory regex %q: %w", pattern, err)
 		}
+
 		dirRegexps = append(dirRegexps, re)
 	}
 
@@ -75,21 +80,27 @@ func (f *Filter) ShouldRecord(command string, exitCode int, directory string) bo
 	if strings.TrimSpace(command) == "" {
 		return false
 	}
+
 	if f.maxCommandLength > 0 && len(command) > f.maxCommandLength {
 		return false
 	}
+
 	if f.ignoreSpace && strings.HasPrefix(command, " ") {
 		return false
 	}
+
 	if f.exitCode[exitCode] {
 		return false
 	}
+
 	if f.matchesCommandFilters(command) {
 		return false
 	}
+
 	if f.matchesDirectoryFilters(directory) {
 		return false
 	}
+
 	return true
 }
 
@@ -99,11 +110,13 @@ func (f *Filter) matchesCommandFilters(command string) bool {
 			return true
 		}
 	}
+
 	for _, re := range f.commandRegex {
 		if re.MatchString(command) {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -113,17 +126,20 @@ func (f *Filter) matchesDirectoryFilters(directory string) bool {
 			return true
 		}
 	}
+
 	for _, re := range f.directoryRegex {
 		if re.MatchString(directory) {
 			return true
 		}
 	}
+
 	return false
 }
 
 func globToRegexp(glob string) (*regexp.Regexp, error) {
 	var b strings.Builder
 	b.WriteString("^")
+
 	for _, r := range glob {
 		switch r {
 		case '*':
@@ -137,10 +153,13 @@ func globToRegexp(glob string) (*regexp.Regexp, error) {
 			b.WriteRune(r)
 		}
 	}
+
 	b.WriteString("$")
+
 	re, err := regexp.Compile(b.String())
 	if err != nil {
 		return nil, fmt.Errorf("compiling generated regex for glob %q: %w", glob, err)
 	}
+
 	return re, nil
 }

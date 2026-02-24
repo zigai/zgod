@@ -28,5 +28,6 @@ func ensureSchema(db *sql.DB) error {
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		return fmt.Errorf("applying schema: %w", err)
 	}
+
 	return nil
 }

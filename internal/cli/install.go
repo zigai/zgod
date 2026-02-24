@@ -21,13 +21,16 @@ var installCmd = &cobra.Command{
 			_ = cmd.Help()
 			return nil
 		}
+
 		s, err := shell.Parse(args[0])
 		if err != nil {
 			return fmt.Errorf("parsing shell %q: %w", args[0], err)
 		}
+
 		if err = shell.Install(s, installConfigPath); err != nil {
 			return fmt.Errorf("installing shell integration for %s: %w", s, err)
 		}
+
 		return nil
 	},
 }
