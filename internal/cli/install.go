@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/zigai/zgod/internal/shell"
@@ -21,13 +23,15 @@ var installCmd = &cobra.Command{
 		}
 		s, err := shell.Parse(args[0])
 		if err != nil {
-			return err
+			return fmt.Errorf("parsing shell %q: %w", args[0], err)
 		}
-		return shell.Install(s, installConfigPath)
+		if err = shell.Install(s, installConfigPath); err != nil {
+			return fmt.Errorf("installing shell integration for %s: %w", s, err)
+		}
+		return nil
 	},
 }
 
-//nolint:gochecknoinits // cobra CLI pattern
 func init() {
 	installCmd.Flags().StringVar(&installConfigPath, "config", "", "Path to config file")
 	rootCmd.AddCommand(installCmd)

@@ -4,6 +4,8 @@ import "regexp"
 
 type RegexMatcher struct{}
 
+const regexMatchScore = 100
+
 func (m *RegexMatcher) Match(pattern string, candidates []string) []Match {
 	if pattern == "" {
 		return nil
@@ -25,7 +27,7 @@ func (m *RegexMatcher) Match(pattern string, candidates []string) []Match {
 		}
 		matches = append(matches, Match{
 			Index:         i,
-			Score:         100,
+			Score:         regexMatchScore,
 			MatchedRanges: ranges,
 		})
 	}

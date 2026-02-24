@@ -42,7 +42,7 @@ type Model struct {
 	dbError        error
 }
 
-func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir string, height int, cwdMode bool, initialQuery string) Model {
+func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir string, height int, cwdMode bool, initialQuery string) *Model {
 	width := 80
 	if height < 1 {
 		height = 1
@@ -92,7 +92,43 @@ func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir strin
 		repo:         repo,
 	}
 	m.loadEntries()
-	return m
+	return &m
+}
+
+func (m *Model) Selected() string {
+	return m.selected
+}
+
+func (m *Model) Canceled() bool {
+	return m.canceled
+}
+
+func (m *Model) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		return m.handleKey(msg)
+	case tea.WindowSizeMsg:
+		innerWidth := max(msg.Width-panelBorderW-(panelPaddingX*2), 1)
+		m.width = innerWidth
+		available := max(msg.Height-m.chromeHeight()-panelBorderH-(panelPaddingY*2), 1)
+		if m.maxHeight < 1 {
+			m.maxHeight = 1
+		}
+		if available > m.maxHeight {
+			available = m.maxHeight
+		}
+		m.height = available
+		m.input.Width = max(m.width-4, 1)
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return m, cmd
 }
 
 func (m *Model) loadEntries() {
@@ -175,34 +211,6 @@ func (m *Model) updateMatches() {
 	m.cursor = 0
 }
 
-func (m Model) Init() tea.Cmd {
-	return textinput.Blink
-}
-
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		return m.handleKey(msg)
-	case tea.WindowSizeMsg:
-		innerWidth := max(msg.Width-panelBorderW-(panelPaddingX*2), 1)
-		m.width = innerWidth
-		available := max(msg.Height-m.chromeHeight()-panelBorderH-(panelPaddingY*2), 1)
-		if m.maxHeight < 1 {
-			m.maxHeight = 1
-		}
-		if available > m.maxHeight {
-			available = m.maxHeight
-		}
-		m.height = available
-		m.input.Width = max(m.width-4, 1)
-		return m, nil
-	}
-
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
-	return m, cmd
-}
-
 func (m *Model) handleNavigation(msg tea.KeyMsg) bool {
 	switch {
 	case matchKey(msg, m.cfg.Keys.Up) || matchKeyStr(msg, "ctrl+p"):
@@ -265,7 +273,7 @@ func (m *Model) handleToggle(msg tea.KeyMsg) bool {
 	return true
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.showPreview {
 		m.showPreview = false
 		m.previewCommand = ""
@@ -326,14 +334,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.updateMatches()
 	}
 	return m, cmd
-}
-
-func (m Model) Selected() string {
-	return m.selected
-}
-
-func (m Model) Canceled() bool {
-	return m.canceled
 }
 
 func matchKey(msg tea.KeyMsg, spec string) bool {

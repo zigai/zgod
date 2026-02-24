@@ -32,16 +32,27 @@ type FilterConfig struct {
 	MaxCommandLength int      `toml:"max_command_length"`
 }
 
+var (
+	errNoMatchModeEnabled      = errors.New("at least one match mode must be enabled")
+	errInvalidDefaultScope     = errors.New("invalid default_scope")
+	errDefaultModeNotEnabled   = errors.New("default_mode is not enabled")
+	errInvalidDefaultMode      = errors.New("invalid default_mode")
+	errInvalidMultilinePreview = errors.New("invalid multiline_preview")
+)
+
 func Default() Config {
 	return Config{
-		DB: DBConfig{},
+		DB: DBConfig{
+			Path: "",
+		},
 		Filters: FilterConfig{
-			IgnoreSpace:    true,
-			ExitCode:       []int{130},
-			CommandGlob:    []string{},
-			CommandRegex:   []string{},
-			DirectoryGlob:  []string{},
-			DirectoryRegex: []string{},
+			IgnoreSpace:      true,
+			ExitCode:         []int{130},
+			CommandGlob:      []string{},
+			CommandRegex:     []string{},
+			DirectoryGlob:    []string{},
+			DirectoryRegex:   []string{},
+			MaxCommandLength: 0,
 		},
 		Theme:   DefaultTheme(),
 		Display: DefaultDisplay(),
@@ -58,7 +69,8 @@ func Load() (Config, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			if err = cfg.Save(); err != nil {
+			err = cfg.Save()
+			if err != nil {
 				return cfg, err
 			}
 			return cfg, nil
@@ -66,7 +78,7 @@ func Load() (Config, error) {
 		return cfg, err
 	}
 	if _, err = toml.Decode(string(data), &cfg); err != nil {
-		return cfg, err
+		return cfg, fmt.Errorf("decoding config TOML: %w", err)
 	}
 	if err = cfg.Validate(); err != nil {
 		return cfg, err
@@ -75,45 +87,24 @@ func Load() (Config, error) {
 }
 
 func (c Config) Validate() error {
-	if !c.Display.EnableFuzzy && !c.Display.EnableRegex && !c.Display.EnableGlob {
-		return fmt.Errorf("at least one match mode must be enabled")
+	err := c.validateEnabledModes()
+	if err != nil {
+		return err
 	}
-
-	switch c.Display.DefaultScope {
-	case "", "normal", "cwd":
-	default:
-		return fmt.Errorf("invalid default_scope %q: must be \"normal\" or \"cwd\"", c.Display.DefaultScope)
+	err = c.validateDefaultScope()
+	if err != nil {
+		return err
 	}
-
-	switch c.Display.DefaultMode {
-	case "", "fuzzy":
-		if c.Display.DefaultMode == "fuzzy" && !c.Display.EnableFuzzy {
-			return fmt.Errorf("default_mode %q is not enabled", c.Display.DefaultMode)
-		}
-	case "regex":
-		if !c.Display.EnableRegex {
-			return fmt.Errorf("default_mode %q is not enabled", c.Display.DefaultMode)
-		}
-	case "glob":
-		if !c.Display.EnableGlob {
-			return fmt.Errorf("default_mode %q is not enabled", c.Display.DefaultMode)
-		}
-	default:
-		return fmt.Errorf("invalid default_mode %q: must be \"fuzzy\", \"regex\", or \"glob\"", c.Display.DefaultMode)
+	err = c.validateDefaultMode()
+	if err != nil {
+		return err
 	}
-
-	switch c.Display.MultilinePreview {
-	case "", "popup", "preview_pane", "expand", "collapsed":
-	default:
-		return fmt.Errorf("invalid multiline_preview %q: must be \"popup\", \"preview_pane\", \"expand\", or \"collapsed\"", c.Display.MultilinePreview)
-	}
-
-	return nil
+	return c.validateMultilinePreview()
 }
 
 func (c Config) Save() error {
 	if err := paths.EnsureDirs(); err != nil {
-		return err
+		return fmt.Errorf("ensuring config directories: %w", err)
 	}
 	configPath, err := paths.ConfigFile()
 	if err != nil {
@@ -121,15 +112,77 @@ func (c Config) Save() error {
 	}
 	f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		return err
+		return fmt.Errorf("opening config file %q: %w", configPath, err)
 	}
 	defer func() { _ = f.Close() }()
-	return toml.NewEncoder(f).Encode(c)
+	if err = toml.NewEncoder(f).Encode(c); err != nil {
+		return fmt.Errorf("encoding config TOML: %w", err)
+	}
+	return nil
 }
 
 func (c Config) DatabasePath() (string, error) {
 	if c.DB.Path != "" {
-		return paths.ExpandTilde(c.DB.Path)
+		path, err := paths.ExpandTilde(c.DB.Path)
+		if err != nil {
+			return "", fmt.Errorf("expanding database path %q: %w", c.DB.Path, err)
+		}
+		return path, nil
 	}
-	return paths.DatabaseFile()
+	path, err := paths.DatabaseFile()
+	if err != nil {
+		return "", fmt.Errorf("resolving default database path: %w", err)
+	}
+	return path, nil
+}
+
+func (c Config) validateEnabledModes() error {
+	if !c.Display.EnableFuzzy && !c.Display.EnableRegex && !c.Display.EnableGlob {
+		return errNoMatchModeEnabled
+	}
+	return nil
+}
+
+func (c Config) validateDefaultScope() error {
+	switch c.Display.DefaultScope {
+	case "", "normal", "cwd":
+		return nil
+	default:
+		return fmt.Errorf("%w %q: must be \"normal\" or \"cwd\"", errInvalidDefaultScope, c.Display.DefaultScope)
+	}
+}
+
+func (c Config) validateDefaultMode() error {
+	switch c.Display.DefaultMode {
+	case "", "fuzzy":
+		if c.Display.DefaultMode == "fuzzy" && !c.Display.EnableFuzzy {
+			return fmt.Errorf("%w: %q", errDefaultModeNotEnabled, c.Display.DefaultMode)
+		}
+		return nil
+	case "regex":
+		if !c.Display.EnableRegex {
+			return fmt.Errorf("%w: %q", errDefaultModeNotEnabled, c.Display.DefaultMode)
+		}
+		return nil
+	case "glob":
+		if !c.Display.EnableGlob {
+			return fmt.Errorf("%w: %q", errDefaultModeNotEnabled, c.Display.DefaultMode)
+		}
+		return nil
+	default:
+		return fmt.Errorf("%w %q: must be \"fuzzy\", \"regex\", or \"glob\"", errInvalidDefaultMode, c.Display.DefaultMode)
+	}
+}
+
+func (c Config) validateMultilinePreview() error {
+	switch c.Display.MultilinePreview {
+	case "", "popup", "preview_pane", "expand", "collapsed":
+		return nil
+	default:
+		return fmt.Errorf(
+			"%w %q: must be \"popup\", \"preview_pane\", \"expand\", or \"collapsed\"",
+			errInvalidMultilinePreview,
+			c.Display.MultilinePreview,
+		)
+	}
 }

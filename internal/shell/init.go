@@ -3,6 +3,7 @@ package shell
 import (
 	"bytes"
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 
 //go:embed templates/*.tmpl
 var templateFS embed.FS
+
+var errAlreadyInstalled = errors.New("zgod is already installed")
 
 type InitOptions struct {
 	ConfigPath string
@@ -38,7 +41,7 @@ func InitScript(s Shell, opts InitOptions) (string, error) {
 func getPowerShellProfilePath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("getting home directory for PowerShell profile: %w", err)
 	}
 	if runtime.GOOS == "windows" {
 		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"), nil
@@ -62,7 +65,7 @@ func ConfigFilePath(s Shell) (string, error) {
 	case PowerShell:
 		return getPowerShellProfilePath()
 	default:
-		return "", fmt.Errorf("unknown shell: %s", s)
+		return "", fmt.Errorf("%w: %s", errUnsupportedShell, s)
 	}
 }
 
@@ -127,7 +130,7 @@ func Install(s Shell, customConfigPath string) error {
 	}
 
 	if strings.Contains(string(content), line) {
-		return fmt.Errorf("zgod is already installed in %s", configPath)
+		return fmt.Errorf("%w in %s", errAlreadyInstalled, configPath)
 	}
 
 	if err = writeSetupLine(configPath, content, line); err != nil {

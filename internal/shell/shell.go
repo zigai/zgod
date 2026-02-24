@@ -1,6 +1,9 @@
 package shell
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type Shell int
 
@@ -10,6 +13,8 @@ const (
 	Fish
 	PowerShell
 )
+
+var errUnsupportedShell = errors.New("unsupported shell")
 
 func Parse(name string) (Shell, error) {
 	switch name {
@@ -22,7 +27,7 @@ func Parse(name string) (Shell, error) {
 	case "powershell", "pwsh":
 		return PowerShell, nil
 	default:
-		return 0, fmt.Errorf("unsupported shell: %s (supported: zsh, bash, fish, powershell)", name)
+		return 0, fmt.Errorf("%w: %s (supported: zsh, bash, fish, powershell)", errUnsupportedShell, name)
 	}
 }
 

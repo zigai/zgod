@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 )
@@ -24,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_history_command        ON history(command);
 `
 
 func ensureSchema(db *sql.DB) error {
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		return fmt.Errorf("applying schema: %w", err)
 	}
 	return nil

@@ -21,7 +21,11 @@ var recordCmd = &cobra.Command{
 	RunE:   runRecord,
 }
 
-//nolint:gochecknoinits // cobra CLI pattern
+const (
+	recordMsPerSecond           int64 = 1000
+	recordUnixMillisCutoffValue int64 = 1_000_000_000_000
+)
+
 func init() {
 	recordCmd.Flags().String("ts", "", "start timestamp: milliseconds, seconds (with 's' suffix), or 'now'")
 	recordCmd.Flags().Int64("duration", -1, "duration in milliseconds (-1 to auto-compute from ts)")
@@ -46,11 +50,11 @@ func runRecord(cmd *cobra.Command, args []string) error {
 	exitCode, _ := cmd.Flags().GetInt("exit-code")
 	directory, _ := cmd.Flags().GetString("directory")
 
-	filter, err := history.NewFilter(cfg.Filters)
+	shouldRecord, err := shouldRecordCommand(cfg, command, exitCode, directory)
 	if err != nil {
-		return fmt.Errorf("building filter: %w", err)
+		return err
 	}
-	if !filter.ShouldRecord(command, exitCode, directory) {
+	if !shouldRecord {
 		return nil
 	}
 
@@ -69,6 +73,36 @@ func runRecord(cmd *cobra.Command, args []string) error {
 	defer func() { _ = database.Close() }()
 
 	nowMs := time.Now().UnixMilli()
+	ts, duration := parseRecordTiming(cmd, nowMs)
+	sessionID, _ := cmd.Flags().GetString("session")
+	hostname := getHostname()
+
+	repo := db.NewHistoryRepo(database)
+	_, err = repo.Insert(db.HistoryEntry{
+		ID:        0,
+		TsMs:      ts,
+		Duration:  duration,
+		ExitCode:  exitCode,
+		Command:   command,
+		Directory: directory,
+		SessionID: sessionID,
+		Hostname:  hostname,
+	})
+	if err != nil {
+		return fmt.Errorf("inserting history entry: %w", err)
+	}
+	return nil
+}
+
+func shouldRecordCommand(cfg config.Config, command string, exitCode int, directory string) (bool, error) {
+	filter, err := history.NewFilter(cfg.Filters)
+	if err != nil {
+		return false, fmt.Errorf("building filter: %w", err)
+	}
+	return filter.ShouldRecord(command, exitCode, directory), nil
+}
+
+func parseRecordTiming(cmd *cobra.Command, nowMs int64) (int64, int64) {
 	tsStr, _ := cmd.Flags().GetString("ts")
 	ts := parseTimestamp(tsStr, nowMs)
 	duration, _ := cmd.Flags().GetInt64("duration")
@@ -78,20 +112,7 @@ func runRecord(cmd *cobra.Command, args []string) error {
 	if duration < 0 {
 		duration = 0
 	}
-	sessionID, _ := cmd.Flags().GetString("session")
-	hostname := getHostname()
-
-	repo := db.NewHistoryRepo(database)
-	_, err = repo.Insert(db.HistoryEntry{
-		TsMs:      ts,
-		Duration:  duration,
-		ExitCode:  exitCode,
-		Command:   command,
-		Directory: directory,
-		SessionID: sessionID,
-		Hostname:  hostname,
-	})
-	return err
+	return ts, duration
 }
 
 func getHostname() string {
@@ -110,14 +131,14 @@ func parseTimestamp(s string, nowMs int64) int64 {
 		if err != nil {
 			return nowMs
 		}
-		return sec * 1000
+		return sec * recordMsPerSecond
 	}
 	val, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		return nowMs
 	}
-	if val < 1e12 {
-		return val * 1000
+	if val < recordUnixMillisCutoffValue {
+		return val * recordMsPerSecond
 	}
 	return val
 }

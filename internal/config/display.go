@@ -1,5 +1,7 @@
 package config
 
+const defaultCWDBoost = 50
+
 type DisplayConfig struct {
 	TimeFormat        string `toml:"time_format"`
 	DurationFormat    string `toml:"duration_format"`
@@ -22,10 +24,12 @@ func DefaultDisplay() DisplayConfig {
 		TimeFormat:        "relative",
 		DurationFormat:    "auto",
 		ShowHints:         true,
+		ShowDirectory:     false,
+		InstantExecute:    false,
 		EnableFuzzy:       true,
 		EnableRegex:       true,
 		EnableGlob:        true,
-		CWDBoost:          50,
+		CWDBoost:          defaultCWDBoost,
 		DefaultScope:      "normal",
 		DefaultMode:       "fuzzy",
 		HideMultiline:     false,

@@ -1,11 +1,14 @@
 package paths
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+var errHomeDirectoryEmpty = errors.New("home directory is empty")
 
 func ConfigFile() (string, error) {
 	if path := os.Getenv("ZGOD_CONFIG"); path != "" {
@@ -36,9 +39,12 @@ func EnsureDirs() error {
 		return err
 	}
 	if err = os.MkdirAll(configDir, 0700); err != nil {
-		return err
+		return fmt.Errorf("creating config directory %q: %w", configDir, err)
 	}
-	return os.MkdirAll(dataDir, 0700)
+	if err = os.MkdirAll(dataDir, 0700); err != nil {
+		return fmt.Errorf("creating data directory %q: %w", dataDir, err)
+	}
+	return nil
 }
 
 func ExpandTilde(path string) (string, error) {
@@ -50,7 +56,7 @@ func ExpandTilde(path string) (string, error) {
 		return "", fmt.Errorf("getting home directory: %w", err)
 	}
 	if home == "" {
-		return "", fmt.Errorf("home directory is empty")
+		return "", errHomeDirectoryEmpty
 	}
 	if path == "~" {
 		return home, nil

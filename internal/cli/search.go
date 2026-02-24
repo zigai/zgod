@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -15,16 +16,30 @@ import (
 	"github.com/zigai/zgod/internal/tui"
 )
 
+var errUnexpectedModelType = errors.New("unexpected model type")
+
 var searchCmd = &cobra.Command{
 	Use:   "search",
 	Short: "Interactive history search",
 	RunE:  runSearch,
 }
 
-//nolint:gochecknoinits // cobra CLI pattern
+const (
+	searchDefaultHeight       = 15
+	searchExitCodeCanceled    = 1
+	searchExitCodeInstantExec = 2
+)
+
+type searchContext struct {
+	cfg     config.Config
+	model   *tui.Model
+	tty     *os.File
+	cleanup func()
+}
+
 func init() {
 	searchCmd.Flags().Bool("cwd", false, "filter by current directory")
-	searchCmd.Flags().Int("height", 15, "visible result lines")
+	searchCmd.Flags().Int("height", searchDefaultHeight, "visible result lines")
 	searchCmd.Flags().String("query", "", "initial search query")
 	rootCmd.AddCommand(searchCmd)
 }
@@ -41,24 +56,44 @@ func runSearch(cmd *cobra.Command, args []string) error {
 }
 
 func doSearch(cmd *cobra.Command) (int, error) {
+	ctx, err := prepareSearchContext(cmd)
+	if err != nil {
+		return 0, err
+	}
+	defer ctx.cleanup()
+
+	p := tea.NewProgram(
+		ctx.model,
+		tea.WithInput(ctx.tty),
+		tea.WithOutput(ctx.tty),
+	)
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return 0, fmt.Errorf("running TUI: %w", err)
+	}
+
+	return resolveSearchResult(ctx.cfg, finalModel)
+}
+
+func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return 0, fmt.Errorf("loading config: %w", err)
+		return searchContext{}, fmt.Errorf("loading config: %w", err)
 	}
 
 	if err = paths.EnsureDirs(); err != nil {
-		return 0, fmt.Errorf("ensuring directories: %w", err)
+		return searchContext{}, fmt.Errorf("ensuring directories: %w", err)
 	}
 
 	dbPath, err := cfg.DatabasePath()
 	if err != nil {
-		return 0, fmt.Errorf("resolving database path: %w", err)
+		return searchContext{}, fmt.Errorf("resolving database path: %w", err)
 	}
 	database, err := db.Open(dbPath)
 	if err != nil {
-		return 0, fmt.Errorf("opening database: %w", err)
+		return searchContext{}, fmt.Errorf("opening database: %w", err)
 	}
-	defer func() { _ = database.Close() }()
 
 	cwdFlag, _ := cmd.Flags().GetBool("cwd")
 	height, _ := cmd.Flags().GetInt("height")
@@ -66,9 +101,9 @@ func doSearch(cmd *cobra.Command) (int, error) {
 
 	tty, err := openTTY()
 	if err != nil {
-		return 0, fmt.Errorf("opening TTY: %w", err)
+		_ = database.Close()
+		return searchContext{}, fmt.Errorf("opening TTY: %w", err)
 	}
-	defer func() { _ = tty.Close() }()
 
 	profile := termenv.TrueColor
 	output := termenv.NewOutput(tty, termenv.WithProfile(profile))
@@ -79,37 +114,42 @@ func doSearch(cmd *cobra.Command) (int, error) {
 
 	cwd, err := os.Getwd()
 	if err != nil {
-		return 0, fmt.Errorf("getting current directory: %w", err)
+		_ = tty.Close()
+		_ = database.Close()
+		return searchContext{}, fmt.Errorf("getting current directory: %w", err)
 	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return 0, fmt.Errorf("getting home directory: %w", err)
+		_ = tty.Close()
+		_ = database.Close()
+		return searchContext{}, fmt.Errorf("getting home directory: %w", err)
 	}
 	repo := db.NewHistoryRepo(database)
 	model := tui.NewModel(cfg, repo, cwd, homeDir, height, cwdFlag, query)
-
-	p := tea.NewProgram(
-		model,
-		tea.WithInput(tty),
-		tea.WithOutput(tty),
-	)
-
-	finalModel, err := p.Run()
-	if err != nil {
-		return 0, fmt.Errorf("running TUI: %w", err)
+	cleanup := func() {
+		_ = tty.Close()
+		_ = database.Close()
 	}
+	return searchContext{
+		cfg:     cfg,
+		model:   model,
+		tty:     tty,
+		cleanup: cleanup,
+	}, nil
+}
 
-	m, ok := finalModel.(tui.Model)
+func resolveSearchResult(cfg config.Config, finalModel tea.Model) (int, error) {
+	m, ok := finalModel.(*tui.Model)
 	if !ok {
-		return 0, fmt.Errorf("unexpected model type: %T", finalModel)
+		return 0, fmt.Errorf("%w: %T", errUnexpectedModelType, finalModel)
 	}
 	if m.Canceled() {
-		return 1, nil
+		return searchExitCodeCanceled, nil
 	}
 	if selected := m.Selected(); selected != "" {
 		fmt.Print(selected)
 		if cfg.Display.InstantExecute {
-			return 2, nil
+			return searchExitCodeInstantExec, nil
 		}
 	}
 	return 0, nil

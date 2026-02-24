@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,6 +11,8 @@ import (
 	"github.com/zigai/zgod/internal/config"
 	"github.com/zigai/zgod/internal/paths"
 )
+
+var errNoEditorConfigured = errors.New("no editor found: set $EDITOR or $VISUAL")
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -51,7 +54,7 @@ var configEditCmd = &cobra.Command{
 			editor = os.Getenv("VISUAL")
 		}
 		if editor == "" {
-			return fmt.Errorf("no editor found: set $EDITOR or $VISUAL")
+			return errNoEditorConfigured
 		}
 		path, err := paths.ConfigFile()
 		if err != nil {
@@ -66,7 +69,6 @@ var configEditCmd = &cobra.Command{
 	},
 }
 
-//nolint:gochecknoinits // cobra CLI pattern
 func init() {
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configEditCmd)

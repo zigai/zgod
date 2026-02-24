@@ -1,6 +1,10 @@
 package history
 
-import "github.com/zigai/zgod/internal/db"
+import (
+	"fmt"
+
+	"github.com/zigai/zgod/internal/db"
+)
 
 type CandidateOpts struct {
 	Limit     int
@@ -13,5 +17,9 @@ func FetchCandidates(repo *db.HistoryRepo, opts CandidateOpts) ([]db.HistoryEntr
 	if limit <= 0 {
 		limit = 10000
 	}
-	return repo.FetchCandidates(limit, opts.Dedupe, opts.OnlyFails)
+	entries, err := repo.FetchCandidates(limit, opts.Dedupe, opts.OnlyFails)
+	if err != nil {
+		return nil, fmt.Errorf("fetching history candidates: %w", err)
+	}
+	return entries, nil
 }

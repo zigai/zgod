@@ -17,7 +17,7 @@ func ConfigDir() (string, error) {
 		return "", fmt.Errorf("getting home directory: %w", err)
 	}
 	if home == "" {
-		return "", fmt.Errorf("home directory is empty")
+		return "", errHomeDirectoryEmpty
 	}
 	return filepath.Join(home, ".config", "zgod"), nil
 }
@@ -31,7 +31,7 @@ func DataDir() (string, error) {
 		return "", fmt.Errorf("getting home directory: %w", err)
 	}
 	if home == "" {
-		return "", fmt.Errorf("home directory is empty")
+		return "", errHomeDirectoryEmpty
 	}
 	return filepath.Join(home, ".local", "share", "zgod"), nil
 }

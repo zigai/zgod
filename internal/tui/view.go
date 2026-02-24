@@ -24,7 +24,7 @@ const (
 	defaultSelectionChar = "▌ "
 )
 
-func (m Model) View() string {
+func (m *Model) View() string {
 	if m.quitting {
 		return ""
 	}
@@ -54,7 +54,7 @@ func (m Model) View() string {
 		Render(body)
 }
 
-func (m Model) renderIndicators() string {
+func (m *Model) renderIndicators() string {
 	width := m.getWidth()
 
 	inactive := lipgloss.NewStyle().
@@ -117,7 +117,7 @@ func (m Model) renderIndicators() string {
 	return m.fitIndicators(indicators, width)
 }
 
-func (m Model) renderHeader() string {
+func (m *Model) renderHeader() string {
 	width := m.getWidth()
 	indicatorStr := m.renderIndicators()
 
@@ -127,7 +127,7 @@ func (m Model) renderHeader() string {
 	return m.styles.HeaderBar.Width(width).Render(line)
 }
 
-func (m Model) isMerged() bool {
+func (m *Model) isMerged() bool {
 	width := m.getWidth()
 	prompt := m.cfg.Theme.Prompt
 	promptWidth := lipgloss.Width(m.styles.Prompt.Render(prompt))
@@ -138,7 +138,7 @@ func (m Model) isMerged() bool {
 	return remaining >= minInputWidth
 }
 
-func (m Model) chromeHeight() int {
+func (m *Model) chromeHeight() int {
 	chrome := 1
 	if !m.cfg.Display.ShowHints {
 		chrome = 0
@@ -152,7 +152,7 @@ func (m Model) chromeHeight() int {
 	return chrome + 2
 }
 
-func (m Model) renderInputBar() string {
+func (m *Model) renderInputBar() string {
 	width := m.getWidth()
 	prompt := m.styles.Prompt.Render(m.cfg.Theme.Prompt)
 	indicatorStr := m.renderIndicators()
@@ -181,7 +181,7 @@ func (m Model) renderInputBar() string {
 	return m.styles.Input.Width(width).Render(line)
 }
 
-func (m Model) renderInput() string {
+func (m *Model) renderInput() string {
 	width := m.getWidth()
 	prompt := m.styles.Prompt.Render(m.cfg.Theme.Prompt)
 	input := m.input.View()
@@ -193,7 +193,7 @@ func (m Model) renderInput() string {
 	return m.styles.Input.Width(width).Render(line)
 }
 
-func (m Model) emptyStateMessage() string {
+func (m *Model) emptyStateMessage() string {
 	switch {
 	case m.dbError != nil:
 		return m.styles.ExitFail.Render("  Error: " + m.dbError.Error())
@@ -204,7 +204,7 @@ func (m Model) emptyStateMessage() string {
 	}
 }
 
-func (m Model) renderEmptyState(headerRows int) string {
+func (m *Model) renderEmptyState(headerRows int) string {
 	msg := m.emptyStateMessage()
 	fill := max(m.height-1-headerRows, 0)
 
@@ -214,7 +214,7 @@ func (m Model) renderEmptyState(headerRows int) string {
 	return msg + strings.Repeat("\n", fill)
 }
 
-func (m Model) renderResults() string {
+func (m *Model) renderResults() string {
 	width := m.getWidth()
 	headerRows := resultsHeaderRows
 	if m.height <= resultsHeaderRows {
@@ -266,7 +266,7 @@ type resultLayout struct {
 	showDir     bool
 }
 
-func (m Model) calcResultLayout() resultLayout {
+func (m *Model) calcResultLayout() resultLayout {
 	width := m.getWidth()
 	barChar := m.cfg.Theme.SelectionBarChar
 	if barChar == "" {
@@ -306,7 +306,7 @@ func (m Model) calcResultLayout() resultLayout {
 	}
 }
 
-func (m Model) renderSelectionPrefix(layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor) string {
+func (m *Model) renderSelectionPrefix(layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor) string {
 	if !config.BoolDefault(m.cfg.Theme.SelectionBarShow, true) {
 		if fullLineBg {
 			return lipgloss.NewStyle().Background(selBg).Render(strings.Repeat(" ", layout.prefixWidth))
@@ -320,7 +320,7 @@ func (m Model) renderSelectionPrefix(layout resultLayout, fullLineBg bool, selBg
 	return barStyle.Render(layout.barChar)
 }
 
-func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
+func (m *Model) renderResultLine(entryIdx int, isSelected bool) string {
 	layout := m.calcResultLayout()
 	if entryIdx >= len(m.displayEntries) {
 		return strings.Repeat(" ", layout.width)
@@ -397,14 +397,14 @@ func (m Model) renderResultLine(entryIdx int, isSelected bool) string {
 	return fullLine
 }
 
-func (m Model) entryIsMultiline(idx int) bool {
+func (m *Model) entryIsMultiline(idx int) bool {
 	if idx >= len(m.displayEntries) {
 		return false
 	}
 	return strings.Contains(m.displayEntries[idx].Entry.Command, "\n")
 }
 
-func (m Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor, cmdLine string) string {
+func (m *Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor, cmdLine string) string {
 	matchInfo := &entry.MatchInfo
 	cmdLine, matchInfo = truncateWithRanges(cmdLine, matchInfo, layout.cmdWidth)
 
@@ -456,7 +456,7 @@ func (m Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout result
 	return prefix + line
 }
 
-func (m Model) renderExpandedContinuationLine(layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor, cmdLine string) string {
+func (m *Model) renderExpandedContinuationLine(layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor, cmdLine string) string {
 	cmdStyle := m.styles.SelectedCmd
 	if fullLineBg {
 		cmdStyle = cmdStyle.Background(selBg)
@@ -483,7 +483,7 @@ func (m Model) renderExpandedContinuationLine(layout resultLayout, fullLineBg bo
 	return lineContent
 }
 
-func (m Model) padLine(line string, width int, fullLineBg bool, selBg lipgloss.TerminalColor) string {
+func (m *Model) padLine(line string, width int, fullLineBg bool, selBg lipgloss.TerminalColor) string {
 	lineWidth := lipgloss.Width(line)
 	if lineWidth >= width {
 		return line
@@ -495,7 +495,7 @@ func (m Model) padLine(line string, width int, fullLineBg bool, selBg lipgloss.T
 	return line + padding
 }
 
-func (m Model) renderExpandedResultLines(entryIdx int) []string {
+func (m *Model) renderExpandedResultLines(entryIdx int) []string {
 	layout := m.calcResultLayout()
 	if entryIdx >= len(m.displayEntries) {
 		return nil
@@ -526,7 +526,7 @@ func (m Model) renderExpandedResultLines(entryIdx int) []string {
 	return result
 }
 
-func (m Model) renderFooter() string {
+func (m *Model) renderFooter() string {
 	width := m.getWidth()
 	keys := []struct {
 		key  string
@@ -557,19 +557,19 @@ func (m Model) renderFooter() string {
 	return m.styles.Footer.Width(width).Render(strings.Join(parts, "  "))
 }
 
-func (m Model) selectedIsMultiline() bool {
+func (m *Model) selectedIsMultiline() bool {
 	if len(m.displayEntries) == 0 || m.cursor >= len(m.displayEntries) {
 		return false
 	}
 	return strings.Contains(m.displayEntries[m.cursor].Entry.Command, "\n")
 }
 
-func (m Model) renderPreviewPane() string {
+func (m *Model) renderPreviewPane() string {
 	width := m.getWidth()
 
 	if len(m.displayEntries) == 0 || m.cursor >= len(m.displayEntries) {
 		emptyLine := strings.Repeat(" ", width)
-		var lines []string
+		lines := make([]string, 0, previewPaneHeight)
 		for range previewPaneHeight {
 			lines = append(lines, emptyLine)
 		}
@@ -607,7 +607,7 @@ func (m Model) renderPreviewPane() string {
 	return headerLine + "\n" + strings.Join(displayLines, "\n")
 }
 
-func (m Model) renderHelp() string {
+func (m *Model) renderHelp() string {
 	width := m.getWidth()
 
 	header := m.styles.Title.Render(" Keybindings ")
@@ -632,7 +632,7 @@ func (m Model) renderHelp() string {
 		{m.cfg.Keys.Help, "Show/hide this help"},
 	}
 
-	var lines []string
+	lines := make([]string, 0, len(bindings))
 	for _, bind := range bindings {
 		key := m.styles.HelpKey.Render(fmt.Sprintf("%-16s", bind.key))
 		desc := m.styles.HelpDesc.Render(bind.desc)
@@ -657,7 +657,7 @@ func (m Model) renderHelp() string {
 	return box
 }
 
-func (m Model) renderPreviewPopup() string {
+func (m *Model) renderPreviewPopup() string {
 	width := m.getWidth()
 
 	header := m.styles.Title.Render(" Command Preview ")
@@ -702,11 +702,11 @@ func (m Model) renderPreviewPopup() string {
 	return box
 }
 
-func (m Model) getWidth() int {
+func (m *Model) getWidth() int {
 	return m.width
 }
 
-func (m Model) visibleResults() []int {
+func (m *Model) visibleResults() []int {
 	count := len(m.displayEntries)
 	if count == 0 {
 		return nil
@@ -742,7 +742,7 @@ func (m Model) visibleResults() []int {
 	return indices
 }
 
-func (m Model) renderResultsHeader() string {
+func (m *Model) renderResultsHeader() string {
 	width := m.getWidth()
 	barChar := m.cfg.Theme.SelectionBarChar
 	if barChar == "" {
@@ -788,7 +788,7 @@ func (m Model) renderResultsHeader() string {
 	return m.styles.ColumnHeaderBar.Width(width).Render(line)
 }
 
-func (m Model) fitIndicators(indicators []string, width int) string {
+func (m *Model) fitIndicators(indicators []string, width int) string {
 	if len(indicators) == 0 {
 		return ""
 	}
@@ -805,7 +805,7 @@ func (m Model) fitIndicators(indicators []string, width int) string {
 	return ""
 }
 
-func (m Model) highlightMatches(text string, ranges []match.Range, baseStyle lipgloss.Style, matchStyle lipgloss.Style) string {
+func (m *Model) highlightMatches(text string, ranges []match.Range, baseStyle lipgloss.Style, matchStyle lipgloss.Style) string {
 	if len(ranges) == 0 {
 		return baseStyle.Render(text)
 	}
@@ -915,11 +915,11 @@ func humanDuration(ms int64) string {
 	if sec < 60 {
 		return fmt.Sprintf("%.1fs", sec)
 	}
-	min := sec / 60.0
-	if min < 60 {
-		return fmt.Sprintf("%.1fm", min)
+	minutes := sec / 60.0
+	if minutes < 60 {
+		return fmt.Sprintf("%.1fm", minutes)
 	}
-	h := min / 60.0
+	h := minutes / 60.0
 	return fmt.Sprintf("%.1fh", h)
 }
 
@@ -986,19 +986,17 @@ func trimToWidth(s string, width int) string {
 	return string(runes[:width])
 }
 
-func truncateWithRanges(text string, info *match.Match, max int) (string, *match.Match) {
-	if max <= 0 || len(text) <= max {
+func truncateWithRanges(text string, info *match.Match, maxLen int) (string, *match.Match) {
+	if maxLen <= 0 || len(text) <= maxLen {
 		return text, info
 	}
 	runes := []rune(text)
-	if len(runes) <= max {
+	if len(runes) <= maxLen {
 		return text, info
 	}
 	ellipsis := "..."
-	cutoff := max - len(ellipsis)
-	if cutoff < 0 {
-		cutoff = 0
-	}
+	cutoff := maxLen - len(ellipsis)
+	cutoff = max(cutoff, 0)
 	truncated := string(runes[:cutoff]) + ellipsis
 	if info == nil || len(info.MatchedRanges) == 0 {
 		return truncated, info

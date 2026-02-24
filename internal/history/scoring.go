@@ -7,6 +7,12 @@ import (
 	"github.com/zigai/zgod/internal/match"
 )
 
+const (
+	defaultScoringCWDBonus    = 50
+	defaultScoringRecencyBase = 10
+	scoringRecencyIndexStep   = 100
+)
+
 type ScoredEntry struct {
 	Entry      db.HistoryEntry
 	MatchInfo  match.Match
@@ -22,8 +28,8 @@ type ScoringOpts struct {
 func DefaultScoringOpts(cwd string) ScoringOpts {
 	return ScoringOpts{
 		CWD:         cwd,
-		CWDBonus:    50,
-		RecencyBase: 10,
+		CWDBonus:    defaultScoringCWDBonus,
+		RecencyBase: defaultScoringRecencyBase,
 	}
 }
 
@@ -37,7 +43,7 @@ func ScoreAndSort(entries []db.HistoryEntry, matches []match.Match, opts Scoring
 			score += opts.CWDBonus
 		}
 
-		recency := max(opts.RecencyBase-(m.Index/100), 0)
+		recency := max(opts.RecencyBase-(m.Index/scoringRecencyIndexStep), 0)
 		score += recency
 
 		scored[i] = ScoredEntry{

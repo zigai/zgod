@@ -1,6 +1,7 @@
 package history
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/zigai/zgod/internal/config"
 )
+
+var errInvalidDirectoryGlobPattern = errors.New("invalid directory glob pattern")
 
 type Filter struct {
 	ignoreSpace      bool
@@ -37,14 +40,14 @@ func NewFilter(cfg config.FilterConfig) (*Filter, error) {
 	for _, pattern := range cfg.CommandRegex {
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("compiling command regex %q: %w", pattern, err)
 		}
 		cmdRegexps = append(cmdRegexps, re)
 	}
 
 	for _, g := range cfg.DirectoryGlob {
 		if !doublestar.ValidatePattern(g) {
-			return nil, fmt.Errorf("invalid directory glob pattern: %s", g)
+			return nil, fmt.Errorf("%w: %s", errInvalidDirectoryGlobPattern, g)
 		}
 	}
 
@@ -52,7 +55,7 @@ func NewFilter(cfg config.FilterConfig) (*Filter, error) {
 	for _, pattern := range cfg.DirectoryRegex {
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("compiling directory regex %q: %w", pattern, err)
 		}
 		dirRegexps = append(dirRegexps, re)
 	}
@@ -81,27 +84,41 @@ func (f *Filter) ShouldRecord(command string, exitCode int, directory string) bo
 	if f.exitCode[exitCode] {
 		return false
 	}
+	if f.matchesCommandFilters(command) {
+		return false
+	}
+	if f.matchesDirectoryFilters(directory) {
+		return false
+	}
+	return true
+}
+
+func (f *Filter) matchesCommandFilters(command string) bool {
 	for _, glob := range f.commandGlob {
 		if glob.MatchString(command) {
-			return false
+			return true
 		}
 	}
 	for _, re := range f.commandRegex {
 		if re.MatchString(command) {
-			return false
+			return true
 		}
 	}
+	return false
+}
+
+func (f *Filter) matchesDirectoryFilters(directory string) bool {
 	for _, g := range f.directoryGlob {
 		if matched, _ := doublestar.Match(g, directory); matched {
-			return false
+			return true
 		}
 	}
 	for _, re := range f.directoryRegex {
 		if re.MatchString(directory) {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 func globToRegexp(glob string) (*regexp.Regexp, error) {
@@ -121,5 +138,9 @@ func globToRegexp(glob string) (*regexp.Regexp, error) {
 		}
 	}
 	b.WriteString("$")
-	return regexp.Compile(b.String())
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return nil, fmt.Errorf("compiling generated regex for glob %q: %w", glob, err)
+	}
+	return re, nil
 }

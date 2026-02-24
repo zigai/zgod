@@ -1,6 +1,10 @@
 package db
 
-import "database/sql"
+import (
+	"context"
+	"database/sql"
+	"fmt"
+)
 
 type HistoryEntry struct {
 	ID        int64
@@ -22,46 +26,56 @@ func NewHistoryRepo(db *sql.DB) *HistoryRepo {
 }
 
 func (r *HistoryRepo) Insert(entry HistoryEntry) (int64, error) {
-	res, err := r.db.Exec(
+	res, err := r.db.ExecContext(
+		context.Background(),
 		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		entry.TsMs, entry.Duration, entry.ExitCode, entry.Command,
 		entry.Directory, entry.SessionID, entry.Hostname,
 	)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("inserting history entry: %w", err)
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("reading inserted history ID: %w", err)
+	}
+	return id, nil
 }
 
 func (r *HistoryRepo) Delete(id int64) error {
-	_, err := r.db.Exec(`DELETE FROM history WHERE id = ?`, id)
-	return err
+	_, err := r.db.ExecContext(context.Background(), `DELETE FROM history WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("deleting history entry %d: %w", id, err)
+	}
+	return nil
 }
 
 func (r *HistoryRepo) Recent(limit int) ([]HistoryEntry, error) {
-	rows, err := r.db.Query(
+	rows, err := r.db.QueryContext(
+		context.Background(),
 		`SELECT id, ts_ms, duration, exit_code, command, directory, session_id, hostname
 		 FROM history
 		 ORDER BY ts_ms DESC LIMIT ?`,
 		limit,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("querying recent history entries: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	return scanEntries(rows)
 }
 
 func (r *HistoryRepo) RecentInDir(dir string, limit int) ([]HistoryEntry, error) {
-	rows, err := r.db.Query(
+	rows, err := r.db.QueryContext(
+		context.Background(),
 		`SELECT id, ts_ms, duration, exit_code, command, directory, session_id, hostname
 		 FROM history WHERE directory = ?
 		 ORDER BY ts_ms DESC LIMIT ?`,
 		dir, limit,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("querying recent history entries for %q: %w", dir, err)
 	}
 	defer func() { _ = rows.Close() }()
 	return scanEntries(rows)
@@ -81,15 +95,15 @@ func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, onlyFails bool) ([
 		args = append(args, limit)
 	}
 
-	rows, err := r.db.Query(query, args...)
+	rows, err := r.db.QueryContext(context.Background(), query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("querying history candidates: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
 	entries, err := scanEntries(rows)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scanning history candidates: %w", err)
 	}
 
 	if dedupe {
@@ -115,11 +129,16 @@ func scanEntries(rows *sql.Rows) ([]HistoryEntry, error) {
 	var entries []HistoryEntry
 	for rows.Next() {
 		var e HistoryEntry
-		if err := rows.Scan(&e.ID, &e.TsMs, &e.Duration, &e.ExitCode,
-			&e.Command, &e.Directory, &e.SessionID, &e.Hostname); err != nil {
-			return nil, err
+		err := rows.Scan(&e.ID, &e.TsMs, &e.Duration, &e.ExitCode,
+			&e.Command, &e.Directory, &e.SessionID, &e.Hostname)
+		if err != nil {
+			return nil, fmt.Errorf("scanning history row: %w", err)
 		}
 		entries = append(entries, e)
 	}
-	return entries, rows.Err()
+	err := rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("iterating history rows: %w", err)
+	}
+	return entries, nil
 }

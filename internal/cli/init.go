@@ -22,22 +22,18 @@ var initCmd = &cobra.Command{
 		}
 		s, err := shell.Parse(args[0])
 		if err != nil {
-			return err
+			return fmt.Errorf("parsing shell %q: %w", args[0], err)
 		}
-		opts := shell.InitOptions{}
-		if initConfigPath != "" {
-			opts.ConfigPath = initConfigPath
-		}
+		opts := shell.InitOptions{ConfigPath: initConfigPath}
 		script, err := shell.InitScript(s, opts)
 		if err != nil {
-			return err
+			return fmt.Errorf("building init script for %s: %w", s, err)
 		}
 		fmt.Print(script)
 		return nil
 	},
 }
 
-//nolint:gochecknoinits // cobra CLI pattern
 func init() {
 	initCmd.Flags().StringVar(&initConfigPath, "config", "", "Path to config file")
 	rootCmd.AddCommand(initCmd)
