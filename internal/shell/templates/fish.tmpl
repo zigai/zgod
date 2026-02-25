@@ -1,11 +1,15 @@
 # zgod shell integration for fish
-# zgod init fish | source
+# type -q zgod; and zgod init fish | source
 {{if .ConfigPath}}
 set -gx ZGOD_CONFIG "{{.ConfigPath}}"
 {{end}}
 
 set -g __zgod_session_id ""
 set -g __zgod_command ""
+
+function __zgod_has_command
+    type -q zgod
+end
 
 function __zgod_init
     if test -z "$__zgod_session_id"
@@ -30,6 +34,11 @@ function __zgod_postexec --on-event fish_postexec
         return
     end
 
+    if not __zgod_has_command
+        set -g __zgod_command ""
+        return
+    end
+
     # Fish provides $CMD_DURATION in ms - use it to compute start time
     set -l now_ms (math (date +%s) x 1000)
     set -l start_ms (math "$now_ms - $CMD_DURATION")
@@ -46,6 +55,9 @@ function __zgod_postexec --on-event fish_postexec
 end
 
 function __zgod_search
+    if not __zgod_has_command
+        return
+    end
     set -l selected (zgod search --height 15 --query (commandline) </dev/tty)
     set -l rc $status
     if test $rc -eq 2; and test -n "$selected"

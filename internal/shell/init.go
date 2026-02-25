@@ -80,22 +80,22 @@ func setupLine(s Shell, customConfigPath string) string {
 	switch s {
 	case Bash, Zsh:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`eval "$(zgod init %s --config '%s')"`, shellName, customConfigPath)
+			return fmt.Sprintf(`if command -v zgod >/dev/null 2>&1; then eval "$(zgod init %s --config '%s')"; fi`, shellName, customConfigPath)
 		}
 
-		return fmt.Sprintf(`eval "$(zgod init %s)"`, shellName)
+		return fmt.Sprintf(`if command -v zgod >/dev/null 2>&1; then eval "$(zgod init %s)"; fi`, shellName)
 	case Fish:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`zgod init %s --config '%s' | source`, shellName, customConfigPath)
+			return fmt.Sprintf(`type -q zgod; and zgod init %s --config '%s' | source`, shellName, customConfigPath)
 		}
 
-		return fmt.Sprintf(`zgod init %s | source`, shellName)
+		return fmt.Sprintf(`type -q zgod; and zgod init %s | source`, shellName)
 	case PowerShell:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`. (zgod init powershell --config '%s')`, customConfigPath)
+			return fmt.Sprintf(`if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell --config '%s') }`, customConfigPath)
 		}
 
-		return `. (zgod init powershell)`
+		return `if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }`
 	}
 
 	return ""

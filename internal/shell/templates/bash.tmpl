@@ -1,5 +1,5 @@
 # zgod shell integration for bash
-# eval "$(zgod init bash)"
+# if command -v zgod >/dev/null 2>&1; then eval "$(zgod init bash)"; fi
 {{if .ConfigPath}}
 export ZGOD_CONFIG="{{.ConfigPath}}"
 {{end}}
@@ -9,6 +9,10 @@ __zgod_command=""
 __zgod_start_ms=""
 __zgod_preexec_fired=""
 __zgod_in_hook=""
+
+__zgod_has_command() {
+    command -v zgod &>/dev/null
+}
 
 __zgod_init() {
     if [[ -z "$__zgod_session_id" ]]; then
@@ -66,6 +70,13 @@ __zgod_prompt_command() {
         return
     fi
 
+    if ! __zgod_has_command; then
+        __zgod_command=""
+        __zgod_preexec_fired=""
+        __zgod_in_hook=""
+        return
+    fi
+
     zgod record \
         --ts "$__zgod_start_ms" \
         --exit-code "$exit_code" \
@@ -80,6 +91,10 @@ __zgod_prompt_command() {
 
 __zgod_search() {
     __zgod_in_hook=1
+    if ! __zgod_has_command; then
+        __zgod_in_hook=""
+        return
+    fi
     local selected
     selected=$(zgod search --height 15 --query "$READLINE_LINE" </dev/tty)
     local rc=$?

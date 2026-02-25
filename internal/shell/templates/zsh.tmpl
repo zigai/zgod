@@ -1,10 +1,14 @@
 # zgod shell integration for zsh
-# eval "$(zgod init zsh)"
+# if command -v zgod >/dev/null 2>&1; then eval "$(zgod init zsh)"; fi
 {{if .ConfigPath}}
 export ZGOD_CONFIG="{{.ConfigPath}}"
 {{end}}
 
 __zgod_session_id=""
+
+__zgod_has_command() {
+    command -v zgod &>/dev/null
+}
 
 __zgod_init() {
     if [[ -z "$__zgod_session_id" ]]; then
@@ -36,6 +40,11 @@ __zgod_precmd() {
         return
     fi
 
+    if ! __zgod_has_command; then
+        __zgod_command=""
+        return
+    fi
+
     zgod record \
         --ts "$__zgod_start_ms" \
         --exit-code "$exit_code" \
@@ -47,6 +56,10 @@ __zgod_precmd() {
 }
 
 __zgod_search_widget() {
+    if ! __zgod_has_command; then
+        zle reset-prompt
+        return
+    fi
     local selected
     selected=$(zgod search --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
     local rc=$?

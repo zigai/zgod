@@ -1,5 +1,5 @@
 # zgod shell integration for PowerShell
-# . (zgod init powershell)
+# if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }
 {{if .ConfigPath}}
 $env:ZGOD_CONFIG = "{{.ConfigPath}}"
 {{end}}
@@ -8,6 +8,10 @@ $script:__zgod_session_id = ""
 $script:__zgod_command = ""
 $script:__zgod_start_ms = ""
 $script:__zgod_in_hook = $false
+
+function __zgod_has_command {
+    $null -ne (Get-Command zgod -ErrorAction SilentlyContinue)
+}
 
 function __zgod_init {
     if (-not $script:__zgod_session_id) {
@@ -34,6 +38,12 @@ function __zgod_postexec {
     if (-not $script:__zgod_command) { return }
     $script:__zgod_in_hook = $true
 
+    if (-not (__zgod_has_command)) {
+        $script:__zgod_command = ""
+        $script:__zgod_in_hook = $false
+        return
+    }
+
     $cmd = $script:__zgod_command
     $ts = $script:__zgod_start_ms
     $exitCode = $LASTEXITCODE
@@ -52,6 +62,12 @@ function __zgod_postexec {
 
 function __zgod_search {
     $script:__zgod_in_hook = $true
+
+    if (-not (__zgod_has_command)) {
+        $script:__zgod_in_hook = $false
+        return
+    }
+
     $currentLine = $null
     [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$currentLine, [ref]$null)
 
