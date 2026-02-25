@@ -6,6 +6,7 @@ run:
 formatters:
   enable:
     - goimports
+    - gofumpt
   settings:
     goimports:
       local-prefixes:
@@ -42,11 +43,13 @@ linters:
     - funcorder
     - ginkgolinter
     - gocheckcompilerdirectives
+    - gochecknoinits
     - gochecksumtype
     - gocognit
     - goconst
     - gocritic
     - godoclint
+    - godot
     - gomoddirectives
     - gomodguard
     - goprintffuncname
@@ -126,6 +129,9 @@ linters:
     gocognit:
       min-complexity: 20
 
+    goconst:
+      min-occurrences: 8
+
     gocritic:
       settings:
         captLocal:
@@ -148,6 +154,10 @@ linters:
 
     mnd:
       ignored-numbers:
+        - "0o600"
+        - "0o644"
+        - "0o700"
+        - "0o750"
         - "0600"
         - "0644"
         - "0700"
@@ -198,10 +208,25 @@ linters:
         - G304 # file path from variable
 
   exclusions:
-    warn-unused: true
+    warn-unused: false
     presets: []
 
     rules:
+      - text: "^Function name: generateJS,"
+        linters: [maintidx]
+
+      - path: "main\\.go"
+        linters: [mnd]
+
+      - text: 'shadow: declaration of "err" shadows declaration at'
+        linters: [govet]
+
+      - source: "cobra\\."
+        linters: [exhaustruct]
+
+      - source: "TODO"
+        linters: [godot]
+
       - path: "internal/cli/.*\\.go"
         source: "cobra\\."
         linters: [exhaustruct]
