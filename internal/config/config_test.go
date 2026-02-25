@@ -48,7 +48,7 @@ func TestLoadTOML(t *testing.T) {
 	setTestHomes(t, dir)
 
 	zgodDir := filepath.Join(dir, "zgod")
-	if err := os.MkdirAll(zgodDir, 0700); err != nil {
+	if err := os.MkdirAll(zgodDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -61,7 +61,7 @@ exit_code = [1, 2]
 prompt = "$ "
 `
 	// #nosec G306 -- test file doesn't need restricted permissions
-	if err := os.WriteFile(filepath.Join(zgodDir, "config.toml"), []byte(tomlContent), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(zgodDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

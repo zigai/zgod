@@ -43,11 +43,11 @@ func EnsureDirs() error {
 		return err
 	}
 
-	if err = os.MkdirAll(configDir, 0700); err != nil {
+	if err = os.MkdirAll(configDir, 0o700); err != nil {
 		return fmt.Errorf("creating config directory %q: %w", configDir, err)
 	}
 
-	if err = os.MkdirAll(dataDir, 0700); err != nil {
+	if err = os.MkdirAll(dataDir, 0o700); err != nil {
 		return fmt.Errorf("creating data directory %q: %w", dataDir, err)
 	}
 

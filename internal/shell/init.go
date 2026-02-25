@@ -103,7 +103,7 @@ func setupLine(s Shell, customConfigPath string) string {
 
 func writeSetupLine(configPath string, content []byte, line string) error {
 	// #nosec G304,G302 -- configPath is derived from known shell config locations, 0644 needed for shell configs
-	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("opening config file: %w", err)
 	}
@@ -129,7 +129,7 @@ func Install(s Shell, customConfigPath string) error {
 		return err
 	}
 
-	if err = os.MkdirAll(filepath.Dir(configPath), 0750); err != nil {
+	if err = os.MkdirAll(filepath.Dir(configPath), 0o750); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 

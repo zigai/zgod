@@ -10,7 +10,7 @@ import (
 )
 
 func Open(dbPath string) (*sql.DB, error) {
-	if err := ensureFilePermissions(dbPath, 0600); err != nil {
+	if err := ensureFilePermissions(dbPath, 0o600); err != nil {
 		return nil, fmt.Errorf("ensuring database file permissions for %q: %w", dbPath, err)
 	}
 
