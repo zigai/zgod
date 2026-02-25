@@ -69,25 +69,25 @@ If you prefer manual setup, add the snippet for your shell to your shell config 
 **Bash** (`~/.bashrc`)
 
 ```bash
-eval "$(zgod init bash)"
+if command -v zgod >/dev/null 2>&1; then eval "$(zgod init bash)"; fi
 ```
 
 **Zsh** (`~/.zshrc`)
 
 ```zsh
-eval "$(zgod init zsh)"
+if command -v zgod >/dev/null 2>&1; then eval "$(zgod init zsh)"; fi
 ```
 
 **Fish** (`~/.config/fish/config.fish`)
 
 ```fish
-zgod init fish | source
+type -q zgod; and zgod init fish | source
 ```
 
 **PowerShell** (`$PROFILE`)
 
 ```powershell
-. (zgod init powershell)
+if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }
 ```
 
 ## Keybindings
