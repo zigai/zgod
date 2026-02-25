@@ -39,7 +39,7 @@ var initCmd = &cobra.Command{
 	},
 }
 
-func init() {
+func registerInitCommand() {
 	initCmd.Flags().StringVar(&initConfigPath, "config", "", "Path to config file")
 	rootCmd.AddCommand(initCmd)
 }

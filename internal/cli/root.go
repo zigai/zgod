@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"sync"
 
 	"github.com/spf13/cobra"
 )
@@ -28,8 +29,21 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+var setupCommandsOnce sync.Once
+
+func setupCommands() {
+	setupCommandsOnce.Do(func() {
+		rootCmd.Flags().BoolP("version", "v", false, "Print version")
+		registerConfigCommand()
+		registerInitCommand()
+		registerInstallCommand()
+		registerRecordCommand()
+		registerSearchCommand()
+	})
+}
+
 func Execute() {
-	rootCmd.Flags().BoolP("version", "v", false, "Print version")
+	setupCommands()
 
 	err := rootCmd.Execute()
 	if err != nil {

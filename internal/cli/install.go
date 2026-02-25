@@ -35,7 +35,7 @@ var installCmd = &cobra.Command{
 	},
 }
 
-func init() {
+func registerInstallCommand() {
 	installCmd.Flags().StringVar(&installConfigPath, "config", "", "Path to config file")
 	rootCmd.AddCommand(installCmd)
 }

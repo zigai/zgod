@@ -37,7 +37,7 @@ type searchContext struct {
 	cleanup func()
 }
 
-func init() {
+func registerSearchCommand() {
 	searchCmd.Flags().Bool("cwd", false, "filter by current directory")
 	searchCmd.Flags().Int("height", searchDefaultHeight, "visible result lines")
 	searchCmd.Flags().String("query", "", "initial search query")

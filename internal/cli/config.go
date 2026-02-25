@@ -77,7 +77,7 @@ var configEditCmd = &cobra.Command{
 	},
 }
 
-func init() {
+func registerConfigCommand() {
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configEditCmd)
 	rootCmd.AddCommand(configCmd)

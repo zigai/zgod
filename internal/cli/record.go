@@ -26,7 +26,7 @@ const (
 	recordUnixMillisCutoffValue int64 = 1_000_000_000_000
 )
 
-func init() {
+func registerRecordCommand() {
 	recordCmd.Flags().String("ts", "", "start timestamp: milliseconds, seconds (with 's' suffix), or 'now'")
 	recordCmd.Flags().Int64("duration", -1, "duration in milliseconds (-1 to auto-compute from ts)")
 	recordCmd.Flags().Int("exit-code", 0, "exit code")
