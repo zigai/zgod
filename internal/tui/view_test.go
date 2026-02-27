@@ -22,7 +22,6 @@ func TestFormatMatchCountLabel(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -38,6 +37,7 @@ func TestLayoutFooterLineFitsBoth(t *testing.T) {
 	t.Parallel()
 
 	got := layoutFooterLine("left", "right", 12)
+
 	want := "left   right"
 	if got != want {
 		t.Fatalf("layoutFooterLine fit = %q, want %q", got, want)
@@ -48,6 +48,7 @@ func TestLayoutFooterLineFallsBackToRightOnly(t *testing.T) {
 	t.Parallel()
 
 	got := layoutFooterLine("left-side", "count", 7)
+
 	want := "  count"
 	if got != want {
 		t.Fatalf("layoutFooterLine fallback = %q, want %q", got, want)
