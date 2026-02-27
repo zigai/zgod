@@ -598,7 +598,34 @@ func (m *Model) renderFooter() string {
 		parts = append(parts, key+" "+desc)
 	}
 
-	return m.styles.Footer.Width(width).Render(strings.Join(parts, "  "))
+	left := strings.Join(parts, "  ")
+	right := m.styles.HelpDesc.Render(formatMatchCountLabel(len(m.displayEntries)))
+	contentWidth := max(width-lipgloss.Width(m.styles.Footer.Render("")), 0)
+	line := layoutFooterLine(left, right, contentWidth)
+
+	return m.styles.Footer.Width(width).Render(line)
+}
+
+func formatMatchCountLabel(count int) string {
+	return fmt.Sprintf("matches: %d", count)
+}
+
+func layoutFooterLine(left string, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	rightWidth := lipgloss.Width(right)
+	if rightWidth >= width {
+		return right
+	}
+
+	leftWidth := lipgloss.Width(left)
+	if leftWidth+rightWidth <= width {
+		return left + strings.Repeat(" ", width-leftWidth-rightWidth) + right
+	}
+
+	return strings.Repeat(" ", width-rightWidth) + right
 }
 
 func (m *Model) selectedIsMultiline() bool {
