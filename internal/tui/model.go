@@ -305,62 +305,12 @@ func (m *Model) handleToggle(msg tea.KeyMsg) bool {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.showPreview {
-		m.showPreview = false
-		m.previewCommand = ""
-
+	if m.dismissTransientViews() {
 		return m, nil
 	}
 
-	if m.showHelp {
-		m.showHelp = false
-		return m, nil
-	}
-
-	if matchKey(msg, m.cfg.Keys.Help) {
-		m.showHelp = true
-		return m, nil
-	}
-
-	if matchKey(msg, m.cfg.Keys.Cancel) || matchKeyStr(msg, "ctrl+c") {
-		m.quitting = true
-		m.canceled = true
-
-		return m, tea.Quit
-	}
-
-	if matchKey(msg, m.cfg.Keys.Accept) {
-		if len(m.displayEntries) > 0 && m.cursor < len(m.displayEntries) {
-			m.selected = m.displayEntries[m.cursor].Entry.Command
-		}
-
-		m.quitting = true
-
-		return m, tea.Quit
-	}
-
-	if m.handleNavigation(msg) {
-		return m, nil
-	}
-
-	if m.handleModeSwitch(msg) {
-		return m, nil
-	}
-
-	if m.handleToggle(msg) {
-		return m, nil
-	}
-
-	if matchKey(msg, m.cfg.Keys.PreviewCommand) {
-		if m.cfg.Display.MultilinePreview == "popup" && len(m.displayEntries) > 0 && m.cursor < len(m.displayEntries) {
-			cmd := m.displayEntries[m.cursor].Entry.Command
-			if strings.Contains(cmd, "\n") {
-				m.showPreview = true
-				m.previewCommand = cmd
-			}
-		}
-
-		return m, nil
+	if cmd, handled := m.handleControlKeys(msg); handled {
+		return m, cmd
 	}
 
 	prevValue := m.input.Value()
@@ -373,6 +323,88 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+func (m *Model) dismissTransientViews() bool {
+	if m.showPreview {
+		m.showPreview = false
+		m.previewCommand = ""
+
+		return true
+	}
+
+	if m.showHelp {
+		m.showHelp = false
+		return true
+	}
+
+	return false
+}
+
+func (m *Model) handleControlKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
+	switch {
+	case matchKey(msg, m.cfg.Keys.Help):
+		m.showHelp = true
+		return nil, true
+	case matchKey(msg, m.cfg.Keys.Cancel) || matchKeyStr(msg, "ctrl+c"):
+		m.quitting = true
+		m.canceled = true
+
+		return tea.Quit, true
+	case matchKey(msg, m.cfg.Keys.Accept):
+		m.acceptCurrentSelection()
+		m.quitting = true
+
+		return tea.Quit, true
+	case m.handleNavigation(msg):
+		return nil, true
+	case m.handleModeSwitch(msg):
+		return nil, true
+	case m.handleToggle(msg):
+		return nil, true
+	case m.handlePreview(msg):
+		return nil, true
+	default:
+		return nil, false
+	}
+}
+
+func (m *Model) acceptCurrentSelection() {
+	if cmd, ok := m.currentResultCommand(); ok {
+		m.selected = cmd
+	}
+}
+
+func (m *Model) handlePreview(msg tea.KeyMsg) bool {
+	if !matchKey(msg, m.cfg.Keys.PreviewCommand) {
+		return false
+	}
+
+	if m.cfg.Display.MultilinePreview != "popup" {
+		return true
+	}
+
+	cmd, ok := m.currentResultCommand()
+	if !ok || !strings.Contains(cmd, "\n") {
+		return true
+	}
+
+	m.showPreview = true
+	m.previewCommand = cmd
+
+	return true
+}
+
+func (m *Model) currentResultCommand() (string, bool) {
+	if len(m.displayEntries) == 0 {
+		return "", false
+	}
+
+	if m.cursor < 0 || m.cursor >= len(m.displayEntries) {
+		return "", false
+	}
+
+	return m.displayEntries[m.cursor].Entry.Command, true
 }
 
 func matchKey(msg tea.KeyMsg, spec string) bool {
