@@ -372,7 +372,11 @@ func (m *Model) handleControlKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 func (m *Model) acceptCurrentSelection() {
 	if cmd, ok := m.currentResultCommand(); ok {
 		m.selected = cmd
+		return
 	}
+
+	// If nothing is selected from history, accept the currently typed command.
+	m.selected = m.input.Value()
 }
 
 func (m *Model) handlePreview(msg tea.KeyMsg) bool {
