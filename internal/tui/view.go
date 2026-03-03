@@ -797,15 +797,7 @@ func (m *Model) visibleResults() []int {
 		return nil
 	}
 
-	headerRows := resultsHeaderRows
-	if m.height <= resultsHeaderRows {
-		headerRows = 0
-	}
-
-	maxVisible := min(m.height-headerRows, count)
-	if maxVisible < 1 {
-		maxVisible = 0
-	}
+	maxVisible := min(m.pageSize(), count)
 
 	if maxVisible == 0 {
 		return nil

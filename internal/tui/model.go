@@ -249,11 +249,11 @@ func (m *Model) handleNavigation(msg tea.KeyMsg) bool {
 		}
 	case matchKey(msg, m.cfg.Keys.PageUp):
 		if m.cursor > 0 {
-			m.cursor--
+			m.cursor = max(m.cursor-m.pageSize(), 0)
 		}
 	case matchKey(msg, m.cfg.Keys.PageDown):
 		if m.cursor < len(m.displayEntries)-1 {
-			m.cursor++
+			m.cursor = min(m.cursor+m.pageSize(), len(m.displayEntries)-1)
 		}
 	case matchKey(msg, m.cfg.Keys.Top):
 		m.cursor = 0
@@ -266,6 +266,20 @@ func (m *Model) handleNavigation(msg tea.KeyMsg) bool {
 	}
 
 	return true
+}
+
+func (m *Model) pageSize() int {
+	headerRows := resultsHeaderRows
+	if m.height <= resultsHeaderRows {
+		headerRows = 0
+	}
+
+	size := m.height - headerRows
+	if size < 1 {
+		return 1
+	}
+
+	return size
 }
 
 func (m *Model) handleModeSwitch(msg tea.KeyMsg) bool {
