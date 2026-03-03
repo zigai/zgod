@@ -61,12 +61,12 @@ func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir strin
 		enabledModes = append(enabledModes, match.ModeFuzzy)
 	}
 
-	if cfg.Display.EnableRegex {
-		enabledModes = append(enabledModes, match.ModeRegex)
-	}
-
 	if cfg.Display.EnableGlob {
 		enabledModes = append(enabledModes, match.ModeGlob)
+	}
+
+	if cfg.Display.EnableRegex {
+		enabledModes = append(enabledModes, match.ModeRegex)
 	}
 
 	initialMode := enabledModes[0]

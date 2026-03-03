@@ -77,8 +77,8 @@ func (m *Model) renderIndicators() string {
 
 	modes := []modeIndicator{
 		{match.ModeFuzzy, "fuzzy", "39", m.cfg.Display.EnableFuzzy},
-		{match.ModeRegex, "regex", "208", m.cfg.Display.EnableRegex},
 		{match.ModeGlob, "glob", "207", m.cfg.Display.EnableGlob},
+		{match.ModeRegex, "regex", "208", m.cfg.Display.EnableRegex},
 	}
 	for _, mi := range modes {
 		if !mi.enabled {
@@ -699,10 +699,10 @@ func (m *Model) renderHelp() string {
 		{m.cfg.Keys.Top + "/" + m.cfg.Keys.Bottom, "Jump to top/bottom"},
 		{m.cfg.Keys.Accept, "Accept selection"},
 		{m.cfg.Keys.Cancel, "Cancel / quit"},
-		{m.cfg.Keys.ModeNext, "Cycle match mode (fuzzy/regex/glob)"},
+		{m.cfg.Keys.ModeNext, "Cycle match mode (fuzzy/glob/regex)"},
 		{m.cfg.Keys.ModeFuzzy, "Fuzzy match mode"},
-		{m.cfg.Keys.ModeRegex, "Regex match mode"},
 		{m.cfg.Keys.ModeGlob, "Glob match mode"},
+		{m.cfg.Keys.ModeRegex, "Regex match mode"},
 		{m.cfg.Keys.ToggleCWD, "Filter to current directory"},
 		{m.cfg.Keys.ToggleDedupe, "Toggle command deduplication"},
 		{m.cfg.Keys.ToggleFails, "Show only failed commands"},
