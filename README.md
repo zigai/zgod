@@ -98,7 +98,7 @@ if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }
 | `esc` / `ctrl+c` | Cancel |
 | `up` / `ctrl+p` | Move up |
 | `down` / `ctrl+n` | Move down |
-| `ctrl+s` | Cycle match mode (fuzzy / regex / glob) |
+| `ctrl+s` | Cycle match mode (fuzzy / glob / regex) |
 | `ctrl+d` | Toggle CWD filter |
 | `ctrl+g` | Toggle deduplication |
 | `ctrl+f` | Toggle failed commands only |
