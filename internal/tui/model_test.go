@@ -59,3 +59,90 @@ func TestHandleKeyAcceptFallsBackToTypedCommandWhenNoMatches(t *testing.T) {
 		t.Fatal("quitting = false, want true")
 	}
 }
+
+func TestHandleNavigationPageDownMovesByVisiblePage(t *testing.T) {
+	t.Parallel()
+
+	m := testNavModel(30, 8)
+
+	handled := m.handleNavigation(tea.KeyMsg{Type: tea.KeyPgDown})
+	if !handled {
+		t.Fatal("handleNavigation(pgdown) = false, want true")
+	}
+
+	if got, want := m.cursor, 7; got != want {
+		t.Fatalf("cursor after pgdown = %d, want %d", got, want)
+	}
+}
+
+func TestHandleNavigationPageUpMovesByVisiblePage(t *testing.T) {
+	t.Parallel()
+
+	m := testNavModel(30, 8)
+	m.cursor = 14
+
+	handled := m.handleNavigation(tea.KeyMsg{Type: tea.KeyPgUp})
+	if !handled {
+		t.Fatal("handleNavigation(pgup) = false, want true")
+	}
+
+	if got, want := m.cursor, 7; got != want {
+		t.Fatalf("cursor after pgup = %d, want %d", got, want)
+	}
+}
+
+func TestHandleNavigationPageDownClampsAtBottom(t *testing.T) {
+	t.Parallel()
+
+	m := testNavModel(30, 8)
+	m.cursor = 27
+
+	handled := m.handleNavigation(tea.KeyMsg{Type: tea.KeyPgDown})
+	if !handled {
+		t.Fatal("handleNavigation(pgdown) = false, want true")
+	}
+
+	if got, want := m.cursor, 29; got != want {
+		t.Fatalf("cursor after pgdown clamp = %d, want %d", got, want)
+	}
+}
+
+func TestHandleNavigationPageUpClampsAtTop(t *testing.T) {
+	t.Parallel()
+
+	m := testNavModel(30, 8)
+	m.cursor = 3
+
+	handled := m.handleNavigation(tea.KeyMsg{Type: tea.KeyPgUp})
+	if !handled {
+		t.Fatal("handleNavigation(pgup) = false, want true")
+	}
+
+	if got, want := m.cursor, 0; got != want {
+		t.Fatalf("cursor after pgup clamp = %d, want %d", got, want)
+	}
+}
+
+func TestHandleNavigationPageDownUsesSingleStepAtMinimumHeight(t *testing.T) {
+	t.Parallel()
+
+	m := testNavModel(10, 1)
+	m.cursor = 2
+
+	handled := m.handleNavigation(tea.KeyMsg{Type: tea.KeyPgDown})
+	if !handled {
+		t.Fatal("handleNavigation(pgdown) = false, want true")
+	}
+
+	if got, want := m.cursor, 3; got != want {
+		t.Fatalf("cursor after pgdown at height=1 = %d, want %d", got, want)
+	}
+}
+
+func testNavModel(entryCount int, height int) *Model {
+	return &Model{
+		cfg:            config.Default(),
+		height:         height,
+		displayEntries: make([]history.ScoredEntry, entryCount),
+	}
+}
