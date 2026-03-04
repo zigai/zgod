@@ -3,10 +3,16 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 
 	_ "modernc.org/sqlite"
+)
+
+var (
+	errDatabaseFileDoesNotExist = errors.New("database file does not exist")
+	errDatabasePathIsDirectory  = errors.New("database path is a directory")
 )
 
 func Open(dbPath string) (*sql.DB, error) {
@@ -19,24 +25,50 @@ func Open(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening sqlite database %q: %w", dbPath, err)
 	}
 
-	pragmas := []string{
+	if err = applySQLitePragmas(db, []string{
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA synchronous=NORMAL",
 		"PRAGMA busy_timeout=2000",
 		"PRAGMA foreign_keys=ON",
-	}
-
-	ctx := context.Background()
-	for _, p := range pragmas {
-		if _, err = db.ExecContext(ctx, p); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("applying sqlite pragma %q: %w", p, err)
-		}
+	}); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 
 	if err = ensureSchema(db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ensuring database schema: %w", err)
+	}
+
+	return db, nil
+}
+
+func OpenReadOnly(dbPath string) (*sql.DB, error) {
+	info, err := os.Stat(dbPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("%w: %q", errDatabaseFileDoesNotExist, dbPath)
+		}
+
+		return nil, fmt.Errorf("stating database file %q: %w", dbPath, err)
+	}
+
+	if info.IsDir() {
+		return nil, fmt.Errorf("%w: %q", errDatabasePathIsDirectory, dbPath)
+	}
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening sqlite database %q: %w", dbPath, err)
+	}
+
+	if err = applySQLitePragmas(db, []string{
+		"PRAGMA query_only=ON",
+		"PRAGMA busy_timeout=2000",
+		"PRAGMA foreign_keys=ON",
+	}); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 
 	return db, nil
@@ -69,6 +101,17 @@ func ensureFilePermissions(path string, mode os.FileMode) error {
 		}
 
 		return nil
+	}
+
+	return nil
+}
+
+func applySQLitePragmas(db *sql.DB, pragmas []string) error {
+	ctx := context.Background()
+	for _, pragma := range pragmas {
+		if _, err := db.ExecContext(ctx, pragma); err != nil {
+			return fmt.Errorf("applying sqlite pragma %q: %w", pragma, err)
+		}
 	}
 
 	return nil

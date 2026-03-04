@@ -35,6 +35,7 @@ func setupCommands() {
 	setupCommandsOnce.Do(func() {
 		rootCmd.Flags().BoolP("version", "v", false, "Print version")
 		registerConfigCommand()
+		registerImportCommand()
 		registerInitCommand()
 		registerInstallCommand()
 		registerRecordCommand()

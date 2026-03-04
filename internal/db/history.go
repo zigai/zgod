@@ -88,6 +88,22 @@ func (r *HistoryRepo) RecentInDir(dir string, limit int) ([]HistoryEntry, error)
 	return scanEntries(rows)
 }
 
+func (r *HistoryRepo) ListAll() ([]HistoryEntry, error) {
+	rows, err := r.db.QueryContext(
+		context.Background(),
+		`SELECT id, ts_ms, duration, exit_code, command, directory, session_id, hostname
+		 FROM history
+		 ORDER BY ts_ms ASC, id ASC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying full history: %w", err)
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	return scanEntries(rows)
+}
+
 func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, onlyFails bool) ([]HistoryEntry, error) {
 	query := `SELECT id, ts_ms, duration, exit_code, command, directory, session_id, hostname
 		 FROM history`
@@ -121,6 +137,48 @@ func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, onlyFails bool) ([
 	}
 
 	return entries, nil
+}
+
+func InsertIfNotExistsTx(tx *sql.Tx, entry HistoryEntry) (bool, error) {
+	res, err := tx.ExecContext(
+		context.Background(),
+		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
+		 SELECT ?, ?, ?, ?, ?, ?, ?
+		 WHERE NOT EXISTS (
+		   SELECT 1 FROM history
+		   WHERE ts_ms = ?
+		     AND duration = ?
+		     AND exit_code = ?
+		     AND command = ?
+		     AND directory = ?
+		     AND session_id = ?
+		     AND hostname = ?
+		 )`,
+		entry.TsMs,
+		entry.Duration,
+		entry.ExitCode,
+		entry.Command,
+		entry.Directory,
+		entry.SessionID,
+		entry.Hostname,
+		entry.TsMs,
+		entry.Duration,
+		entry.ExitCode,
+		entry.Command,
+		entry.Directory,
+		entry.SessionID,
+		entry.Hostname,
+	)
+	if err != nil {
+		return false, fmt.Errorf("inserting history entry if not exists: %w", err)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("reading affected rows for conditional insert: %w", err)
+	}
+
+	return rowsAffected > 0, nil
 }
 
 func dedupeEntries(entries []HistoryEntry) []HistoryEntry {
