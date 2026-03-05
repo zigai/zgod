@@ -20,19 +20,6 @@ Interactive shell history search with **fuzzy**, **regex**, and **glob** matchin
 
 Press `Ctrl+R` to open the search UI. Start typing to filter results.
 
-### Import history from another database
-
-```sh
-zgod import /path/to/another/history.db
-```
-
-By default, import excludes failed commands and excludes commands with missing filesystem paths on the current machine.
-
-Flags:
-
-- `--include-failed` include commands with non-zero exit code
-- `--include-missing-paths` include commands that reference missing paths
-
 ## Installation
 
 ### Quick install
