@@ -158,9 +158,117 @@ func TestFetchCandidatesDedupe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entries, _ := repo.FetchCandidates(100, true, false)
+	entries, _ := repo.FetchCandidates(100, true, FailFilterInclude)
 	if len(entries) != 2 {
 		t.Errorf("FetchCandidates(dedupe=true) returned %d entries, want 2", len(entries))
+	}
+}
+
+func TestFetchCandidatesFailFilterModes(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := NewHistoryRepo(database)
+	entries := []HistoryEntry{
+		{TsMs: 1000, ExitCode: 0, Command: "echo ok one"},
+		{TsMs: 2000, ExitCode: 1, Command: "echo fail one"},
+		{TsMs: 3000, ExitCode: 0, Command: "echo ok two"},
+		{TsMs: 4000, ExitCode: 2, Command: "echo fail two"},
+	}
+
+	for _, entry := range entries {
+		if _, err = repo.Insert(entry); err != nil {
+			t.Fatalf("Insert(%q) error: %v", entry.Command, err)
+		}
+	}
+
+	tests := []struct {
+		name       string
+		mode       FailFilterMode
+		wantCmds   []string
+		dedupe     bool
+		wantLength int
+	}{
+		{
+			name:       "include",
+			mode:       FailFilterInclude,
+			wantCmds:   []string{"echo fail two", "echo ok two", "echo fail one", "echo ok one"},
+			wantLength: 4,
+		},
+		{
+			name:       "exclude",
+			mode:       FailFilterExclude,
+			wantCmds:   []string{"echo ok two", "echo ok one"},
+			wantLength: 2,
+		},
+		{
+			name:       "only",
+			mode:       FailFilterOnly,
+			wantCmds:   []string{"echo fail two", "echo fail one"},
+			wantLength: 2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, fetchErr := repo.FetchCandidates(100, tc.dedupe, tc.mode)
+			if fetchErr != nil {
+				t.Fatalf("FetchCandidates() error: %v", fetchErr)
+			}
+
+			if len(got) != tc.wantLength {
+				t.Fatalf("len(FetchCandidates()) = %d, want %d", len(got), tc.wantLength)
+			}
+
+			for i, want := range tc.wantCmds {
+				if got[i].Command != want {
+					t.Fatalf("FetchCandidates()[%d].Command = %q, want %q", i, got[i].Command, want)
+				}
+			}
+		})
+	}
+}
+
+func TestFetchCandidatesAppliesDedupeAfterFailFilter(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := NewHistoryRepo(database)
+	entries := []HistoryEntry{
+		{TsMs: 1000, ExitCode: 1, Command: "echo boom"},
+		{TsMs: 2000, ExitCode: 2, Command: "echo boom"},
+		{TsMs: 3000, ExitCode: 0, Command: "echo ok"},
+	}
+
+	for _, entry := range entries {
+		if _, err = repo.Insert(entry); err != nil {
+			t.Fatalf("Insert(%q) error: %v", entry.Command, err)
+		}
+	}
+
+	got, err := repo.FetchCandidates(100, true, FailFilterOnly)
+	if err != nil {
+		t.Fatalf("FetchCandidates() error: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("len(FetchCandidates()) = %d, want 1", len(got))
+	}
+
+	if got[0].Command != "echo boom" {
+		t.Fatalf("FetchCandidates()[0].Command = %q, want %q", got[0].Command, "echo boom")
 	}
 }
 

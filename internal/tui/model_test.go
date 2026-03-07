@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -136,6 +137,68 @@ func TestHandleNavigationPageDownUsesSingleStepAtMinimumHeight(t *testing.T) {
 
 	if got, want := m.cursor, 3; got != want {
 		t.Fatalf("cursor after pgdown at height=1 = %d, want %d", got, want)
+	}
+}
+
+func TestHandleToggleFailsCyclesFailFilterModesAndReloadsEntries(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("db.Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := db.NewHistoryRepo(database)
+	entries := []db.HistoryEntry{
+		{TsMs: 1000, ExitCode: 0, Command: "echo ok one"},
+		{TsMs: 2000, ExitCode: 1, Command: "echo fail"},
+		{TsMs: 3000, ExitCode: 0, Command: "echo ok two"},
+	}
+
+	for _, entry := range entries {
+		if _, err = repo.Insert(entry); err != nil {
+			t.Fatalf("repo.Insert(%q) error: %v", entry.Command, err)
+		}
+	}
+
+	cfg := config.Default()
+	m := NewModel(cfg, repo, "", "", 10, false, "")
+
+	if got, want := m.failFilter, db.FailFilterInclude; got != want {
+		t.Fatalf("initial failFilter = %v, want %v", got, want)
+	}
+
+	if got, want := len(m.allEntries), 3; got != want {
+		t.Fatalf("initial len(allEntries) = %d, want %d", got, want)
+	}
+
+	tests := []struct {
+		name       string
+		wantMode   db.FailFilterMode
+		wantLength int
+	}{
+		{name: "exclude", wantMode: db.FailFilterExclude, wantLength: 2},
+		{name: "only", wantMode: db.FailFilterOnly, wantLength: 1},
+		{name: "include", wantMode: db.FailFilterInclude, wantLength: 3},
+	}
+
+	for _, tc := range tests {
+		handled := m.handleToggle(tea.KeyMsg{Type: tea.KeyCtrlF})
+		if !handled {
+			t.Fatalf("handleToggle(%s) = false, want true", tc.name)
+		}
+
+		if got := m.failFilter; got != tc.wantMode {
+			t.Fatalf("failFilter after %s = %v, want %v", tc.name, got, tc.wantMode)
+		}
+
+		if got := len(m.allEntries); got != tc.wantLength {
+			t.Fatalf("len(allEntries) after %s = %d, want %d", tc.name, got, tc.wantLength)
+		}
 	}
 }
 

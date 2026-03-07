@@ -104,12 +104,17 @@ func (r *HistoryRepo) ListAll() ([]HistoryEntry, error) {
 	return scanEntries(rows)
 }
 
-func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, onlyFails bool) ([]HistoryEntry, error) {
+func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, failFilter FailFilterMode) ([]HistoryEntry, error) {
 	query := `SELECT id, ts_ms, duration, exit_code, command, directory, session_id, hostname
 		 FROM history`
 	args := []any{}
 
-	if onlyFails {
+	switch failFilter {
+	case FailFilterInclude:
+		// No exit-code filter.
+	case FailFilterExclude:
+		query += " WHERE exit_code = 0"
+	case FailFilterOnly:
 		query += " WHERE exit_code != 0"
 	}
 

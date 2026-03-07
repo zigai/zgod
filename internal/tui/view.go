@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zigai/zgod/internal/config"
+	"github.com/zigai/zgod/internal/db"
 	"github.com/zigai/zgod/internal/history"
 	"github.com/zigai/zgod/internal/match"
 )
@@ -22,7 +23,31 @@ const (
 	minInputWidth        = 20
 	previewPaneHeight    = 4
 	defaultSelectionChar = "▌ "
+	failExcludeIndicator = "214"
 )
+
+type toggleIndicator struct {
+	label  string
+	bg     string
+	active bool
+}
+
+func failToggleIndicator(mode db.FailFilterMode) toggleIndicator {
+	indicator := toggleIndicator{label: "fails"}
+
+	switch mode {
+	case db.FailFilterInclude:
+		// Include mode uses the inactive pill styling.
+	case db.FailFilterExclude:
+		indicator.bg = failExcludeIndicator
+		indicator.active = true
+	case db.FailFilterOnly:
+		indicator.bg = "9"
+		indicator.active = true
+	}
+
+	return indicator
+}
 
 func (m *Model) View() string {
 	if m.quitting {
@@ -97,15 +122,9 @@ func (m *Model) renderIndicators() string {
 		}
 	}
 
-	type toggleIndicator struct {
-		label  string
-		bg     string
-		active bool
-	}
-
 	toggles := []toggleIndicator{
 		{"cwd", "10", m.cwdMode},
-		{"fails", "9", m.onlyFails},
+		failToggleIndicator(m.failFilter),
 		{"dedup", "11", m.dedupe},
 	}
 	for _, ti := range toggles {
@@ -705,7 +724,7 @@ func (m *Model) renderHelp() string {
 		{m.cfg.Keys.ModeRegex, "Regex match mode"},
 		{m.cfg.Keys.ToggleCWD, "Filter to current directory"},
 		{m.cfg.Keys.ToggleDedupe, "Toggle command deduplication"},
-		{m.cfg.Keys.ToggleFails, "Show only failed commands"},
+		{m.cfg.Keys.ToggleFails, "Cycle fail filter (include/exclude/only)"},
 		{m.cfg.Keys.PreviewCommand, "Preview multiline command"},
 		{m.cfg.Keys.Help, "Show/hide this help"},
 	}

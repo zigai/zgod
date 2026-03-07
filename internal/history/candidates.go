@@ -7,9 +7,9 @@ import (
 )
 
 type CandidateOpts struct {
-	Limit     int
-	Dedupe    bool
-	OnlyFails bool
+	Limit      int
+	Dedupe     bool
+	FailFilter db.FailFilterMode
 }
 
 func FetchCandidates(repo *db.HistoryRepo, opts CandidateOpts) ([]db.HistoryEntry, error) {
@@ -18,7 +18,7 @@ func FetchCandidates(repo *db.HistoryRepo, opts CandidateOpts) ([]db.HistoryEntr
 		limit = 10000
 	}
 
-	entries, err := repo.FetchCandidates(limit, opts.Dedupe, opts.OnlyFails)
+	entries, err := repo.FetchCandidates(limit, opts.Dedupe, opts.FailFilter)
 	if err != nil {
 		return nil, fmt.Errorf("fetching history candidates: %w", err)
 	}

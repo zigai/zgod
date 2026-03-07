@@ -9,7 +9,7 @@ Interactive shell history search with **fuzzy**, **regex**, and **glob** matchin
 ## Features
 
 - **Match modes:** `fuzzy` / `regex` / `glob`
-- **Filters:** current directory, deduplication, failed commands only
+- **Filters:** current directory, deduplication, fail filter (include/exclude/only)
 - **History exclusion filters:** exclude commands from history recording
 - **Persistent storage:** history is stored locally in `SQLite`
 - **Configurable UI:** prompt, colors, layout, multiline behavior
@@ -101,7 +101,7 @@ if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }
 | `ctrl+s` | Cycle match mode (fuzzy / glob / regex) |
 | `ctrl+d` | Toggle CWD filter |
 | `ctrl+g` | Toggle deduplication |
-| `ctrl+f` | Toggle failed commands only |
+| `ctrl+f` | Cycle fail filter (include/exclude/only) |
 | `alt+f` | Fuzzy mode |
 | `alt+r` | Regex mode |
 | `alt+g` | Glob mode |

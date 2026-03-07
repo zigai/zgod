@@ -30,7 +30,7 @@ type Model struct {
 	enabledModes   []match.Mode
 	cwdMode        bool
 	dedupe         bool
-	onlyFails      bool
+	failFilter     db.FailFilterMode
 	cwd            string
 	homeDir        string
 	quitting       bool
@@ -144,9 +144,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) loadEntries() {
 	entries, err := history.FetchCandidates(m.repo, history.CandidateOpts{
-		Limit:     10000,
-		Dedupe:    m.dedupe,
-		OnlyFails: m.onlyFails,
+		Limit:      10000,
+		Dedupe:     m.dedupe,
+		FailFilter: m.failFilter,
 	})
 
 	m.dbError = err
@@ -308,7 +308,7 @@ func (m *Model) handleToggle(msg tea.KeyMsg) bool {
 	case matchKey(msg, m.cfg.Keys.ToggleDedupe):
 		m.dedupe = !m.dedupe
 	case matchKey(msg, m.cfg.Keys.ToggleFails):
-		m.onlyFails = !m.onlyFails
+		m.failFilter = m.failFilter.Next()
 	default:
 		return false
 	}
