@@ -151,13 +151,14 @@ mode_color = "240"
 border_color = ""
 
 [display]
-time_format = "relative"       # relative | absolute
-duration_format = "auto"       # auto | ms | s
-default_scope = "normal"       # normal | cwd
-show_directory = false         # show directory column in search results
-hide_multiline = false         # hide multiline commands from results
-multiline_preview = "popup"    # popup | preview_pane | expand | collapsed
-multiline_collapse = " "       # symbol to replace newlines in collapsed view
+time_format = "relative"        # relative | absolute
+duration_format = "auto"        # auto | ms | s
+default_scope = "normal"        # normal | cwd
+default_fail_filter = "include" # include | exclude | only
+show_directory = false          # show directory column in search results
+hide_multiline = false          # hide multiline commands from results
+multiline_preview = "popup"     # popup | preview_pane | expand | collapsed
+multiline_collapse = " "        # symbol to replace newlines in collapsed view
 
 [keys]
 mode_next = "ctrl+s"
