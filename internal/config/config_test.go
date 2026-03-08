@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,6 +27,10 @@ func TestDefault(t *testing.T) {
 
 	if cfg.Keys.ModeNext != "ctrl+s" {
 		t.Errorf("default ModeNext = %q, want 'ctrl+s'", cfg.Keys.ModeNext)
+	}
+
+	if cfg.Display.DefaultFailFilter != "include" {
+		t.Errorf("default DefaultFailFilter = %q, want 'include'", cfg.Display.DefaultFailFilter)
 	}
 }
 
@@ -59,6 +64,9 @@ exit_code = [1, 2]
 
 [theme]
 prompt = "$ "
+
+[display]
+default_fail_filter = "exclude"
 `
 	// #nosec G306 -- test file doesn't need restricted permissions
 	if err := os.WriteFile(filepath.Join(zgodDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
@@ -80,6 +88,24 @@ prompt = "$ "
 
 	if cfg.Theme.Prompt != "$ " {
 		t.Errorf("Prompt = %q, want '$ '", cfg.Theme.Prompt)
+	}
+
+	if cfg.Display.DefaultFailFilter != "exclude" {
+		t.Errorf("DefaultFailFilter = %q, want 'exclude'", cfg.Display.DefaultFailFilter)
+	}
+}
+
+func TestValidateDefaultFailFilter(t *testing.T) {
+	cfg := Default()
+	cfg.Display.DefaultFailFilter = "bad"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want invalid default_fail_filter")
+	}
+
+	if !errors.Is(err, errInvalidDefaultFailFilter) {
+		t.Fatalf("Validate() error = %v, want errInvalidDefaultFailFilter", err)
 	}
 }
 

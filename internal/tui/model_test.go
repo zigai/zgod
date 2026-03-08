@@ -202,6 +202,48 @@ func TestHandleToggleFailsCyclesFailFilterModesAndReloadsEntries(t *testing.T) {
 	}
 }
 
+func TestNewModelUsesConfiguredDefaultFailFilter(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("db.Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := db.NewHistoryRepo(database)
+	entries := []db.HistoryEntry{
+		{TsMs: 1000, ExitCode: 0, Command: "echo ok"},
+		{TsMs: 2000, ExitCode: 1, Command: "echo fail"},
+	}
+
+	for _, entry := range entries {
+		if _, err = repo.Insert(entry); err != nil {
+			t.Fatalf("repo.Insert(%q) error: %v", entry.Command, err)
+		}
+	}
+
+	cfg := config.Default()
+	cfg.Display.DefaultFailFilter = "exclude"
+
+	m := NewModel(cfg, repo, "", "", 10, false, "")
+
+	if got, want := m.failFilter, db.FailFilterExclude; got != want {
+		t.Fatalf("failFilter = %v, want %v", got, want)
+	}
+
+	if got, want := len(m.allEntries), 1; got != want {
+		t.Fatalf("len(allEntries) = %d, want %d", got, want)
+	}
+
+	if got, want := m.allEntries[0].Command, "echo ok"; got != want {
+		t.Fatalf("allEntries[0].Command = %q, want %q", got, want)
+	}
+}
+
 func testNavModel(entryCount int, height int) *Model {
 	return &Model{
 		cfg:            config.Default(),
