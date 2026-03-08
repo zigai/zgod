@@ -7,6 +7,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/zigai/zgod/internal/db"
 	"github.com/zigai/zgod/internal/paths"
 )
 
@@ -33,11 +34,12 @@ type FilterConfig struct {
 }
 
 var (
-	errNoMatchModeEnabled      = errors.New("at least one match mode must be enabled")
-	errInvalidDefaultScope     = errors.New("invalid default_scope")
-	errDefaultModeNotEnabled   = errors.New("default_mode is not enabled")
-	errInvalidDefaultMode      = errors.New("invalid default_mode")
-	errInvalidMultilinePreview = errors.New("invalid multiline_preview")
+	errNoMatchModeEnabled       = errors.New("at least one match mode must be enabled")
+	errInvalidDefaultScope      = errors.New("invalid default_scope")
+	errDefaultModeNotEnabled    = errors.New("default_mode is not enabled")
+	errInvalidDefaultMode       = errors.New("invalid default_mode")
+	errInvalidDefaultFailFilter = errors.New("invalid default_fail_filter")
+	errInvalidMultilinePreview  = errors.New("invalid multiline_preview")
 )
 
 func Default() Config {
@@ -105,6 +107,11 @@ func (c Config) Validate() error {
 	}
 
 	err = c.validateDefaultMode()
+	if err != nil {
+		return err
+	}
+
+	err = c.validateDefaultFailFilter()
 	if err != nil {
 		return err
 	}
@@ -194,6 +201,18 @@ func (c Config) validateDefaultMode() error {
 	default:
 		return fmt.Errorf("%w %q: must be \"fuzzy\", \"regex\", or \"glob\"", errInvalidDefaultMode, c.Display.DefaultMode)
 	}
+}
+
+func (c Config) validateDefaultFailFilter() error {
+	if _, ok := db.ParseFailFilterMode(c.Display.DefaultFailFilter); ok {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"%w %q: must be \"include\", \"exclude\", or \"only\"",
+		errInvalidDefaultFailFilter,
+		c.Display.DefaultFailFilter,
+	)
 }
 
 func (c Config) validateMultilinePreview() error {

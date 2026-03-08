@@ -80,6 +80,8 @@ func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir strin
 		cwdMode = true
 	}
 
+	failFilter, _ := db.ParseFailFilterMode(cfg.Display.DefaultFailFilter)
+
 	m := Model{
 		input:        ti,
 		cfg:          cfg,
@@ -91,6 +93,7 @@ func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir strin
 		enabledModes: enabledModes,
 		cwdMode:      cwdMode,
 		dedupe:       true,
+		failFilter:   failFilter,
 		cwd:          cwd,
 		homeDir:      homeDir,
 		repo:         repo,

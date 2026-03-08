@@ -14,6 +14,7 @@ type DisplayConfig struct {
 	CWDBoost          int    `toml:"cwd_boost"`
 	DefaultScope      string `toml:"default_scope"`
 	DefaultMode       string `toml:"default_mode"`
+	DefaultFailFilter string `toml:"default_fail_filter"`
 	HideMultiline     bool   `toml:"hide_multiline"`
 	MultilinePreview  string `toml:"multiline_preview"`
 	MultilineCollapse string `toml:"multiline_collapse"`
@@ -32,6 +33,7 @@ func DefaultDisplay() DisplayConfig {
 		CWDBoost:          defaultCWDBoost,
 		DefaultScope:      "normal",
 		DefaultMode:       "fuzzy",
+		DefaultFailFilter: "include",
 		HideMultiline:     false,
 		MultilinePreview:  "popup",
 		MultilineCollapse: " ",
