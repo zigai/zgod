@@ -23,7 +23,7 @@ const (
 	minInputWidth        = 20
 	previewPaneHeight    = 4
 	defaultSelectionChar = "▌ "
-	failExcludeIndicator = "214"
+	failIncludeIndicator = "214"
 )
 
 type toggleIndicator struct {
@@ -37,10 +37,9 @@ func failToggleIndicator(mode db.FailFilterMode) toggleIndicator {
 
 	switch mode {
 	case db.FailFilterInclude:
-		// Include mode uses the inactive pill styling.
-	case db.FailFilterExclude:
-		indicator.bg = failExcludeIndicator
+		indicator.bg = failIncludeIndicator
 		indicator.active = true
+	case db.FailFilterExclude:
 	case db.FailFilterOnly:
 		indicator.bg = "9"
 		indicator.active = true

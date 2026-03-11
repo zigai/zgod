@@ -82,8 +82,8 @@ func TestFailToggleIndicator(t *testing.T) {
 		wantBG     string
 		wantActive bool
 	}{
-		{name: "include", mode: db.FailFilterInclude},
-		{name: "exclude", mode: db.FailFilterExclude, wantBG: failExcludeIndicator, wantActive: true},
+		{name: "include", mode: db.FailFilterInclude, wantBG: failIncludeIndicator, wantActive: true},
+		{name: "exclude", mode: db.FailFilterExclude},
 		{name: "only", mode: db.FailFilterOnly, wantBG: "9", wantActive: true},
 	}
 
