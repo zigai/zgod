@@ -140,6 +140,21 @@ func TestHandleNavigationPageDownUsesSingleStepAtMinimumHeight(t *testing.T) {
 	}
 }
 
+func TestHandleNavigationCtrlRMovesToNextEntry(t *testing.T) {
+	t.Parallel()
+
+	m := testNavModel(10, 8)
+
+	handled := m.handleNavigation(tea.KeyMsg{Type: tea.KeyCtrlR})
+	if !handled {
+		t.Fatal("handleNavigation(ctrl+r) = false, want true")
+	}
+
+	if got, want := m.cursor, 1; got != want {
+		t.Fatalf("cursor after ctrl+r = %d, want %d", got, want)
+	}
+}
+
 func TestHandleToggleFailsCyclesFailFilterModesAndReloadsEntries(t *testing.T) {
 	t.Parallel()
 
