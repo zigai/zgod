@@ -56,12 +56,21 @@ changelog:
   sort: desc
   abbrev: 7
   format: '[`{{ printf "%.7s" .SHA }}`](https://github.com/zigai/zgod/commit/{{ .SHA }}) {{ .Message }}'
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([^)]+\))?!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([^)]+\))?!?:.+$'
+      order: 1
+    - title: Other Changes
+      order: 999
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^ci:"
-      - "^chore:"
+      - '^docs(\([^)]+\))?!?:'
+      - '^test(\([^)]+\))?!?:'
+      - '^ci(\([^)]+\))?!?:'
+      - '^chore(\([^)]+\))?!?:'
 
 release:
   github:
