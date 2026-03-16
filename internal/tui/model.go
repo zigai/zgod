@@ -246,7 +246,7 @@ func (m *Model) handleNavigation(msg tea.KeyMsg) bool {
 		if m.cursor > 0 {
 			m.cursor--
 		}
-	case matchKey(msg, m.cfg.Keys.Down) || matchKeyStr(msg, "ctrl+n"):
+	case matchKey(msg, m.cfg.Keys.Down) || matchKeyStr(msg, "ctrl+n") || matchKeyStr(msg, "ctrl+r"):
 		if m.cursor < len(m.displayEntries)-1 {
 			m.cursor++
 		}

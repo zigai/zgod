@@ -712,7 +712,7 @@ func (m *Model) renderHelp() string {
 		key  string
 		desc string
 	}{
-		{m.cfg.Keys.Up + "/" + m.cfg.Keys.Down, "Move up/down"},
+		{m.cfg.Keys.Up + "/" + m.cfg.Keys.Down, "Move up/down (also ctrl+p, ctrl+n, ctrl+r)"},
 		{m.cfg.Keys.PageUp + "/" + m.cfg.Keys.PageDown, "Page up/down"},
 		{m.cfg.Keys.Top + "/" + m.cfg.Keys.Bottom, "Jump to top/bottom"},
 		{m.cfg.Keys.Accept, "Accept selection"},
