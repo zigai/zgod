@@ -496,3 +496,53 @@ func TestInsertIfNotExistsTx(t *testing.T) {
 		t.Fatalf("ListAll() returned %d entries after commit, want 2", len(entries))
 	}
 }
+
+func TestIsBusyErrorRecognizesSQLiteBusy(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "busy.db")
+	ctx := context.Background()
+
+	locker, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(locker) error: %v", err)
+	}
+
+	defer func() { _ = locker.Close() }()
+
+	blocked, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(blocked) error: %v", err)
+	}
+
+	defer func() { _ = blocked.Close() }()
+
+	if _, err = locker.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS busy_test(id INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatalf("creating table for busy test: %v", err)
+	}
+
+	if _, err = blocked.ExecContext(ctx, "PRAGMA busy_timeout=0"); err != nil {
+		t.Fatalf("setting busy timeout for busy test: %v", err)
+	}
+
+	if _, err = locker.ExecContext(ctx, "BEGIN EXCLUSIVE"); err != nil {
+		t.Fatalf("starting exclusive transaction for busy test: %v", err)
+	}
+
+	defer func() {
+		_, _ = locker.ExecContext(ctx, "ROLLBACK")
+	}()
+
+	_, err = blocked.ExecContext(ctx, "INSERT INTO busy_test(id) VALUES (1)")
+	if err == nil {
+		t.Fatal("expected SQLITE_BUSY error, got nil")
+	}
+
+	if !IsBusyError(err) {
+		t.Fatalf("IsBusyError() = false, want true for error: %v", err)
+	}
+}
+
+func TestIsBusyErrorReturnsFalseForNonBusyError(t *testing.T) {
+	if IsBusyError(errDatabasePathIsDirectory) {
+		t.Fatal("IsBusyError() = true, want false for non-busy error")
+	}
+}
