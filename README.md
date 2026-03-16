@@ -19,6 +19,7 @@ Interactive shell history search with **fuzzy**, **regex**, and **glob** matchin
 ## Usage
 
 Press `Ctrl+R` to open the search UI. Start typing to filter results.
+If the UI is already open, press `Ctrl+R` again to move to the next result.
 
 ## Installation
 
@@ -97,7 +98,7 @@ if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }
 | `enter` | Accept selection |
 | `esc` / `ctrl+c` | Cancel |
 | `up` / `ctrl+p` | Move up |
-| `down` / `ctrl+n` | Move down |
+| `down` / `ctrl+n` / `ctrl+r` | Move down |
 | `ctrl+s` | Cycle match mode (fuzzy / glob / regex) |
 | `ctrl+d` | Toggle CWD filter |
 | `ctrl+g` | Toggle deduplication |
