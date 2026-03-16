@@ -15,10 +15,11 @@ import (
 )
 
 var recordCmd = &cobra.Command{
-	Use:    "record",
-	Short:  "Record a command to history",
-	Hidden: true,
-	RunE:   runRecord,
+	Use:          "record",
+	Short:        "Record a command to history",
+	Hidden:       true,
+	SilenceUsage: true,
+	RunE:         runRecord,
 }
 
 const (
@@ -70,6 +71,10 @@ func runRecord(cmd *cobra.Command, args []string) error {
 
 	database, err := db.Open(dbPath)
 	if err != nil {
+		if db.IsBusyError(err) {
+			return nil
+		}
+
 		return fmt.Errorf("opening database: %w", err)
 	}
 
@@ -93,6 +98,10 @@ func runRecord(cmd *cobra.Command, args []string) error {
 		Hostname:  hostname,
 	})
 	if err != nil {
+		if db.IsBusyError(err) {
+			return nil
+		}
+
 		return fmt.Errorf("inserting history entry: %w", err)
 	}
 
