@@ -129,6 +129,88 @@ func TestCommandReferencesExistingPathsIgnoresURLs(t *testing.T) {
 	}
 }
 
+func TestCommandReferencesExistingPathsIgnoresGitCheckoutRef(t *testing.T) {
+	ok, err := commandReferencesExistingPaths("git checkout feature/foo", t.TempDir())
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected git ref to not be treated as a missing path")
+	}
+}
+
+func TestCommandReferencesExistingPathsSedCommandUsesFileArgument(t *testing.T) {
+	baseDir := t.TempDir()
+	filePath := filepath.Join(baseDir, "input.txt")
+	if writeErr := os.WriteFile(filePath, []byte("a\n"), 0o600); writeErr != nil {
+		t.Fatalf("WriteFile() error: %v", writeErr)
+	}
+
+	ok, err := commandReferencesExistingPaths(`sed 's/a/b/' input.txt`, baseDir)
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected sed script token to be ignored and input file to be checked")
+	}
+}
+
+func TestCommandReferencesExistingPathsBareChangeDirectoryTarget(t *testing.T) {
+	baseDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(baseDir, "src"), 0o755); err != nil {
+		t.Fatalf("Mkdir() error: %v", err)
+	}
+
+	ok, err := commandReferencesExistingPaths("cd src", baseDir)
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected bare cd target to be treated as a path")
+	}
+}
+
+func TestCommandReferencesExistingPathsMakeDirectoryFlag(t *testing.T) {
+	baseDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(baseDir, "build"), 0o755); err != nil {
+		t.Fatalf("Mkdir() error: %v", err)
+	}
+
+	ok, err := commandReferencesExistingPaths("make -C build", baseDir)
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected make -C target to be treated as a path")
+	}
+}
+
+func TestCommandReferencesExistingPathsOutputRedirectionParentExists(t *testing.T) {
+	ok, err := commandReferencesExistingPaths("> out.txt", t.TempDir())
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected output redirection to allow creating a new file")
+	}
+}
+
+func TestCommandReferencesExistingPathsEditorAllowsCreateableFile(t *testing.T) {
+	ok, err := commandReferencesExistingPaths("vim foo.txt", t.TempDir())
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected editor command to allow creating a new file")
+	}
+}
+
 func TestCommandReferencesExistingPathsGlob(t *testing.T) {
 	baseDir := t.TempDir()
 
