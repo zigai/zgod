@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -278,6 +281,136 @@ func TestOpenReadOnlyMissingFile(t *testing.T) {
 	_, err := OpenReadOnly(missingPath)
 	if err == nil {
 		t.Fatal("OpenReadOnly() should fail for missing file")
+	}
+}
+
+func TestOpenCreatesMissingParentDirectories(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "nested", "db", "history.db")
+
+	database, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	if _, err = os.Stat(dbPath); err != nil {
+		t.Fatalf("expected database file to be created: %v", err)
+	}
+}
+
+func TestOpenDirectoryPathDoesNotChangeDirectoryPermissions(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history-dir")
+	if err := os.MkdirAll(dbPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+
+	if err := os.Chmod(dbPath, 0o755); err != nil {
+		t.Fatalf("Chmod() setup error: %v", err)
+	}
+
+	infoBefore, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatalf("Stat() before error: %v", err)
+	}
+
+	_, err = Open(dbPath)
+	if err == nil {
+		t.Fatal("Open() should fail for directory path")
+	}
+
+	if !errors.Is(err, errDatabasePathIsDirectory) {
+		t.Fatalf("expected errDatabasePathIsDirectory, got %v", err)
+	}
+
+	infoAfter, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatalf("Stat() after error: %v", err)
+	}
+
+	if runtime.GOOS != "windows" && infoAfter.Mode().Perm() != infoBefore.Mode().Perm() {
+		t.Fatalf("directory permissions changed from %o to %o", infoBefore.Mode().Perm(), infoAfter.Mode().Perm())
+	}
+}
+
+func TestOpenReadOnlyAllowsReadsAndRejectsWrites(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "readonly.db")
+
+	writableDB, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	repo := NewHistoryRepo(writableDB)
+	if _, err = repo.Insert(HistoryEntry{TsMs: 1000, Command: "echo seeded"}); err != nil {
+		_ = writableDB.Close()
+
+		t.Fatalf("Insert() error: %v", err)
+	}
+
+	if err = writableDB.Close(); err != nil {
+		t.Fatalf("Close() writable DB error: %v", err)
+	}
+
+	readOnlyDB, err := OpenReadOnly(dbPath)
+	if err != nil {
+		t.Fatalf("OpenReadOnly() error: %v", err)
+	}
+
+	defer func() { _ = readOnlyDB.Close() }()
+
+	readOnlyRepo := NewHistoryRepo(readOnlyDB)
+
+	entries, err := readOnlyRepo.ListAll()
+	if err != nil {
+		t.Fatalf("ListAll() error: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("ListAll() returned %d entries, want 1", len(entries))
+	}
+
+	_, err = readOnlyDB.ExecContext(
+		context.Background(),
+		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		2000, 0, 0, "echo should fail", "", "", "",
+	)
+	if err == nil {
+		t.Fatal("ExecContext() should fail for read-only database")
+	}
+
+	if !strings.Contains(strings.ToLower(err.Error()), "readonly") {
+		t.Fatalf("expected readonly error, got: %v", err)
+	}
+}
+
+func TestOpenReadOnlySupportsURIUnsafePathCharacters(t *testing.T) {
+	dbDir := filepath.Join(t.TempDir(), "dir with spaces")
+	if err := os.MkdirAll(dbDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+
+	dbPath := filepath.Join(dbDir, "history #1.db")
+
+	writableDB, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	if err = writableDB.Close(); err != nil {
+		t.Fatalf("Close() writable DB error: %v", err)
+	}
+
+	readOnlyDB, err := OpenReadOnly(dbPath)
+	if err != nil {
+		t.Fatalf("OpenReadOnly() error: %v", err)
+	}
+
+	defer func() { _ = readOnlyDB.Close() }()
+
+	if err = ValidateHistorySchema(readOnlyDB); err != nil {
+		t.Fatalf("ValidateHistorySchema() error: %v", err)
 	}
 }
 

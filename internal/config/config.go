@@ -120,13 +120,13 @@ func (c Config) Validate() error {
 }
 
 func (c Config) Save() error {
-	if err := paths.EnsureDirs(); err != nil {
-		return fmt.Errorf("ensuring config directories: %w", err)
-	}
-
 	configPath, err := paths.ConfigFile()
 	if err != nil {
 		return fmt.Errorf("resolving config file path: %w", err)
+	}
+
+	if err = paths.EnsureParentDir(configPath, 0o700); err != nil {
+		return fmt.Errorf("ensuring config directory for %q: %w", configPath, err)
 	}
 
 	f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)

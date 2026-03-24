@@ -48,6 +48,27 @@ func TestLoadMissingFile(t *testing.T) {
 	}
 }
 
+func TestLoadMissingFileCreatesCustomConfigParentDir(t *testing.T) {
+	dir := t.TempDir()
+	setTestHomes(t, dir)
+
+	configPath := filepath.Join(dir, "custom", "nested", "zgod.toml")
+	t.Setenv("ZGOD_CONFIG", configPath)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if !cfg.Filters.IgnoreSpace {
+		t.Error("missing custom config should return defaults")
+	}
+
+	if _, err = os.Stat(configPath); err != nil {
+		t.Fatalf("expected custom config file to be created: %v", err)
+	}
+}
+
 func TestLoadTOML(t *testing.T) {
 	dir := t.TempDir()
 	setTestHomes(t, dir)

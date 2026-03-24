@@ -86,6 +86,23 @@ func TestEnsureDirs(t *testing.T) {
 	}
 }
 
+func TestEnsureParentDir(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "config", "config.toml")
+
+	if err := EnsureParentDir(path, 0o700); err != nil {
+		t.Fatalf("EnsureParentDir() error: %v", err)
+	}
+
+	info, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("expected parent dir to exist: %v", err)
+	}
+
+	if !info.IsDir() {
+		t.Fatalf("%s is not a directory", filepath.Dir(path))
+	}
+}
+
 func TestExpandTilde(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {

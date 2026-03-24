@@ -54,6 +54,15 @@ func EnsureDirs() error {
 	return nil
 }
 
+func EnsureParentDir(path string, mode os.FileMode) error {
+	parentDir := filepath.Dir(path)
+	if err := os.MkdirAll(parentDir, mode); err != nil {
+		return fmt.Errorf("creating parent directory %q: %w", parentDir, err)
+	}
+
+	return nil
+}
+
 func ExpandTilde(path string) (string, error) {
 	if !strings.HasPrefix(path, "~") {
 		return path, nil

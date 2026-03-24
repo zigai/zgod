@@ -5,12 +5,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	sqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
+
+	"github.com/zigai/zgod/internal/paths"
 )
 
 var (
@@ -71,26 +75,50 @@ func OpenReadOnly(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("%w: %q", errDatabasePathIsDirectory, dbPath)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	readOnlyDSN, err := sqliteReadOnlyDSN(dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("opening sqlite database %q: %w", dbPath, err)
+		return nil, fmt.Errorf("building read-only sqlite DSN for %q: %w", dbPath, err)
 	}
 
-	if err = applySQLitePragmas(db, []string{
-		"PRAGMA query_only=ON",
-		fmt.Sprintf("PRAGMA busy_timeout=%d", sqliteBusyTimeoutMs),
-		"PRAGMA foreign_keys=ON",
-	}); err != nil {
-		_ = db.Close()
-		return nil, err
+	db, err := sql.Open("sqlite", readOnlyDSN)
+	if err != nil {
+		return nil, fmt.Errorf("opening sqlite database %q: %w", dbPath, err)
 	}
 
 	return db, nil
 }
 
+func sqliteReadOnlyDSN(dbPath string) (string, error) {
+	absolutePath, err := filepath.Abs(dbPath)
+	if err != nil {
+		return "", fmt.Errorf("building absolute path: %w", err)
+	}
+
+	uriPath := filepath.ToSlash(absolutePath)
+	if volume := filepath.VolumeName(absolutePath); volume != "" && !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+
+	query := url.Values{}
+	query.Set("mode", "ro")
+	query.Add("_pragma", "query_only(ON)")
+	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", sqliteBusyTimeoutMs))
+	query.Add("_pragma", "foreign_keys(ON)")
+
+	return (&url.URL{
+		Scheme:   "file",
+		Path:     uriPath,
+		RawQuery: query.Encode(),
+	}).String(), nil
+}
+
 func ensureFilePermissions(path string, mode os.FileMode) error {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
+		if err = paths.EnsureParentDir(path, 0o700); err != nil {
+			return fmt.Errorf("ensuring database parent directory for %q: %w", path, err)
+		}
+
 		f, createErr := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, mode)
 		if createErr != nil {
 			return fmt.Errorf("creating database file %q: %w", path, createErr)
@@ -106,6 +134,10 @@ func ensureFilePermissions(path string, mode os.FileMode) error {
 
 	if err != nil {
 		return fmt.Errorf("stating database file %q: %w", path, err)
+	}
+
+	if info.IsDir() {
+		return fmt.Errorf("%w: %q", errDatabasePathIsDirectory, path)
 	}
 
 	if info.Mode().Perm() != mode {
