@@ -7,11 +7,15 @@ import (
 	"os"
 )
 
-func openTTY() (*os.File, error) {
+func openTTY() (input *os.File, output *os.File, cleanup func(), err error) {
 	f, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
-		return nil, fmt.Errorf("opening /dev/tty: %w", err)
+		return nil, nil, nil, fmt.Errorf("opening /dev/tty: %w", err)
 	}
 
-	return f, nil
+	cleanup = func() {
+		_ = f.Close()
+	}
+
+	return f, f, cleanup, nil
 }

@@ -33,7 +33,8 @@ const (
 type searchContext struct {
 	cfg     config.Config
 	model   *tui.Model
-	tty     *os.File
+	ttyIn   *os.File
+	ttyOut  *os.File
 	cleanup func()
 }
 
@@ -66,8 +67,8 @@ func doSearch(cmd *cobra.Command) (int, error) {
 
 	p := tea.NewProgram(
 		ctx.model,
-		tea.WithInput(ctx.tty),
-		tea.WithOutput(ctx.tty),
+		tea.WithInput(ctx.ttyIn),
+		tea.WithOutput(ctx.ttyOut),
 	)
 
 	finalModel, err := p.Run()
@@ -102,23 +103,23 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	height, _ := cmd.Flags().GetInt("height")
 	query, _ := cmd.Flags().GetString("query")
 
-	tty, err := openTTY()
+	ttyIn, ttyOut, ttyCleanup, err := openTTY()
 	if err != nil {
 		_ = database.Close()
 		return searchContext{}, fmt.Errorf("opening TTY: %w", err)
 	}
 
 	profile := termenv.TrueColor
-	output := termenv.NewOutput(tty, termenv.WithProfile(profile))
+	output := termenv.NewOutput(ttyOut, termenv.WithProfile(profile))
 	termenv.SetDefaultOutput(output)
 
-	renderer := lipgloss.NewRenderer(tty)
+	renderer := lipgloss.NewRenderer(ttyOut)
 	renderer.SetColorProfile(profile)
 	lipgloss.SetDefaultRenderer(renderer)
 
 	cwd, err := os.Getwd()
 	if err != nil {
-		_ = tty.Close()
+		ttyCleanup()
 		_ = database.Close()
 
 		return searchContext{}, fmt.Errorf("getting current directory: %w", err)
@@ -126,7 +127,7 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		_ = tty.Close()
+		ttyCleanup()
 		_ = database.Close()
 
 		return searchContext{}, fmt.Errorf("getting home directory: %w", err)
@@ -135,14 +136,15 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	repo := db.NewHistoryRepo(database)
 	model := tui.NewModel(cfg, repo, cwd, homeDir, height, cwdFlag, query)
 	cleanup := func() {
-		_ = tty.Close()
+		ttyCleanup()
 		_ = database.Close()
 	}
 
 	return searchContext{
 		cfg:     cfg,
 		model:   model,
-		tty:     tty,
+		ttyIn:   ttyIn,
+		ttyOut:  ttyOut,
 		cleanup: cleanup,
 	}, nil
 }
