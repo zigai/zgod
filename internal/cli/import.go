@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -128,10 +130,6 @@ func resolveTargetImportPath() (string, error) {
 }
 
 func openImportDatabases(targetPath string, sourcePath string) (*sql.DB, *sql.DB, error) {
-	if err := requireImportAuthentication(); err != nil {
-		return nil, nil, fmt.Errorf("authenticating import: %w", err)
-	}
-
 	if err := paths.EnsureDirs(); err != nil {
 		return nil, nil, fmt.Errorf("ensuring directories: %w", err)
 	}
@@ -144,7 +142,7 @@ func openImportDatabases(targetPath string, sourcePath string) (*sql.DB, *sql.DB
 	sourceDB, err := db.OpenReadOnly(sourcePath)
 	if err != nil {
 		_ = targetDB.Close()
-		return nil, nil, fmt.Errorf("opening source database: %w", err)
+		return nil, nil, wrapImportSourceAccessError("opening", sourcePath, err)
 	}
 
 	if err = db.ValidateHistorySchema(sourceDB); err != nil {
@@ -221,10 +219,42 @@ func resolveExistingPath(args []string) (string, error) {
 			return "", fmt.Errorf("%w: %q", errImportSourceNotFound, path)
 		}
 
-		return "", fmt.Errorf("stating source database %q: %w", path, err)
+		return "", wrapImportSourceAccessError("stating", path, err)
 	}
 
 	return path, nil
+}
+
+func wrapImportSourceAccessError(action string, sourcePath string, err error) error {
+	if !isPermissionDeniedError(err) {
+		return fmt.Errorf("%s source database %q: %w", action, sourcePath, err)
+	}
+
+	return fmt.Errorf(
+		"%s source database %q: permission denied; %s: %w",
+		action,
+		sourcePath,
+		importSourcePermissionHint(),
+		err,
+	)
+}
+
+func isPermissionDeniedError(err error) bool {
+	if errors.Is(err, os.ErrPermission) {
+		return true
+	}
+
+	message := strings.ToLower(err.Error())
+
+	return strings.Contains(message, "permission denied") || strings.Contains(message, "access is denied")
+}
+
+func importSourcePermissionHint() string {
+	if runtime.GOOS == "windows" {
+		return "rerun from an elevated terminal or adjust file permissions"
+	}
+
+	return "rerun the command with sudo or adjust file permissions"
 }
 
 func normalizePath(path string) (string, error) {
