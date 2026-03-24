@@ -9,6 +9,8 @@ __zgod_command=""
 __zgod_start_ms=""
 __zgod_preexec_fired=""
 __zgod_in_hook=""
+__zgod_original_prompt_command=""
+__zgod_ready=""
 
 __zgod_has_command() {
     command -v zgod &>/dev/null
@@ -36,7 +38,36 @@ __zgod_get_time_ms() {
     fi
 }
 
+__zgod_get_recorded_command() {
+    local history_command
+    history_command=$(fc -ln -1 2>/dev/null)
+    if [[ -n "$history_command" ]]; then
+        history_command=${history_command#"${history_command%%[![:space:]]*}"}
+        printf '%s' "$history_command"
+        return
+    fi
+
+    printf '%s' "$__zgod_command"
+}
+
+__zgod_restore_exit_code() {
+    return "$1"
+}
+
+__zgod_run_original_prompt_command() {
+    local exit_code=$1
+    if [[ -z "$__zgod_original_prompt_command" ]]; then
+        return
+    fi
+
+    __zgod_restore_exit_code "$exit_code"
+    eval "$__zgod_original_prompt_command"
+}
+
 __zgod_preexec() {
+    if [[ -z "$__zgod_ready" ]]; then
+        return
+    fi
     if [[ -n "$__zgod_preexec_fired" ]]; then
         return
     fi
@@ -52,7 +83,7 @@ __zgod_preexec() {
     if [[ "$BASH_COMMAND" == "zgod" || "$BASH_COMMAND" == zgod\ * ]]; then
         return
     fi
-    if [[ "$BASH_COMMAND" == _* ]]; then
+    if [[ "$BASH_COMMAND" == "__zgod_"* ]]; then
         return
     fi
     __zgod_preexec_fired=1
@@ -63,29 +94,24 @@ __zgod_preexec() {
 
 __zgod_prompt_command() {
     local exit_code=$?
+    local command
     __zgod_in_hook=1
-    if [[ -z "$__zgod_command" ]]; then
-        __zgod_preexec_fired=""
-        __zgod_in_hook=""
-        return
-    fi
 
-    if ! __zgod_has_command; then
-        __zgod_command=""
-        __zgod_preexec_fired=""
-        __zgod_in_hook=""
-        return
+    if [[ -n "$__zgod_command" ]]; then
+        command=$(__zgod_get_recorded_command)
+        if [[ -n "$command" ]] && __zgod_has_command; then
+            zgod record \
+                --ts "$__zgod_start_ms" \
+                --exit-code "$exit_code" \
+                --command "$command" \
+                --directory "$PWD" \
+                --session "$__zgod_session_id" & disown
+        fi
     fi
-
-    zgod record \
-        --ts "$__zgod_start_ms" \
-        --exit-code "$exit_code" \
-        --command "$__zgod_command" \
-        --directory "$PWD" \
-        --session "$__zgod_session_id" & disown
 
     __zgod_command=""
     __zgod_preexec_fired=""
+    __zgod_run_original_prompt_command "$exit_code"
     __zgod_in_hook=""
 }
 
@@ -109,7 +135,9 @@ __zgod_search() {
     __zgod_in_hook=""
 }
 
+__zgod_original_prompt_command="${PROMPT_COMMAND}"
 trap '__zgod_preexec' DEBUG
-PROMPT_COMMAND="__zgod_prompt_command;${PROMPT_COMMAND}"
+PROMPT_COMMAND="__zgod_prompt_command"
 
 bind -x '"\C-r": __zgod_search'
+__zgod_ready=1
