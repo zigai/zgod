@@ -18,26 +18,38 @@ var (
 
 const windowsDrivePrefixLength = 3
 
+type pathRequirement int
+
+const (
+	pathParentMustExist pathRequirement = iota
+	pathMustExist
+)
+
+type pathCandidate struct {
+	value       string
+	requirement pathRequirement
+}
+
 func commandReferencesExistingPaths(command string, workingDirectory string) (bool, error) {
 	tokens, err := splitCommandTokens(command)
 	if err != nil {
 		tokens = strings.Fields(command)
 	}
 
-	pathCandidates := extractPathCandidates(tokens)
+	pathCandidates := extractPathCandidates(tokens, workingDirectory)
 	if len(pathCandidates) == 0 {
 		return true, nil
 	}
 
 	for _, candidate := range pathCandidates {
-		resolvedPath, resolveErr := resolveCommandPath(candidate, workingDirectory)
+		resolvedPath, resolveErr := resolveCommandPath(candidate.value, workingDirectory)
 		if resolveErr != nil {
-			return false, fmt.Errorf("resolving path candidate %q: %w", candidate, resolveErr)
+			return false, fmt.Errorf("resolving path candidate %q: %w", candidate.value, resolveErr)
 		}
 
-		exists, existsErr := commandPathExists(resolvedPath)
+		exists, existsErr := commandPathMatchesRequirement(resolvedPath, candidate.requirement)
 		if existsErr != nil {
-			return false, fmt.Errorf("checking path candidate %q: %w", candidate, existsErr)
+			return false, fmt.Errorf("checking path candidate %q: %w", candidate.value, existsErr)
 		}
 
 		if !exists {
@@ -48,44 +60,135 @@ func commandReferencesExistingPaths(command string, workingDirectory string) (bo
 	return true, nil
 }
 
-func extractPathCandidates(tokens []string) []string {
-	seen := map[string]bool{}
-	candidates := make([]string, 0, len(tokens))
+func extractPathCandidates(tokens []string, workingDirectory string) []pathCandidate {
+	commandName, commandIndex := primaryCommand(tokens)
+	gitSubcommand := ""
+	afterDoubleDash := false
+	expectSedExpression := false
+	sedScriptConsumed := false
 
-	for _, token := range tokens {
-		pathCandidate, ok := pathCandidateFromToken(token)
-		if !ok || seen[pathCandidate] {
+	seen := map[string]pathRequirement{}
+
+	var pendingRequirement pathRequirement
+	hasPendingRequirement := false
+
+	for index, rawToken := range tokens {
+		token := strings.TrimSpace(rawToken)
+		if token == "" {
 			continue
 		}
 
-		seen[pathCandidate] = true
-		candidates = append(candidates, pathCandidate)
+		if hasPendingRequirement {
+			addPathCandidate(seen, token, pendingRequirement)
+			hasPendingRequirement = false
+
+			continue
+		}
+
+		if candidate, ok := pathCandidateFromInlineRedirection(token); ok {
+			addPathCandidate(seen, candidate.value, candidate.requirement)
+
+			continue
+		}
+
+		if requirement, ok := redirectionRequirement(token); ok {
+			pendingRequirement = requirement
+			hasPendingRequirement = true
+
+			continue
+		}
+
+		if token == "--" {
+			afterDoubleDash = true
+
+			continue
+		}
+
+		if index == commandIndex && !strings.HasPrefix(token, "-") {
+			if isPathLike(token) {
+				addPathCandidate(seen, token, pathMustExist)
+			}
+
+			continue
+		}
+
+		if commandName == "git" && index > commandIndex && gitSubcommand == "" && !strings.HasPrefix(token, "-") {
+			gitSubcommand = token
+
+			continue
+		}
+
+		if commandName == "sed" && expectSedExpression {
+			expectSedExpression = false
+
+			continue
+		}
+
+		if candidate, ok := pathCandidateFromFlagAssignment(token, workingDirectory); ok {
+			addPathCandidate(seen, candidate.value, candidate.requirement)
+
+			continue
+		}
+
+		if candidate, ok := pathCandidateFromPathFlag(token); ok {
+			if candidate.value != "" {
+				addPathCandidate(seen, candidate.value, candidate.requirement)
+			} else {
+				pendingRequirement = candidate.requirement
+				hasPendingRequirement = true
+			}
+
+			continue
+		}
+
+		if shouldSkipGitRefToken(commandName, gitSubcommand, token, afterDoubleDash) {
+			continue
+		}
+
+		if shouldSkipSedToken(commandName, token, &sedScriptConsumed, &expectSedExpression) {
+			continue
+		}
+
+		if requirement, ok := contextualPathRequirement(
+			commandName,
+			token,
+			index,
+			commandIndex,
+			workingDirectory,
+			sedScriptConsumed,
+		); ok {
+			addPathCandidate(seen, token, requirement)
+
+			continue
+		}
+
+		if isPathLike(token) {
+			addPathCandidate(seen, token, pathMustExist)
+		}
+	}
+
+	candidates := make([]pathCandidate, 0, len(seen))
+	for value, requirement := range seen {
+		candidates = append(candidates, pathCandidate{
+			value:       value,
+			requirement: requirement,
+		})
 	}
 
 	return candidates
 }
 
-func pathCandidateFromToken(token string) (string, bool) {
-	token = strings.TrimSpace(token)
-	if token == "" || strings.Contains(token, "://") {
-		return "", false
+func addPathCandidate(seen map[string]pathRequirement, value string, requirement pathRequirement) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return
 	}
 
-	candidate := token
-	if strings.HasPrefix(candidate, "-") && strings.Contains(candidate, "=") {
-		_, value, found := strings.Cut(candidate, "=")
-		if !found {
-			return "", false
-		}
-
-		candidate = strings.TrimSpace(value)
+	if existing, ok := seen[value]; ok && existing >= requirement {
+		return
 	}
 
-	if !isPathLike(candidate) {
-		return "", false
-	}
-
-	return candidate, true
+	seen[value] = requirement
 }
 
 func isPathLike(path string) bool {
@@ -93,15 +196,320 @@ func isPathLike(path string) bool {
 		return false
 	}
 
+	if strings.Contains(path, "://") ||
+		looksLikeRemotePath(path) ||
+		looksLikeSedScript(path) ||
+		looksLikeCompositeOptionValue(path) {
+		return false
+	}
+
 	if strings.HasPrefix(path, "/") ||
 		strings.HasPrefix(path, "./") ||
 		strings.HasPrefix(path, "../") ||
 		strings.HasPrefix(path, "~/") ||
+		path == "." ||
+		path == ".." ||
 		hasWindowsDrivePrefix(path) {
 		return true
 	}
 
 	return strings.ContainsRune(path, '/') || strings.ContainsRune(path, '\\')
+}
+
+func looksLikeRemotePath(path string) bool {
+	if hasWindowsDrivePrefix(path) {
+		return false
+	}
+
+	colonIndex := strings.IndexRune(path, ':')
+	if colonIndex <= 0 || colonIndex >= len(path)-1 {
+		return false
+	}
+
+	prefix := path[:colonIndex]
+	if strings.ContainsRune(prefix, '/') || strings.ContainsRune(prefix, '\\') {
+		return false
+	}
+
+	remainder := path[colonIndex+1:]
+
+	return strings.ContainsRune(remainder, '/') || strings.ContainsRune(remainder, '\\')
+}
+
+func looksLikeSedScript(path string) bool {
+	if len(path) < 4 {
+		return false
+	}
+
+	return strings.HasPrefix(path, "s/") && strings.Count(path, "/") >= 3
+}
+
+func looksLikeCompositeOptionValue(path string) bool {
+	return strings.ContainsRune(path, ',') && strings.ContainsRune(path, '=')
+}
+
+func primaryCommand(tokens []string) (string, int) {
+	for index, rawToken := range tokens {
+		token := strings.TrimSpace(rawToken)
+		if token == "" {
+			continue
+		}
+
+		if token == "sudo" ||
+			token == "command" ||
+			token == "builtin" ||
+			token == "nohup" ||
+			token == "time" ||
+			token == "env" ||
+			isEnvironmentAssignment(token) {
+			continue
+		}
+
+		return filepath.Base(token), index
+	}
+
+	return "", -1
+}
+
+func isEnvironmentAssignment(token string) bool {
+	if token == "" || strings.HasPrefix(token, "=") {
+		return false
+	}
+
+	name, _, found := strings.Cut(token, "=")
+	if !found || name == "" {
+		return false
+	}
+
+	for index, char := range name {
+		if index == 0 {
+			if !unicode.IsLetter(char) && char != '_' {
+				return false
+			}
+
+			continue
+		}
+
+		if !unicode.IsLetter(char) && !unicode.IsDigit(char) && char != '_' {
+			return false
+		}
+	}
+
+	return true
+}
+
+func pathCandidateFromFlagAssignment(token string, workingDirectory string) (pathCandidate, bool) {
+	if !strings.HasPrefix(token, "-") || !strings.Contains(token, "=") {
+		return pathCandidate{}, false
+	}
+
+	name, value, found := strings.Cut(token, "=")
+	if !found {
+		return pathCandidate{}, false
+	}
+
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return pathCandidate{}, false
+	}
+
+	if requirement, ok := pathRequirementForFlag(name); ok {
+		return pathCandidate{value: value, requirement: requirement}, true
+	}
+
+	if isPathLike(value) || bareTokenResolvesToExistingPath(value, workingDirectory) {
+		return pathCandidate{value: value, requirement: pathMustExist}, true
+	}
+
+	return pathCandidate{}, false
+}
+
+func pathCandidateFromPathFlag(token string) (pathCandidate, bool) {
+	if token == "-C" || token == "--directory" {
+		return pathCandidate{requirement: pathMustExist}, true
+	}
+
+	if strings.HasPrefix(token, "-C") && len(token) > 2 {
+		return pathCandidate{value: token[2:], requirement: pathMustExist}, true
+	}
+
+	if strings.HasPrefix(token, "--directory=") {
+		return pathCandidate{
+			value:       strings.TrimSpace(strings.TrimPrefix(token, "--directory=")),
+			requirement: pathMustExist,
+		}, true
+	}
+
+	return pathCandidate{}, false
+}
+
+func pathRequirementForFlag(name string) (pathRequirement, bool) {
+	switch name {
+	case "--dir", "--directory", "--file", "--input", "--path":
+		return pathMustExist, true
+	case "--output", "--out":
+		return pathParentMustExist, true
+	default:
+		return 0, false
+	}
+}
+
+func shouldSkipGitRefToken(commandName string, gitSubcommand string, token string, afterDoubleDash bool) bool {
+	if commandName != "git" || afterDoubleDash {
+		return false
+	}
+
+	switch gitSubcommand {
+	case "checkout", "switch":
+		return !strings.HasPrefix(token, "/") &&
+			!strings.HasPrefix(token, "./") &&
+			!strings.HasPrefix(token, "../") &&
+			!strings.HasPrefix(token, "~/") &&
+			!hasWindowsDrivePrefix(token)
+	default:
+		return false
+	}
+}
+
+func shouldSkipSedToken(
+	commandName string,
+	token string,
+	sedScriptConsumed *bool,
+	expectSedExpression *bool,
+) bool {
+	if commandName != "sed" {
+		return false
+	}
+
+	if token == "-e" || token == "--expression" {
+		*expectSedExpression = true
+
+		return true
+	}
+
+	if token == "-f" || token == "--file" {
+		return false
+	}
+
+	if strings.HasPrefix(token, "-") {
+		return true
+	}
+
+	if !*sedScriptConsumed {
+		*sedScriptConsumed = true
+
+		return true
+	}
+
+	return false
+}
+
+func contextualPathRequirement(
+	commandName string,
+	token string,
+	index int,
+	commandIndex int,
+	workingDirectory string,
+	sedScriptConsumed bool,
+) (pathRequirement, bool) {
+	if token == "" || token == "-" {
+		return 0, false
+	}
+
+	if commandName == "cd" || commandName == "pushd" {
+		if index == commandIndex+1 {
+			return pathMustExist, true
+		}
+	}
+
+	if isEditorCommand(commandName) && !strings.HasPrefix(token, "-") {
+		return pathParentMustExist, true
+	}
+
+	if commandName == "sed" && sedScriptConsumed && !strings.HasPrefix(token, "-") {
+		return pathMustExist, true
+	}
+
+	if bareTokenResolvesToExistingPath(token, workingDirectory) {
+		return pathMustExist, true
+	}
+
+	return 0, false
+}
+
+func isEditorCommand(commandName string) bool {
+	switch commandName {
+	case "code", "emacs", "nano", "nvim", "vi", "vim":
+		return true
+	default:
+		return false
+	}
+}
+
+func bareTokenResolvesToExistingPath(token string, workingDirectory string) bool {
+	if token == "" ||
+		token == "-" ||
+		strings.HasPrefix(token, "-") ||
+		strings.ContainsRune(token, '=') ||
+		strings.ContainsRune(token, ':') ||
+		strings.ContainsRune(token, ',') {
+		return false
+	}
+
+	resolvedPath, err := resolveCommandPath(token, workingDirectory)
+	if err != nil {
+		return false
+	}
+
+	exists, err := commandPathExists(resolvedPath)
+
+	return err == nil && exists
+}
+
+func redirectionRequirement(token string) (pathRequirement, bool) {
+	switch token {
+	case "<", "0<":
+		return pathMustExist, true
+	case ">", ">>", "1>", "1>>", "2>", "2>>", "&>", "&>>":
+		return pathParentMustExist, true
+	default:
+		return 0, false
+	}
+}
+
+func pathCandidateFromInlineRedirection(token string) (pathCandidate, bool) {
+	if strings.HasPrefix(token, "<<") || strings.HasPrefix(token, "<<<") {
+		return pathCandidate{}, false
+	}
+
+	operators := []struct {
+		prefix      string
+		requirement pathRequirement
+	}{
+		{prefix: "&>>", requirement: pathParentMustExist},
+		{prefix: "1>>", requirement: pathParentMustExist},
+		{prefix: "2>>", requirement: pathParentMustExist},
+		{prefix: ">>", requirement: pathParentMustExist},
+		{prefix: "&>", requirement: pathParentMustExist},
+		{prefix: "1>", requirement: pathParentMustExist},
+		{prefix: "2>", requirement: pathParentMustExist},
+		{prefix: "0<", requirement: pathMustExist},
+		{prefix: ">", requirement: pathParentMustExist},
+		{prefix: "<", requirement: pathMustExist},
+	}
+
+	for _, operator := range operators {
+		if !strings.HasPrefix(token, operator.prefix) || len(token) == len(operator.prefix) {
+			continue
+		}
+
+		return pathCandidate{
+			value:       strings.TrimSpace(token[len(operator.prefix):]),
+			requirement: operator.requirement,
+		}, true
+	}
+
+	return pathCandidate{}, false
 }
 
 func hasWindowsDrivePrefix(path string) bool {
@@ -138,6 +546,16 @@ func resolveCommandPath(pathCandidate string, workingDirectory string) (string, 
 	}
 
 	return filepath.Clean(filepath.Join(workingDirectory, expandedPath)), nil
+}
+
+func commandPathMatchesRequirement(path string, requirement pathRequirement) (bool, error) {
+	if requirement == pathParentMustExist {
+		parent := filepath.Dir(path)
+
+		return commandPathExists(parent)
+	}
+
+	return commandPathExists(path)
 }
 
 func commandPathExists(path string) (bool, error) {
