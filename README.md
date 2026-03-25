@@ -79,7 +79,7 @@ if command -v zgod >/dev/null 2>&1; then eval "$(zgod init bash)"; fi
 if command -v zgod >/dev/null 2>&1; then eval "$(zgod init zsh)"; fi
 ```
 
-**Fish** (`~/.config/fish/config.fish`)
+**Fish** (`~/.config/fish/conf.d/zgod.fish`)
 
 ```fish
 type -q zgod; and zgod init fish | source
