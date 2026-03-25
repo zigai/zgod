@@ -120,6 +120,7 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		ttyCleanup()
+
 		_ = database.Close()
 
 		return searchContext{}, fmt.Errorf("getting current directory: %w", err)
@@ -128,6 +129,7 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		ttyCleanup()
+
 		_ = database.Close()
 
 		return searchContext{}, fmt.Errorf("getting home directory: %w", err)
@@ -137,6 +139,7 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	model := tui.NewModel(cfg, repo, cwd, homeDir, height, cwdFlag, query)
 	cleanup := func() {
 		ttyCleanup()
+
 		_ = database.Close()
 	}
 
