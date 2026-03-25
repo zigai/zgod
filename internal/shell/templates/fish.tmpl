@@ -1,7 +1,7 @@
 # zgod shell integration for fish
 # type -q zgod; and zgod init fish | source
 {{if .ConfigPath}}
-set -gx ZGOD_CONFIG "{{.ConfigPath}}"
+set -gx ZGOD_CONFIG {{fishQuote .ConfigPath}}
 {{end}}
 
 set -g __zgod_session_id ""

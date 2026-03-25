@@ -1,7 +1,7 @@
 # zgod shell integration for zsh
 # if command -v zgod >/dev/null 2>&1; then eval "$(zgod init zsh)"; fi
 {{if .ConfigPath}}
-export ZGOD_CONFIG="{{.ConfigPath}}"
+export ZGOD_CONFIG={{zshQuote .ConfigPath}}
 {{end}}
 
 __zgod_session_id=""

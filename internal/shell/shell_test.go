@@ -1,6 +1,8 @@
 package shell
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,6 +11,8 @@ import (
 	"testing"
 	"time"
 )
+
+var errRecordedCommandTimeout = errors.New("timed out waiting for recorded commands")
 
 func TestParse(t *testing.T) {
 	tests := []struct {
@@ -77,7 +81,7 @@ func TestSetupLine(t *testing.T) {
 			name:       "fish with config",
 			shell:      Fish,
 			configPath: "/custom/config.toml",
-			want:       `type -q zgod; and zgod init fish --config '/custom/config.toml' | source`,
+			want:       `type -q zgod; and zgod init fish --config "/custom/config.toml" | source`,
 		},
 		{
 			name:       "powershell without config",
@@ -98,6 +102,49 @@ func TestSetupLine(t *testing.T) {
 			got := setupLine(tt.shell, tt.configPath)
 			if got != tt.want {
 				t.Errorf("setupLine(%v, %q) = %q, want %q", tt.shell, tt.configPath, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetupLineEscapesConfigPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		shell      Shell
+		configPath string
+		want       string
+	}{
+		{
+			name:       "bash",
+			shell:      Bash,
+			configPath: `/tmp/o'hare$cfg`,
+			want:       `if command -v zgod >/dev/null 2>&1; then eval "$(zgod init bash --config '/tmp/o'\''hare$cfg')"; fi`,
+		},
+		{
+			name:       "zsh",
+			shell:      Zsh,
+			configPath: `/tmp/o'hare$cfg`,
+			want:       `if command -v zgod >/dev/null 2>&1; then eval "$(zgod init zsh --config '/tmp/o'\''hare$cfg')"; fi`,
+		},
+		{
+			name:       "fish",
+			shell:      Fish,
+			configPath: `/tmp/$HOME"cfg`,
+			want:       `type -q zgod; and zgod init fish --config "/tmp/\$HOME\"cfg" | source`,
+		},
+		{
+			name:       "powershell",
+			shell:      PowerShell,
+			configPath: `C:\tmp\o'hare`,
+			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell --config 'C:\tmp\o''hare') }`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := setupLine(tt.shell, tt.configPath)
+			if got != tt.want {
+				t.Fatalf("setupLine(%v, %q) = %q, want %q", tt.shell, tt.configPath, got, tt.want)
 			}
 		})
 	}
@@ -159,7 +206,7 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 			mustContain: []string{
 				"function __zgod_has_command",
 				"if (-not (__zgod_has_command)) {",
-				"zgod record",
+				"$psi.FileName = \"zgod\"",
 				"$selected = zgod search",
 			},
 		},
@@ -196,6 +243,125 @@ func TestInitScriptWithConfig(t *testing.T) {
 
 		if !strings.Contains(script, "/custom/config.toml") {
 			t.Errorf("InitScript(%v) output doesn't contain config path", s)
+		}
+	}
+}
+
+func TestInitScriptEscapesConfigPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		shell      Shell
+		configPath string
+		want       string
+	}{
+		{
+			name:       "bash",
+			shell:      Bash,
+			configPath: `/tmp/o'hare$cfg`,
+			want:       `export ZGOD_CONFIG='/tmp/o'\''hare$cfg'`,
+		},
+		{
+			name:       "zsh",
+			shell:      Zsh,
+			configPath: `/tmp/o'hare$cfg`,
+			want:       `export ZGOD_CONFIG='/tmp/o'\''hare$cfg'`,
+		},
+		{
+			name:       "fish",
+			shell:      Fish,
+			configPath: `/tmp/$HOME"cfg`,
+			want:       `set -gx ZGOD_CONFIG "/tmp/\$HOME\"cfg"`,
+		},
+		{
+			name:       "powershell",
+			shell:      PowerShell,
+			configPath: `C:\tmp\o'hare`,
+			want:       `$env:ZGOD_CONFIG = 'C:\tmp\o''hare'`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			script, err := InitScript(tt.shell, InitOptions{ConfigPath: tt.configPath})
+			if err != nil {
+				t.Fatalf("InitScript(%v) error: %v", tt.shell, err)
+			}
+
+			if !strings.Contains(script, tt.want) {
+				t.Fatalf("InitScript(%v) output doesn't contain %q", tt.shell, tt.want)
+			}
+		})
+	}
+}
+
+func TestPowerShellInitScriptTracksPowerShellFailures(t *testing.T) {
+	script, err := InitScript(PowerShell, InitOptions{})
+	if err != nil {
+		t.Fatalf("InitScript(PowerShell) error: %v", err)
+	}
+
+	mustContain := []string{
+		"$global:LASTEXITCODE = 0",
+		"$success = $?",
+		"$lastExitCode = $LASTEXITCODE",
+		"$exitCode = __zgod_resolve_exit_code $success $lastExitCode",
+		"if ($success) { return 0 }",
+		"return 1",
+	}
+
+	for _, needle := range mustContain {
+		if !strings.Contains(script, needle) {
+			t.Fatalf("InitScript(PowerShell) output doesn't contain %q", needle)
+		}
+	}
+}
+
+func TestPowerShellInitScriptDoesNotCreateJobsPerCommand(t *testing.T) {
+	script, err := InitScript(PowerShell, InitOptions{})
+	if err != nil {
+		t.Fatalf("InitScript(PowerShell) error: %v", err)
+	}
+
+	if strings.Contains(script, "Start-Job") {
+		t.Fatal("InitScript(PowerShell) should not use Start-Job")
+	}
+
+	mustContain := []string{
+		"function __zgod_record_async",
+		"[System.Diagnostics.ProcessStartInfo]::new()",
+		"[void][System.Diagnostics.Process]::Start($psi)",
+	}
+
+	for _, needle := range mustContain {
+		if !strings.Contains(script, needle) {
+			t.Fatalf("InitScript(PowerShell) output doesn't contain %q", needle)
+		}
+	}
+}
+
+func TestPowerShellInitScriptChecksPSReadLineBeforeHandlers(t *testing.T) {
+	script, err := InitScript(PowerShell, InitOptions{})
+	if err != nil {
+		t.Fatalf("InitScript(PowerShell) error: %v", err)
+	}
+
+	guardIdx := strings.Index(script, "if (Get-Module -Name PSReadLine) {")
+	if guardIdx < 0 {
+		t.Fatal("InitScript(PowerShell) should guard PSReadLine usage")
+	}
+
+	for _, needle := range []string{
+		"Set-PSReadLineKeyHandler",
+		"Set-PSReadLineOption -AddToHistoryHandler",
+		"$originalPrompt = $function:prompt",
+	} {
+		idx := strings.Index(script, needle)
+		if idx < 0 {
+			t.Fatalf("InitScript(PowerShell) output doesn't contain %q", needle)
+		}
+
+		if idx < guardIdx {
+			t.Fatalf("InitScript(PowerShell) uses %q before checking PSReadLine", needle)
 		}
 	}
 }
@@ -244,6 +410,7 @@ func TestBashInitScriptIgnoresExistingPromptCommand(t *testing.T) {
 		promptCommand: "echo oldpc >/dev/null",
 		command:       "echo one\necho two",
 	})
+
 	want := []string{"echo one", "echo two"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("recorded commands = %q, want %q", got, want)
@@ -327,15 +494,20 @@ fi
 	if opts.prelude != "" {
 		rcContent += opts.prelude + "\n"
 	}
+
 	if opts.promptCommand != "" {
 		rcContent += fmt.Sprintf("PROMPT_COMMAND=%q\n", opts.promptCommand)
 	}
+
 	rcContent += initScript
 	if err := os.WriteFile(rcPath, []byte(rcContent), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) error: %v", rcPath, err)
 	}
 
-	cmd := exec.Command("bash", "--noprofile", "--rcfile", rcPath, "-i")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bash", "--noprofile", "--rcfile", rcPath, "-i")
 	cmd.Dir = tempDir
 	cmd.Env = append(
 		os.Environ(),
@@ -366,21 +538,23 @@ func waitForRecordedCommands(path string) ([]string, error) {
 		data, err := os.ReadFile(path)
 		if err == nil {
 			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+
 			recorded := make([]string, 0, len(lines))
-			for i := 0; i < len(lines); i++ {
+			for i := range lines {
 				if lines[i] != "" {
 					recorded = append(recorded, lines[i])
 				}
 			}
+
 			if len(recorded) > 0 {
 				return recorded, nil
 			}
 		} else if !os.IsNotExist(err) {
-			return nil, err
+			return nil, fmt.Errorf("reading recorded commands from %q: %w", path, err)
 		}
 
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	return nil, fmt.Errorf("timed out waiting for %s", path)
+	return nil, fmt.Errorf("%w: %s", errRecordedCommandTimeout, path)
 }

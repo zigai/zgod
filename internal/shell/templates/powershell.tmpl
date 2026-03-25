@@ -1,7 +1,7 @@
 # zgod shell integration for PowerShell
 # if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }
 {{if .ConfigPath}}
-$env:ZGOD_CONFIG = "{{.ConfigPath}}"
+$env:ZGOD_CONFIG = {{powerShellQuote .ConfigPath}}
 {{end}}
 
 $script:__zgod_session_id = ""
@@ -28,12 +28,54 @@ function __zgod_preexec {
     if ($script:__zgod_in_hook) { return }
     if (-not $line -or $line -match '^\s*$') { return }
     if ($line -match '^zgod(\s|$)') { return }
+    $global:LASTEXITCODE = 0
     __zgod_init
     $script:__zgod_command = $line
     $script:__zgod_start_ms = __zgod_get_time_ms
 }
 
+function __zgod_resolve_exit_code {
+    param(
+        [bool]$success,
+        [object]$lastExitCode
+    )
+
+    if ($success) { return 0 }
+    if ($null -ne $lastExitCode -and [int]$lastExitCode -ne 0) { return [int]$lastExitCode }
+    return 1
+}
+
+function __zgod_record_async {
+    param(
+        [string]$cmd,
+        [long]$ts,
+        [int]$exitCode,
+        [string]$dir,
+        [string]$session
+    )
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = "zgod"
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $null = $psi.ArgumentList.Add("record")
+    $null = $psi.ArgumentList.Add("--ts")
+    $null = $psi.ArgumentList.Add("$ts")
+    $null = $psi.ArgumentList.Add("--exit-code")
+    $null = $psi.ArgumentList.Add("$exitCode")
+    $null = $psi.ArgumentList.Add("--command")
+    $null = $psi.ArgumentList.Add($cmd)
+    $null = $psi.ArgumentList.Add("--directory")
+    $null = $psi.ArgumentList.Add($dir)
+    $null = $psi.ArgumentList.Add("--session")
+    $null = $psi.ArgumentList.Add($session)
+
+    [void][System.Diagnostics.Process]::Start($psi)
+}
+
 function __zgod_postexec {
+    $success = $?
+    $lastExitCode = $LASTEXITCODE
     if ($script:__zgod_in_hook) { return }
     if (-not $script:__zgod_command) { return }
     $script:__zgod_in_hook = $true
@@ -46,57 +88,53 @@ function __zgod_postexec {
 
     $cmd = $script:__zgod_command
     $ts = $script:__zgod_start_ms
-    $exitCode = $LASTEXITCODE
-    if ($null -eq $exitCode) { $exitCode = 0 }
+    $exitCode = __zgod_resolve_exit_code $success $lastExitCode
     $dir = $PWD.Path
     $session = $script:__zgod_session_id
 
-    Start-Job -ScriptBlock {
-        param($cmd, $ts, $exitCode, $dir, $session)
-        zgod record --ts $ts --exit-code $exitCode --command $cmd --directory $dir --session $session
-    } -ArgumentList $cmd, $ts, $exitCode, $dir, $session | Out-Null
+    __zgod_record_async $cmd $ts $exitCode $dir $session
 
     $script:__zgod_command = ""
     $script:__zgod_in_hook = $false
 }
 
-function __zgod_search {
-    $script:__zgod_in_hook = $true
-
-    if (-not (__zgod_has_command)) {
-        $script:__zgod_in_hook = $false
-        return
-    }
-
-    $currentLine = $null
-    [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$currentLine, [ref]$null)
-
-    $selected = zgod search --height 15 --query $currentLine
-    $rc = $LASTEXITCODE
-
-    if ($rc -eq 2 -and $selected) {
-        [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
-        Invoke-Expression $selected
-    } elseif ($rc -eq 0 -and $selected) {
-        [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
-        [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
-    }
-    $script:__zgod_in_hook = $false
-}
-
-Set-PSReadLineKeyHandler -Chord 'Ctrl+r' -ScriptBlock { __zgod_search }
-
-Set-PSReadLineOption -AddToHistoryHandler {
-    param([string]$line)
-    __zgod_preexec $line
-    return $true
-}
-
-$ExecutionContext.InvokeCommand.PostCommandLookupAction = {
-    param($commandName, $commandLookupEventArgs)
-}
-
 if (Get-Module -Name PSReadLine) {
+    function __zgod_search {
+        $script:__zgod_in_hook = $true
+
+        if (-not (__zgod_has_command)) {
+            $script:__zgod_in_hook = $false
+            return
+        }
+
+        $currentLine = $null
+        [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$currentLine, [ref]$null)
+
+        $selected = zgod search --height 15 --query $currentLine
+        $rc = $LASTEXITCODE
+
+        if ($rc -eq 2 -and $selected) {
+            [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
+            Invoke-Expression $selected
+        } elseif ($rc -eq 0 -and $selected) {
+            [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
+            [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
+        }
+        $script:__zgod_in_hook = $false
+    }
+
+    Set-PSReadLineKeyHandler -Chord 'Ctrl+r' -ScriptBlock { __zgod_search }
+
+    Set-PSReadLineOption -AddToHistoryHandler {
+        param([string]$line)
+        __zgod_preexec $line
+        return $true
+    }
+
+    $ExecutionContext.InvokeCommand.PostCommandLookupAction = {
+        param($commandName, $commandLookupEventArgs)
+    }
+
     $originalPrompt = $function:prompt
     function prompt {
         __zgod_postexec

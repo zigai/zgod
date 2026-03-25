@@ -29,7 +29,12 @@ func InitScript(s Shell, opts InitOptions) (string, error) {
 		return "", fmt.Errorf("reading template for %s: %w", s, err)
 	}
 
-	tmpl, err := template.New(s.String()).Parse(string(data))
+	tmpl, err := template.New(s.String()).Funcs(template.FuncMap{
+		"bashQuote":       bashQuote,
+		"zshQuote":        bashQuote,
+		"fishQuote":       fishQuote,
+		"powerShellQuote": powerShellQuote,
+	}).Parse(string(data))
 	if err != nil {
 		return "", fmt.Errorf("parsing template for %s: %w", s, err)
 	}
@@ -80,25 +85,43 @@ func setupLine(s Shell, customConfigPath string) string {
 	switch s {
 	case Bash, Zsh:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`if command -v zgod >/dev/null 2>&1; then eval "$(zgod init %s --config '%s')"; fi`, shellName, customConfigPath)
+			return fmt.Sprintf(`if command -v zgod >/dev/null 2>&1; then eval "$(zgod init %s --config %s)"; fi`, shellName, bashQuote(customConfigPath))
 		}
 
 		return fmt.Sprintf(`if command -v zgod >/dev/null 2>&1; then eval "$(zgod init %s)"; fi`, shellName)
 	case Fish:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`type -q zgod; and zgod init %s --config '%s' | source`, shellName, customConfigPath)
+			return fmt.Sprintf(`type -q zgod; and zgod init %s --config %s | source`, shellName, fishQuote(customConfigPath))
 		}
 
 		return fmt.Sprintf(`type -q zgod; and zgod init %s | source`, shellName)
 	case PowerShell:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell --config '%s') }`, customConfigPath)
+			return fmt.Sprintf(`if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell --config %s) }`, powerShellQuote(customConfigPath))
 		}
 
 		return `if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }`
 	}
 
 	return ""
+}
+
+func bashQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func fishQuote(s string) string {
+	escaped := strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		`$`, `\$`,
+	).Replace(s)
+
+	return `"` + escaped + `"`
+}
+
+func powerShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
 func writeSetupLine(configPath string, content []byte, line string) error {
