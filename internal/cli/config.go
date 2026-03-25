@@ -14,8 +14,10 @@ import (
 	"github.com/zigai/zgod/internal/paths"
 )
 
-var errNoEditorConfigured = errors.New("no editor found: set $EDITOR or $VISUAL")
-var errInvalidEditorCommand = errors.New("invalid editor command")
+var (
+	errNoEditorConfigured   = errors.New("no editor found: set $EDITOR or $VISUAL")
+	errInvalidEditorCommand = errors.New("invalid editor command")
+)
 
 var runEditorProcess = func(name string, args []string) error {
 	// #nosec G204 -- $EDITOR/$VISUAL is user-controlled by design for a local CLI
@@ -90,6 +92,7 @@ func ensureConfigFile() (string, error) {
 	if err == nil {
 		return configPath, nil
 	}
+
 	if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("checking config file: %w", err)
 	}
@@ -120,69 +123,11 @@ func splitCommandLine(command string) ([]string, error) {
 		return nil, fmt.Errorf("%w: empty command", errInvalidEditorCommand)
 	}
 
-	var (
-		args    []string
-		current strings.Builder
-		quote   rune
-		inToken bool
-		escaped bool
-	)
-
-	flush := func() {
-		args = append(args, current.String())
-		current.Reset()
-		inToken = false
+	args, err := splitCommandTokens(command)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errInvalidEditorCommand, err)
 	}
 
-	for _, r := range command {
-		if quote == '"' && escaped {
-			current.WriteRune(r)
-			inToken = true
-			escaped = false
-			continue
-		}
-
-		switch quote {
-		case 0:
-			switch {
-			case r == '\'' || r == '"':
-				quote = r
-				inToken = true
-			case r == ' ' || r == '\t' || r == '\n':
-				if inToken {
-					flush()
-				}
-			default:
-				current.WriteRune(r)
-				inToken = true
-			}
-		case '\'':
-			if r == '\'' {
-				quote = 0
-				continue
-			}
-
-			current.WriteRune(r)
-			inToken = true
-		case '"':
-			switch r {
-			case '\\':
-				escaped = true
-			case '"':
-				quote = 0
-			default:
-				current.WriteRune(r)
-				inToken = true
-			}
-		}
-	}
-
-	if escaped || quote != 0 {
-		return nil, fmt.Errorf("%w: unterminated quoted string", errInvalidEditorCommand)
-	}
-	if inToken {
-		flush()
-	}
 	if len(args) == 0 {
 		return nil, fmt.Errorf("%w: empty command", errInvalidEditorCommand)
 	}

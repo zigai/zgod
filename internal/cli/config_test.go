@@ -31,6 +31,7 @@ func TestConfigShowPrintsInvalidConfig(t *testing.T) {
 	}
 
 	cmd := &cobra.Command{}
+
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 
@@ -62,14 +63,20 @@ func TestConfigEditAllowsInvalidConfigAndParsesEditorArgs(t *testing.T) {
 	t.Setenv("EDITOR", "code -w")
 	t.Setenv("VISUAL", "")
 
-	var gotName string
-	var gotArgs []string
+	var (
+		gotName string
+		gotArgs []string
+	)
+
 	oldRunner := runEditorProcess
 	runEditorProcess = func(name string, args []string) error {
 		gotName = name
+
 		gotArgs = append([]string(nil), args...)
+
 		return nil
 	}
+
 	t.Cleanup(func() {
 		runEditorProcess = oldRunner
 	})
@@ -143,6 +150,7 @@ func setConfigHomes(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Setenv("APPDATA", filepath.Join(baseDir, "config"))
 		t.Setenv("LOCALAPPDATA", filepath.Join(baseDir, "data"))
+
 		return
 	}
 
