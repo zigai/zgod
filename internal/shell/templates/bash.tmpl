@@ -38,8 +38,39 @@ __zgod_get_time_ms() {
     fi
 }
 
+__zgod_extract_history_command() {
+    local history_line=$1
+    if [[ -z "$history_line" ]]; then
+        return 1
+    fi
+
+    if [[ "$history_line" =~ ^[[:space:]]*[0-9]+[[:space:]]+(.*)$ ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    history_line=${history_line#"${history_line%%[![:space:]]*}"}
+    printf '%s' "$history_line"
+}
+
+__zgod_get_history_command() {
+    local history_line
+    if ! [[ -o history ]]; then
+        return 1
+    fi
+
+    history_line=$(HISTTIMEFORMAT= builtin history 1 2>/dev/null)
+    __zgod_extract_history_command "$history_line"
+}
+
 __zgod_get_recorded_command() {
     local history_command
+    history_command=$(__zgod_get_history_command)
+    if [[ -n "$history_command" ]]; then
+        printf '%s' "$history_command"
+        return
+    fi
+
     history_command=$(fc -ln -1 2>/dev/null)
     if [[ -n "$history_command" ]]; then
         history_command=${history_command#"${history_command%%[![:space:]]*}"}
@@ -88,7 +119,10 @@ __zgod_preexec() {
     fi
     __zgod_preexec_fired=1
     __zgod_init
-    __zgod_command="$BASH_COMMAND"
+    __zgod_command=$(__zgod_get_history_command)
+    if [[ -z "$__zgod_command" ]]; then
+        __zgod_command="$BASH_COMMAND"
+    fi
     __zgod_start_ms=$(__zgod_get_time_ms)
 }
 
