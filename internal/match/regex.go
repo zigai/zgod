@@ -1,6 +1,9 @@
 package match
 
-import "regexp"
+import (
+	"regexp"
+	"sort"
+)
 
 type RegexMatcher struct{}
 
@@ -25,8 +28,13 @@ func (m *RegexMatcher) Match(pattern string, candidates []string) []Match {
 		}
 
 		ranges := make([]Range, len(locs))
+
+		runeStarts := buildRuneByteOffsets(c)
 		for j, loc := range locs {
-			ranges[j] = Range{Start: loc[0], End: loc[1]}
+			ranges[j] = Range{
+				Start: byteOffsetToRuneIndex(runeStarts, loc[0]),
+				End:   byteOffsetToRuneIndex(runeStarts, loc[1]),
+			}
 		}
 
 		matches = append(matches, Match{
@@ -37,4 +45,19 @@ func (m *RegexMatcher) Match(pattern string, candidates []string) []Match {
 	}
 
 	return matches
+}
+
+func buildRuneByteOffsets(s string) []int {
+	offsets := make([]int, 0, len([]rune(s))+1)
+	for i := range s {
+		offsets = append(offsets, i)
+	}
+
+	offsets = append(offsets, len(s))
+
+	return offsets
+}
+
+func byteOffsetToRuneIndex(offsets []int, byteOffset int) int {
+	return sort.SearchInts(offsets, byteOffset)
 }

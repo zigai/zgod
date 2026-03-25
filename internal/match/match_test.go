@@ -45,6 +45,27 @@ func TestRegexMatcher(t *testing.T) {
 	}
 }
 
+func TestRegexMatcherUsesRuneRanges(t *testing.T) {
+	m := &RegexMatcher{}
+	candidates := []string{"héllo"}
+
+	matches := m.Match("é", candidates)
+	if len(matches) != 1 {
+		t.Fatalf("regex 'é' matched %d candidates, want 1", len(matches))
+	}
+
+	if len(matches[0].MatchedRanges) != 1 {
+		t.Fatalf("matched ranges = %d, want 1", len(matches[0].MatchedRanges))
+	}
+
+	got := matches[0].MatchedRanges[0]
+
+	want := Range{Start: 1, End: 2}
+	if got != want {
+		t.Fatalf("matched range = %+v, want %+v", got, want)
+	}
+}
+
 func TestGlobMatcher(t *testing.T) {
 	m := &GlobMatcher{}
 	candidates := []string{"git checkout", "git commit", "go build", "echo hello"}
