@@ -231,6 +231,14 @@ linters:
         source: "cobra\\."
         linters: [exhaustruct]
 
+      - path: "internal/cli/import_paths\\.go"
+        source: "pathCandidate\\{"
+        linters: [exhaustruct]
+
+      - path: "internal/db/db\\.go"
+        source: "url\\.URL\\{"
+        linters: [exhaustruct]
+
       - path: "internal/tui/.*\\.go"
         linters: [cyclop, exhaustruct, mnd]
 
