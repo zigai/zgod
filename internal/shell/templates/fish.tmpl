@@ -51,6 +51,8 @@ function __zgod_postexec --on-event fish_postexec
         --directory "$PWD" \
         --session "$__zgod_session_id" &
 
+    disown
+
     set -g __zgod_command ""
 end
 
