@@ -268,10 +268,26 @@ func (m *Model) renderResults() string {
 
 	expandMode := m.cfg.Display.MultilinePreview == "expand"
 	for _, idx := range visible {
+		if len(lines) >= m.height {
+			break
+		}
+
 		isSelected := idx == m.cursor
 
 		if expandMode && isSelected && m.entryIsMultiline(idx) {
-			lines = append(lines, m.renderExpandedResultLines(idx)...)
+			expandedLines := m.renderExpandedResultLines(idx)
+
+			remaining := m.height - len(lines)
+			if remaining <= 0 {
+				break
+			}
+
+			if len(expandedLines) > remaining {
+				expandedLines = expandedLines[:remaining]
+			}
+
+			lines = append(lines, expandedLines...)
+
 			continue
 		}
 
@@ -570,9 +586,7 @@ func (m *Model) renderExpandedResultLines(entryIdx int) []string {
 
 	for i, cmdLine := range cmdLines {
 		cmdLine = strings.ReplaceAll(cmdLine, "\t", "    ")
-		if len(cmdLine) > layout.cmdWidth {
-			cmdLine = cmdLine[:layout.cmdWidth]
-		}
+		cmdLine = trimToWidth(cmdLine, layout.cmdWidth)
 
 		var line string
 		if i == 0 {
@@ -593,13 +607,13 @@ func (m *Model) renderFooter() string {
 		key  string
 		desc string
 	}{
-		{"↑↓", "nav"},
-		{"enter", "select"},
-		{"esc", "cancel"},
-		{"ctrl+s", "mode"},
-		{"ctrl+g", "cwd"},
-		{"ctrl+d", "dedup"},
-		{"?", "help"},
+		{m.cfg.Keys.Up + "/" + m.cfg.Keys.Down, "nav"},
+		{m.cfg.Keys.Accept, "select"},
+		{m.cfg.Keys.Cancel, "cancel"},
+		{m.cfg.Keys.ModeNext, "mode"},
+		{m.cfg.Keys.ToggleCWD, "cwd"},
+		{m.cfg.Keys.ToggleDedupe, "dedup"},
+		{m.cfg.Keys.Help, "help"},
 	}
 
 	var parts []string
@@ -685,12 +699,10 @@ func (m *Model) renderPreviewPane() string {
 
 	for i := 0; i < contentHeight && i < len(cmdLines); i++ {
 		line := cmdLines[i]
-		if len(line) > width {
-			line = line[:width]
-		}
+		line = trimToWidth(line, width)
 
-		if len(line) < width {
-			line += strings.Repeat(" ", width-len(line))
+		if lineWidth := lipgloss.Width(line); lineWidth < width {
+			line += strings.Repeat(" ", width-lineWidth)
 		}
 
 		displayLines = append(displayLines, m.styles.Dimmed.Render(line))
@@ -766,23 +778,11 @@ func (m *Model) renderPreviewPopup() string {
 	}
 
 	lines := strings.Split(m.previewCommand, "\n")
-
-	var wrappedLines []string
+	wrappedLines := make([]string, 0, len(lines))
 
 	for _, line := range lines {
 		line = strings.ReplaceAll(line, "\t", "    ")
-		if len(line) > contentWidth {
-			for len(line) > contentWidth {
-				wrappedLines = append(wrappedLines, line[:contentWidth])
-				line = line[contentWidth:]
-			}
-
-			if len(line) > 0 {
-				wrappedLines = append(wrappedLines, line)
-			}
-		} else {
-			wrappedLines = append(wrappedLines, line)
-		}
+		wrappedLines = append(wrappedLines, wrapToWidth(line, contentWidth)...)
 	}
 
 	content := strings.Join(wrappedLines, "\n")
@@ -1121,6 +1121,27 @@ func trimToWidth(s string, width int) string {
 	}
 
 	return string(runes[:width])
+}
+
+func wrapToWidth(s string, width int) []string {
+	if width <= 0 {
+		return nil
+	}
+
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return []string{""}
+	}
+
+	lines := make([]string, 0, (len(runes)+width-1)/width)
+	for len(runes) > width {
+		lines = append(lines, string(runes[:width]))
+		runes = runes[width:]
+	}
+
+	lines = append(lines, string(runes))
+
+	return lines
 }
 
 func truncateWithRanges(text string, info *match.Match, maxLen int) (string, *match.Match) {

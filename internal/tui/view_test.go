@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/zigai/zgod/internal/config"
 	"github.com/zigai/zgod/internal/db"
@@ -73,6 +74,61 @@ func TestRenderFooterShowsMatchCountAtNarrowWidth(t *testing.T) {
 	}
 }
 
+func TestRenderFooterUsesDefaultConfiguredKeys(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	m := &Model{
+		cfg:            cfg,
+		styles:         NewStyles(cfg.Theme),
+		width:          200,
+		displayEntries: make([]history.ScoredEntry, 1),
+	}
+
+	rendered := m.renderFooter()
+	for _, needle := range []string{
+		"ctrl+d",
+		"cwd",
+		"ctrl+g",
+		"dedup",
+		"ctrl+s",
+		"mode",
+	} {
+		if !strings.Contains(rendered, needle) {
+			t.Fatalf("renderFooter() = %q, expected to contain %q", rendered, needle)
+		}
+	}
+}
+
+func TestRenderFooterUsesRemappedKeys(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.Keys.ToggleCWD = "alt+c"
+	cfg.Keys.ToggleDedupe = "alt+d"
+	cfg.Keys.ModeNext = "alt+m"
+
+	m := &Model{
+		cfg:            cfg,
+		styles:         NewStyles(cfg.Theme),
+		width:          200,
+		displayEntries: make([]history.ScoredEntry, 1),
+	}
+
+	rendered := m.renderFooter()
+	for _, needle := range []string{"alt+c", "alt+d", "alt+m"} {
+		if !strings.Contains(rendered, needle) {
+			t.Fatalf("renderFooter() = %q, expected to contain %q", rendered, needle)
+		}
+	}
+
+	for _, needle := range []string{"ctrl+d cwd", "ctrl+g dedup", "ctrl+s mode"} {
+		if strings.Contains(rendered, needle) {
+			t.Fatalf("renderFooter() = %q, should not contain stale footer hint %q", rendered, needle)
+		}
+	}
+}
+
 func TestFailToggleIndicator(t *testing.T) {
 	t.Parallel()
 
@@ -120,5 +176,86 @@ func TestRenderHelpShowsFailFilterCycle(t *testing.T) {
 	rendered := m.renderHelp()
 	if !strings.Contains(rendered, "Cycle fail filter (include/exclude/only)") {
 		t.Fatalf("renderHelp() = %q, expected fail filter help text", rendered)
+	}
+}
+
+func TestRenderPreviewPanePreservesUTF8(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	m := &Model{
+		cfg:    cfg,
+		styles: NewStyles(cfg.Theme),
+		width:  1,
+		cursor: 0,
+		displayEntries: []history.ScoredEntry{
+			{Entry: db.HistoryEntry{Command: "ž"}},
+		},
+	}
+
+	rendered := m.renderPreviewPane()
+	if !utf8.ValidString(rendered) {
+		t.Fatalf("renderPreviewPane() produced invalid UTF-8: %q", rendered)
+	}
+}
+
+func TestRenderExpandedResultLinesPreservesUTF8(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	m := &Model{
+		cfg:    cfg,
+		styles: NewStyles(cfg.Theme),
+		width:  1,
+		displayEntries: []history.ScoredEntry{
+			{Entry: db.HistoryEntry{Command: "ž"}},
+		},
+	}
+
+	rendered := strings.Join(m.renderExpandedResultLines(0), "\n")
+	if !utf8.ValidString(rendered) {
+		t.Fatalf("renderExpandedResultLines() produced invalid UTF-8: %q", rendered)
+	}
+}
+
+func TestRenderPreviewPopupPreservesUTF8(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	m := &Model{
+		cfg:            cfg,
+		styles:         NewStyles(cfg.Theme),
+		width:          5,
+		showPreview:    true,
+		previewCommand: "žž",
+	}
+
+	rendered := m.renderPreviewPopup()
+	if !utf8.ValidString(rendered) {
+		t.Fatalf("renderPreviewPopup() produced invalid UTF-8: %q", rendered)
+	}
+}
+
+func TestRenderResultsClipsExpandedMultilineToHeight(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.Display.MultilinePreview = "expand"
+
+	m := &Model{
+		cfg:    cfg,
+		styles: NewStyles(cfg.Theme),
+		width:  80,
+		height: 3,
+		cursor: 0,
+		displayEntries: []history.ScoredEntry{
+			{Entry: db.HistoryEntry{Command: "one\ntwo\nthree\nfour"}},
+			{Entry: db.HistoryEntry{Command: "tail"}},
+		},
+	}
+
+	rendered := m.renderResults()
+	if got := len(strings.Split(rendered, "\n")); got != m.height {
+		t.Fatalf("renderResults() returned %d lines, want %d", got, m.height)
 	}
 }
