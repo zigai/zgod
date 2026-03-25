@@ -16,7 +16,10 @@ var (
 	errUnterminatedDoubleQuote = errors.New("unterminated double quote")
 )
 
-const windowsDrivePrefixLength = 3
+const (
+	windowsDrivePrefixLength = 3
+	minSedScriptLength       = 4
+)
 
 type pathRequirement int
 
@@ -62,113 +65,25 @@ func commandReferencesExistingPaths(command string, workingDirectory string) (bo
 
 func extractPathCandidates(tokens []string, workingDirectory string) []pathCandidate {
 	commandName, commandIndex := primaryCommand(tokens)
-	gitSubcommand := ""
-	afterDoubleDash := false
-	expectSedExpression := false
-	sedScriptConsumed := false
-
-	seen := map[string]pathRequirement{}
-
-	var pendingRequirement pathRequirement
-	hasPendingRequirement := false
-
-	for index, rawToken := range tokens {
-		token := strings.TrimSpace(rawToken)
-		if token == "" {
-			continue
-		}
-
-		if hasPendingRequirement {
-			addPathCandidate(seen, token, pendingRequirement)
-			hasPendingRequirement = false
-
-			continue
-		}
-
-		if candidate, ok := pathCandidateFromInlineRedirection(token); ok {
-			addPathCandidate(seen, candidate.value, candidate.requirement)
-
-			continue
-		}
-
-		if requirement, ok := redirectionRequirement(token); ok {
-			pendingRequirement = requirement
-			hasPendingRequirement = true
-
-			continue
-		}
-
-		if token == "--" {
-			afterDoubleDash = true
-
-			continue
-		}
-
-		if index == commandIndex && !strings.HasPrefix(token, "-") {
-			if isPathLike(token) {
-				addPathCandidate(seen, token, pathMustExist)
-			}
-
-			continue
-		}
-
-		if commandName == "git" && index > commandIndex && gitSubcommand == "" && !strings.HasPrefix(token, "-") {
-			gitSubcommand = token
-
-			continue
-		}
-
-		if commandName == "sed" && expectSedExpression {
-			expectSedExpression = false
-
-			continue
-		}
-
-		if candidate, ok := pathCandidateFromFlagAssignment(token, workingDirectory); ok {
-			addPathCandidate(seen, candidate.value, candidate.requirement)
-
-			continue
-		}
-
-		if candidate, ok := pathCandidateFromPathFlag(token); ok {
-			if candidate.value != "" {
-				addPathCandidate(seen, candidate.value, candidate.requirement)
-			} else {
-				pendingRequirement = candidate.requirement
-				hasPendingRequirement = true
-			}
-
-			continue
-		}
-
-		if shouldSkipGitRefToken(commandName, gitSubcommand, token, afterDoubleDash) {
-			continue
-		}
-
-		if shouldSkipSedToken(commandName, token, &sedScriptConsumed, &expectSedExpression) {
-			continue
-		}
-
-		if requirement, ok := contextualPathRequirement(
-			commandName,
-			token,
-			index,
-			commandIndex,
-			workingDirectory,
-			sedScriptConsumed,
-		); ok {
-			addPathCandidate(seen, token, requirement)
-
-			continue
-		}
-
-		if isPathLike(token) {
-			addPathCandidate(seen, token, pathMustExist)
-		}
+	extractor := pathExtractor{
+		commandName:           commandName,
+		commandIndex:          commandIndex,
+		workingDirectory:      workingDirectory,
+		gitSubcommand:         "",
+		afterDoubleDash:       false,
+		expectSedExpression:   false,
+		sedScriptConsumed:     false,
+		seen:                  map[string]pathRequirement{},
+		pendingRequirement:    0,
+		hasPendingRequirement: false,
 	}
 
-	candidates := make([]pathCandidate, 0, len(seen))
-	for value, requirement := range seen {
+	for index, rawToken := range tokens {
+		extractor.consume(index, rawToken)
+	}
+
+	candidates := make([]pathCandidate, 0, len(extractor.seen))
+	for value, requirement := range extractor.seen {
 		candidates = append(candidates, pathCandidate{
 			value:       value,
 			requirement: requirement,
@@ -176,6 +91,152 @@ func extractPathCandidates(tokens []string, workingDirectory string) []pathCandi
 	}
 
 	return candidates
+}
+
+type pathExtractor struct {
+	commandName           string
+	commandIndex          int
+	workingDirectory      string
+	gitSubcommand         string
+	afterDoubleDash       bool
+	expectSedExpression   bool
+	sedScriptConsumed     bool
+	seen                  map[string]pathRequirement
+	pendingRequirement    pathRequirement
+	hasPendingRequirement bool
+}
+
+func (e *pathExtractor) consume(index int, rawToken string) {
+	token := strings.TrimSpace(rawToken)
+	if token == "" {
+		return
+	}
+
+	if e.consumePendingRequirement(token) ||
+		e.consumeRedirection(token) ||
+		e.consumeDoubleDash(token) ||
+		e.consumeCommandToken(index, token) ||
+		e.consumeFlagPath(token) ||
+		e.shouldSkipToken(token) ||
+		e.consumeContextualPath(index, token) {
+		return
+	}
+
+	if isPathLike(token) {
+		addPathCandidate(e.seen, token, pathMustExist)
+	}
+}
+
+func (e *pathExtractor) consumePendingRequirement(token string) bool {
+	if !e.hasPendingRequirement {
+		return false
+	}
+
+	addPathCandidate(e.seen, token, e.pendingRequirement)
+	e.hasPendingRequirement = false
+
+	return true
+}
+
+func (e *pathExtractor) consumeRedirection(token string) bool {
+	if candidate, ok := pathCandidateFromInlineRedirection(token); ok {
+		addPathCandidate(e.seen, candidate.value, candidate.requirement)
+		return true
+	}
+
+	if requirement, ok := redirectionRequirement(token); ok {
+		e.pendingRequirement = requirement
+		e.hasPendingRequirement = true
+
+		return true
+	}
+
+	return false
+}
+
+func (e *pathExtractor) consumeDoubleDash(token string) bool {
+	if token != "--" {
+		return false
+	}
+
+	e.afterDoubleDash = true
+
+	return true
+}
+
+func (e *pathExtractor) consumeCommandToken(index int, token string) bool {
+	if index == e.commandIndex && !strings.HasPrefix(token, "-") {
+		if isPathLike(token) {
+			addPathCandidate(e.seen, token, pathMustExist)
+		}
+
+		return true
+	}
+
+	if e.commandName == "git" && index > e.commandIndex && e.gitSubcommand == "" && !strings.HasPrefix(token, "-") {
+		e.gitSubcommand = token
+		return true
+	}
+
+	if e.commandName == "sed" && e.expectSedExpression {
+		e.expectSedExpression = false
+		return true
+	}
+
+	return false
+}
+
+func (e *pathExtractor) consumeFlagPath(token string) bool {
+	if candidate, ok := pathCandidateFromFlagAssignment(token, e.workingDirectory); ok {
+		addPathCandidate(e.seen, candidate.value, candidate.requirement)
+		return true
+	}
+
+	candidate, ok := pathCandidateFromPathFlag(token)
+	if !ok {
+		return false
+	}
+
+	if candidate.value != "" {
+		addPathCandidate(e.seen, candidate.value, candidate.requirement)
+		return true
+	}
+
+	e.pendingRequirement = candidate.requirement
+	e.hasPendingRequirement = true
+
+	return true
+}
+
+func (e *pathExtractor) shouldSkipToken(token string) bool {
+	if shouldSkipGitRefToken(e.commandName, e.gitSubcommand, token, e.afterDoubleDash) {
+		return true
+	}
+
+	return shouldSkipSedToken(
+		e.commandName,
+		token,
+		&e.sedScriptConsumed,
+		&e.expectSedExpression,
+	)
+}
+
+func (e *pathExtractor) consumeContextualPath(index int, token string) bool {
+	requirement, ok := contextualPathRequirement(
+		e.commandName,
+		token,
+		index,
+		e.commandIndex,
+		e.workingDirectory,
+		e.sedScriptConsumed,
+	)
+	if !ok {
+		return false
+	}
+
+	addPathCandidate(e.seen, token, requirement)
+
+	return true
 }
 
 func addPathCandidate(seen map[string]pathRequirement, value string, requirement pathRequirement) {
@@ -192,28 +253,32 @@ func addPathCandidate(seen map[string]pathRequirement, value string, requirement
 }
 
 func isPathLike(path string) bool {
-	if path == "" {
+	if path == "" || shouldIgnorePathLikeToken(path) {
 		return false
 	}
 
-	if strings.Contains(path, "://") ||
+	if hasExplicitPathPrefix(path) {
+		return true
+	}
+
+	return strings.ContainsRune(path, '/') || strings.ContainsRune(path, '\\')
+}
+
+func shouldIgnorePathLikeToken(path string) bool {
+	return strings.Contains(path, "://") ||
 		looksLikeRemotePath(path) ||
 		looksLikeSedScript(path) ||
-		looksLikeCompositeOptionValue(path) {
-		return false
-	}
+		looksLikeCompositeOptionValue(path)
+}
 
-	if strings.HasPrefix(path, "/") ||
+func hasExplicitPathPrefix(path string) bool {
+	return strings.HasPrefix(path, "/") ||
 		strings.HasPrefix(path, "./") ||
 		strings.HasPrefix(path, "../") ||
 		strings.HasPrefix(path, "~/") ||
 		path == "." ||
 		path == ".." ||
-		hasWindowsDrivePrefix(path) {
-		return true
-	}
-
-	return strings.ContainsRune(path, '/') || strings.ContainsRune(path, '\\')
+		hasWindowsDrivePrefix(path)
 }
 
 func looksLikeRemotePath(path string) bool {
@@ -237,7 +302,7 @@ func looksLikeRemotePath(path string) bool {
 }
 
 func looksLikeSedScript(path string) bool {
-	if len(path) < 4 {
+	if len(path) < minSedScriptLength {
 		return false
 	}
 
@@ -333,9 +398,9 @@ func pathCandidateFromPathFlag(token string) (pathCandidate, bool) {
 		return pathCandidate{value: token[2:], requirement: pathMustExist}, true
 	}
 
-	if strings.HasPrefix(token, "--directory=") {
+	if after, ok := strings.CutPrefix(token, "--directory="); ok {
 		return pathCandidate{
-			value:       strings.TrimSpace(strings.TrimPrefix(token, "--directory=")),
+			value:       strings.TrimSpace(after),
 			requirement: pathMustExist,
 		}, true
 	}

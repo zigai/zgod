@@ -142,6 +142,7 @@ func TestCommandReferencesExistingPathsIgnoresGitCheckoutRef(t *testing.T) {
 
 func TestCommandReferencesExistingPathsSedCommandUsesFileArgument(t *testing.T) {
 	baseDir := t.TempDir()
+
 	filePath := filepath.Join(baseDir, "input.txt")
 	if writeErr := os.WriteFile(filePath, []byte("a\n"), 0o600); writeErr != nil {
 		t.Fatalf("WriteFile() error: %v", writeErr)
