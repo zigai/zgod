@@ -228,6 +228,23 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 	}
 }
 
+func TestFishInitScriptDisownsRecordedProcessByPID(t *testing.T) {
+	script, err := InitScript(Fish, InitOptions{})
+	if err != nil {
+		t.Fatalf("InitScript(Fish) error: %v", err)
+	}
+
+	for _, needle := range []string{
+		"set -l record_pid $last_pid",
+		"if test (count $record_pid) -gt 0",
+		"disown $record_pid",
+	} {
+		if !strings.Contains(script, needle) {
+			t.Fatalf("InitScript(Fish) output doesn't contain %q", needle)
+		}
+	}
+}
+
 func TestInitScriptWithConfig(t *testing.T) {
 	opts := InitOptions{ConfigPath: "/custom/config.toml"}
 	for _, s := range []Shell{Zsh, Bash, Fish, PowerShell} {
@@ -363,6 +380,76 @@ func TestPowerShellInitScriptChecksPSReadLineBeforeHandlers(t *testing.T) {
 		if idx < guardIdx {
 			t.Fatalf("InitScript(PowerShell) uses %q before checking PSReadLine", needle)
 		}
+	}
+}
+
+func TestConfigFilePathFishUsesConfD(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+
+	got, err := ConfigFilePath(Fish)
+	if err != nil {
+		t.Fatalf("ConfigFilePath(Fish) error: %v", err)
+	}
+
+	want := filepath.Join(home, ".config", "fish", "conf.d", "zgod.fish")
+	if got != want {
+		t.Fatalf("ConfigFilePath(Fish) = %q, want %q", got, want)
+	}
+}
+
+func TestInstallFishWritesToConfD(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+
+	if err := Install(Fish, ""); err != nil {
+		t.Fatalf("Install(Fish) error: %v", err)
+	}
+
+	configPath := filepath.Join(home, ".config", "fish", "conf.d", "zgod.fish")
+
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v", configPath, err)
+	}
+
+	want := "# zgod shell integration\n" + setupLine(Fish, "") + "\n"
+	if string(content) != want {
+		t.Fatalf("installed config = %q, want %q", string(content), want)
+	}
+
+	legacyPath := filepath.Join(home, ".config", "fish", "config.fish")
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy fish config should not be created, stat err = %v", err)
+	}
+}
+
+func TestInstallFishDetectsLegacyConfigFishInstall(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+
+	legacyPath := filepath.Join(home, ".config", "fish", "config.fish")
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o750); err != nil {
+		t.Fatalf("MkdirAll(%q) error: %v", filepath.Dir(legacyPath), err)
+	}
+
+	legacyContent := "# zgod shell integration\n" + setupLine(Fish, "") + "\n"
+	if err := os.WriteFile(legacyPath, []byte(legacyContent), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", legacyPath, err)
+	}
+
+	err := Install(Fish, "")
+	if !errors.Is(err, errAlreadyInstalled) {
+		t.Fatalf("Install(Fish) error = %v, want errAlreadyInstalled", err)
+	}
+
+	if !strings.Contains(err.Error(), legacyPath) {
+		t.Fatalf("Install(Fish) error = %q, want path %q", err.Error(), legacyPath)
+	}
+
+	configPath := filepath.Join(home, ".config", "fish", "conf.d", "zgod.fish")
+	if _, statErr := os.Stat(configPath); !os.IsNotExist(statErr) {
+		t.Fatalf("new fish config should not be created, stat err = %v", statErr)
 	}
 }
 
@@ -529,6 +616,15 @@ fi
 	}
 
 	return recorded
+}
+
+func setTestHome(t *testing.T, home string) {
+	t.Helper()
+
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOMEDRIVE", "")
+	t.Setenv("HOMEPATH", "")
 }
 
 func waitForRecordedCommands(path string) ([]string, error) {
