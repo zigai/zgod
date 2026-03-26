@@ -50,8 +50,11 @@ function __zgod_postexec --on-event fish_postexec
         --command "$__zgod_command" \
         --directory "$PWD" \
         --session "$__zgod_session_id" &
+    set -l record_pid $last_pid
 
-    disown
+    if test (count $record_pid) -gt 0
+        disown $record_pid
+    end
 
     set -g __zgod_command ""
 end

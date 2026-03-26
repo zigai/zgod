@@ -66,13 +66,17 @@ func ConfigFilePath(s Shell) (string, error) {
 		return "", fmt.Errorf("getting home directory: %w", err)
 	}
 
+	return configFilePathForHome(home, s)
+}
+
+func configFilePathForHome(home string, s Shell) (string, error) {
 	switch s {
 	case Bash:
 		return filepath.Join(home, ".bashrc"), nil
 	case Zsh:
 		return filepath.Join(home, ".zshrc"), nil
 	case Fish:
-		return filepath.Join(home, ".config", "fish", "config.fish"), nil
+		return filepath.Join(home, ".config", "fish", "conf.d", "zgod.fish"), nil
 	case PowerShell:
 		return getPowerShellProfilePath()
 	default:
@@ -146,6 +150,37 @@ func writeSetupLine(configPath string, content []byte, line string) error {
 	return nil
 }
 
+func ensureNoLegacyFishInstall(s Shell, configPath, line string) error {
+	if s != Fish {
+		return nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("getting home directory: %w", err)
+	}
+
+	legacyPath := filepath.Join(home, ".config", "fish", "config.fish")
+	if legacyPath == configPath {
+		return nil
+	}
+
+	legacyContent, err := os.ReadFile(legacyPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		return fmt.Errorf("reading config file: %w", err)
+	}
+
+	if strings.Contains(string(legacyContent), line) {
+		return fmt.Errorf("%w in %s", errAlreadyInstalled, legacyPath)
+	}
+
+	return nil
+}
+
 func Install(s Shell, customConfigPath string) error {
 	configPath, err := ConfigFilePath(s)
 	if err != nil {
@@ -157,6 +192,10 @@ func Install(s Shell, customConfigPath string) error {
 	}
 
 	line := setupLine(s, customConfigPath)
+
+	if err = ensureNoLegacyFishInstall(s, configPath, line); err != nil {
+		return err
+	}
 
 	// #nosec G304 -- configPath is derived from known shell config locations
 	content, err := os.ReadFile(configPath)
