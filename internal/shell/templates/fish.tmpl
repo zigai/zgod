@@ -15,10 +15,10 @@ function __zgod_init
     if test -z "$__zgod_session_id"
         if test -r /proc/sys/kernel/random/uuid
             set -g __zgod_session_id (cat /proc/sys/kernel/random/uuid)
-        else if command -v uuidgen &>/dev/null
+        else if type -q uuidgen
             set -g __zgod_session_id (uuidgen)
         else
-            set -g __zgod_session_id (echo "$$-"(date +%s))
+            set -g __zgod_session_id "$fish_pid-"(date +%s)
         end
     end
 end
@@ -50,6 +50,8 @@ function __zgod_postexec --on-event fish_postexec
         --command "$__zgod_command" \
         --directory "$PWD" \
         --session "$__zgod_session_id" &
+
+    disown
 
     set -g __zgod_command ""
 end
