@@ -7,9 +7,14 @@ export ZGOD_CONFIG={{bashQuote .ConfigPath}}
 __zgod_session_id=""
 __zgod_command=""
 __zgod_start_ms=""
+__zgod_last_exit_code=""
 __zgod_preexec_fired=""
 __zgod_in_hook=""
+__zgod_running_original_debug_trap=""
 __zgod_original_prompt_command=""
+__zgod_original_prompt_command_is_array=""
+__zgod_original_prompt_command_array=()
+__zgod_original_debug_trap=""
 __zgod_ready=""
 
 __zgod_has_command() {
@@ -85,14 +90,78 @@ __zgod_restore_exit_code() {
     return "$1"
 }
 
-__zgod_run_original_prompt_command() {
+__zgod_eval_with_exit_code() {
     local exit_code=$1
+    local command=$2
+
+    builtin eval "__zgod_restore_exit_code $exit_code"$'\n'"$command"
+}
+
+__zgod_capture_original_prompt_command() {
+    local declaration
+    declaration=$(declare -p PROMPT_COMMAND 2>/dev/null) || return
+
+    if [[ "$declaration" == "declare -a "* ]]; then
+        __zgod_original_prompt_command_is_array=1
+        __zgod_original_prompt_command_array=("${PROMPT_COMMAND[@]}")
+        return
+    fi
+
+    __zgod_original_prompt_command="$PROMPT_COMMAND"
+}
+
+__zgod_capture_original_debug_trap() {
+    local trap_line=$1
+    local trap_body
+
+    if [[ -z "$trap_line" ]]; then
+        return
+    fi
+
+    trap_body=${trap_line#trap -- \'}
+    trap_body=${trap_body%\' DEBUG}
+    __zgod_original_debug_trap="$trap_body"
+}
+
+__zgod_run_original_prompt_commands() {
+    local exit_code=$1
+    local prompt_command
+
+    if [[ -n "$__zgod_original_prompt_command_is_array" ]]; then
+        for prompt_command in "${__zgod_original_prompt_command_array[@]}"; do
+            if [[ -z "$prompt_command" ]]; then
+                continue
+            fi
+
+            __zgod_eval_with_exit_code "$exit_code" "$prompt_command"
+        done
+
+        return
+    fi
+
     if [[ -z "$__zgod_original_prompt_command" ]]; then
         return
     fi
 
+    __zgod_eval_with_exit_code "$exit_code" "$__zgod_original_prompt_command"
+}
+
+__zgod_run_original_debug_trap() {
+    local exit_code=$1
+
+    if [[ -z "$__zgod_original_debug_trap" ]]; then
+        return "$exit_code"
+    fi
+
+    __zgod_eval_with_exit_code "$exit_code" "$__zgod_original_debug_trap"
+    local trap_status=$?
     __zgod_restore_exit_code "$exit_code"
-    eval "$__zgod_original_prompt_command"
+
+    return "$trap_status"
+}
+
+__zgod_capture_prompt_exit_code() {
+    return 0
 }
 
 __zgod_preexec() {
@@ -126,8 +195,33 @@ __zgod_preexec() {
     __zgod_start_ms=$(__zgod_get_time_ms)
 }
 
-__zgod_prompt_command() {
+__zgod_debug_trap() {
     local exit_code=$?
+
+    if [[ -n "$__zgod_running_original_debug_trap" ]]; then
+        return "$exit_code"
+    fi
+
+    if [[ "$BASH_COMMAND" == "__zgod_capture_prompt_exit_code" ]]; then
+        __zgod_last_exit_code=$exit_code
+    fi
+
+    __zgod_preexec
+
+    if [[ -z "$__zgod_original_debug_trap" ]]; then
+        return "$exit_code"
+    fi
+
+    __zgod_running_original_debug_trap=1
+    __zgod_run_original_debug_trap "$exit_code"
+    local trap_status=$?
+    __zgod_running_original_debug_trap=""
+
+    return "$trap_status"
+}
+
+__zgod_prompt_command() {
+    local exit_code=${__zgod_last_exit_code:-$?}
     local command
     __zgod_in_hook=1
 
@@ -145,8 +239,10 @@ __zgod_prompt_command() {
 
     __zgod_command=""
     __zgod_preexec_fired=""
-    __zgod_run_original_prompt_command "$exit_code"
+    __zgod_run_original_prompt_commands "$exit_code"
     __zgod_in_hook=""
+
+    return 0
 }
 
 __zgod_search() {
@@ -169,9 +265,14 @@ __zgod_search() {
     __zgod_in_hook=""
 }
 
-__zgod_original_prompt_command="${PROMPT_COMMAND}"
-trap '__zgod_preexec' DEBUG
-PROMPT_COMMAND="__zgod_prompt_command"
+__zgod_capture_original_prompt_command
+__zgod_original_debug_trap_line_file="${TMPDIR:-/tmp}/zgod-debug-trap-$$.tmp"
+builtin trap -p DEBUG > "$__zgod_original_debug_trap_line_file"
+__zgod_original_debug_trap_line=$(<"$__zgod_original_debug_trap_line_file")
+rm -f "$__zgod_original_debug_trap_line_file"
+__zgod_capture_original_debug_trap "$__zgod_original_debug_trap_line"
+trap '__zgod_debug_trap' DEBUG
+PROMPT_COMMAND='__zgod_capture_prompt_exit_code; __zgod_prompt_command'
 
 bind -x '"\C-r": __zgod_search'
 __zgod_ready=1

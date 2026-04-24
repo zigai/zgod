@@ -504,6 +504,83 @@ func TestBashInitScriptIgnoresExistingPromptCommand(t *testing.T) {
 	}
 }
 
+func TestBashInitScriptPreservesOriginalPromptCommand(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+
+	result := runBashInitScript(t, bashCaptureOptions{
+		promptCommand: `printf 'seen\n' >> prompt-seen.log`,
+		command:       "echo hi",
+	})
+
+	logPath := filepath.Join(result.tempDir, "prompt-seen.log")
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v\n%s", logPath, err, result.output)
+	}
+
+	if !strings.Contains(string(data), "seen\n") {
+		t.Fatalf("prompt log = %q, want to contain %q", string(data), "seen\n")
+	}
+}
+
+func TestBashInitScriptPreservesArrayPromptCommand(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+
+	result := runBashInitScript(t, bashCaptureOptions{
+		prelude: `PROMPT_COMMAND=(
+  'printf "array-a\n" >> prompt-array.log'
+  'printf "%s\n" "$?" >> prompt-array-exit.log'
+)`,
+		command: "false",
+	})
+
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		{name: "prompt-array.log", want: "array-a\n"},
+		{name: "prompt-array-exit.log", want: "1\n"},
+	} {
+		path := filepath.Join(result.tempDir, tc.name)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile(%q) error: %v\n%s", path, err, result.output)
+		}
+
+		if !strings.Contains(string(data), tc.want) {
+			t.Fatalf("%s = %q, want to contain %q", tc.name, string(data), tc.want)
+		}
+	}
+}
+
+func TestBashInitScriptPreservesOriginalDebugTrap(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+
+	result := runBashInitScript(t, bashCaptureOptions{
+		prelude: `trap 'if [[ "$BASH_COMMAND" == *"echo keep-me"* ]]; then printf "seen\n" >> debug.log; fi' DEBUG`,
+		command: "echo keep-me",
+	})
+
+	logPath := filepath.Join(result.tempDir, "debug.log")
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error: %v\n%s", logPath, err, result.output)
+	}
+
+	if !strings.Contains(string(data), "seen\n") {
+		t.Fatalf("debug log = %q, want to contain %q", string(data), "seen\n")
+	}
+}
+
 func TestBashInitScriptDoesNotSkipUnderscoreCommands(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
@@ -527,18 +604,30 @@ type bashCaptureOptions struct {
 	executables   map[string]string
 }
 
+type bashRunResult struct {
+	recorded []string
+	tempDir  string
+	output   string
+}
+
 func runBashInitScriptCommandCapture(t *testing.T, opts bashCaptureOptions) string {
 	t.Helper()
 
-	captures := runBashInitScriptCommandCaptures(t, opts)
-	if len(captures) == 0 {
+	result := runBashInitScript(t, opts)
+	if len(result.recorded) == 0 {
 		t.Fatalf("no command was recorded")
 	}
 
-	return captures[len(captures)-1]
+	return result.recorded[len(result.recorded)-1]
 }
 
 func runBashInitScriptCommandCaptures(t *testing.T, opts bashCaptureOptions) []string {
+	t.Helper()
+
+	return runBashInitScript(t, opts).recorded
+}
+
+func runBashInitScript(t *testing.T, opts bashCaptureOptions) bashRunResult {
 	t.Helper()
 
 	initScript, err := InitScript(Bash, InitOptions{})
@@ -603,7 +692,7 @@ fi
 		"TERM=dumb",
 		"ZGOD_CAPTURE_FILE="+capturePath,
 	)
-	cmd.Stdin = strings.NewReader(opts.command + "\nexit\n")
+	cmd.Stdin = strings.NewReader(opts.command + "\nexit 0\n")
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -615,7 +704,11 @@ fi
 		t.Fatalf("waiting for recorded command failed: %v\n%s", err, output)
 	}
 
-	return recorded
+	return bashRunResult{
+		recorded: recorded,
+		tempDir:  tempDir,
+		output:   string(output),
+	}
 }
 
 func setTestHome(t *testing.T, home string) {
