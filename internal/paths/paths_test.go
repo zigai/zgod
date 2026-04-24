@@ -129,6 +129,27 @@ func TestExpandTilde(t *testing.T) {
 	}
 }
 
+func TestExpandTildeWindowsBackslash(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-specific path handling")
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("os.UserHomeDir() error: %v", err)
+	}
+
+	got, err := ExpandTilde(`~\foo`)
+	if err != nil {
+		t.Fatalf(`ExpandTilde("~\\foo") error: %v`, err)
+	}
+
+	want := filepath.Join(home, "foo")
+	if got != want {
+		t.Fatalf(`ExpandTilde("~\\foo") = %q, want %q`, got, want)
+	}
+}
+
 func TestConfigFile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg")
 
