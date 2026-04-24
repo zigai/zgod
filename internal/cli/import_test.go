@@ -65,6 +65,88 @@ func TestImportHistoryEntriesImportsValidSedCommandWithExistingInputFile(t *test
 	}
 }
 
+func TestImportHistoryEntriesAllowsBareCreatorTargets(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	workingDirectory := t.TempDir()
+
+	entries := []db.HistoryEntry{
+		{TsMs: 1, Command: "touch new.txt", Directory: workingDirectory},
+		{TsMs: 2, Command: "mkdir out", Directory: workingDirectory},
+		{TsMs: 3, Command: "echo README.md", Directory: workingDirectory},
+	}
+
+	summary, err := importHistoryEntries(database, entries, importOptions{})
+	if err != nil {
+		t.Fatalf("importHistoryEntries() error: %v", err)
+	}
+
+	if summary.total != len(entries) {
+		t.Fatalf("summary.total = %d, want %d", summary.total, len(entries))
+	}
+
+	if summary.imported != len(entries) {
+		t.Fatalf("summary.imported = %d, want %d", summary.imported, len(entries))
+	}
+
+	if summary.skippedMissingPath != 0 {
+		t.Fatalf("summary.skippedMissingPath = %d, want 0", summary.skippedMissingPath)
+	}
+
+	repo := db.NewHistoryRepo(database)
+
+	importedEntries, err := repo.ListAll()
+	if err != nil {
+		t.Fatalf("ListAll() error: %v", err)
+	}
+
+	if len(importedEntries) != len(entries) {
+		t.Fatalf("ListAll() returned %d entries, want %d", len(importedEntries), len(entries))
+	}
+}
+
+func TestImportHistoryEntriesSkipsMissingRequiredPaths(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	workingDirectory := t.TempDir()
+
+	entries := []db.HistoryEntry{
+		{TsMs: 1, Command: "cd missing", Directory: workingDirectory},
+		{TsMs: 2, Command: `sed 's/a/b/' missing.txt`, Directory: workingDirectory},
+	}
+
+	summary, err := importHistoryEntries(database, entries, importOptions{})
+	if err != nil {
+		t.Fatalf("importHistoryEntries() error: %v", err)
+	}
+
+	if summary.total != len(entries) {
+		t.Fatalf("summary.total = %d, want %d", summary.total, len(entries))
+	}
+
+	if summary.imported != 0 {
+		t.Fatalf("summary.imported = %d, want 0", summary.imported)
+	}
+
+	if summary.skippedMissingPath != len(entries) {
+		t.Fatalf("summary.skippedMissingPath = %d, want %d", summary.skippedMissingPath, len(entries))
+	}
+}
+
 func TestOpenImportDatabasesReadableSourceDoesNotRequireAuth(t *testing.T) {
 	setImportHomes(t)
 

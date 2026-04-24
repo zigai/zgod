@@ -174,6 +174,40 @@ func TestCommandReferencesExistingPathsBareChangeDirectoryTarget(t *testing.T) {
 	}
 }
 
+func TestCommandReferencesExistingPathsAllowsCreatorCommandTargets(t *testing.T) {
+	baseDir := t.TempDir()
+
+	tests := []string{
+		"touch new.txt",
+		"mkdir out",
+		"echo README.md",
+	}
+
+	for _, command := range tests {
+		ok, err := commandReferencesExistingPaths(command, baseDir)
+		if err != nil {
+			t.Fatalf("commandReferencesExistingPaths(%q) error: %v", command, err)
+		}
+
+		if !ok {
+			t.Fatalf("expected %q to pass without requiring existing bare arguments", command)
+		}
+	}
+}
+
+func TestCommandReferencesExistingPathsPathLikeEchoArgumentStillRequiresExistingPath(t *testing.T) {
+	baseDir := t.TempDir()
+
+	ok, err := commandReferencesExistingPaths("echo nested/file.txt", baseDir)
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if ok {
+		t.Fatal("expected path-like bare argument to require an existing path")
+	}
+}
+
 func TestCommandReferencesExistingPathsMakeDirectoryFlag(t *testing.T) {
 	baseDir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(baseDir, "build"), 0o755); err != nil {

@@ -227,7 +227,6 @@ func (e *pathExtractor) consumeContextualPath(index int, token string) bool {
 		token,
 		index,
 		e.commandIndex,
-		e.workingDirectory,
 		e.sedScriptConsumed,
 	)
 	if !ok {
@@ -474,7 +473,6 @@ func contextualPathRequirement(
 	token string,
 	index int,
 	commandIndex int,
-	workingDirectory string,
 	sedScriptConsumed bool,
 ) (pathRequirement, bool) {
 	if token == "" || token == "-" {
@@ -492,10 +490,6 @@ func contextualPathRequirement(
 	}
 
 	if commandName == "sed" && sedScriptConsumed && !strings.HasPrefix(token, "-") {
-		return pathMustExist, true
-	}
-
-	if bareTokenResolvesToExistingPath(token, workingDirectory) {
 		return pathMustExist, true
 	}
 
