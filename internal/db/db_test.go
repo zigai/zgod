@@ -275,6 +275,37 @@ func TestFetchCandidatesAppliesDedupeAfterFailFilter(t *testing.T) {
 	}
 }
 
+func TestFetchCandidatesOrdersEqualTimestampsByNewestID(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := NewHistoryRepo(database)
+	for _, command := range []string{"first", "second"} {
+		if _, err = repo.Insert(HistoryEntry{TsMs: 1000, Command: command}); err != nil {
+			t.Fatalf("Insert(%q) error: %v", command, err)
+		}
+	}
+
+	got, err := repo.FetchCandidates(100, false, FailFilterInclude)
+	if err != nil {
+		t.Fatalf("FetchCandidates() error: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("len(FetchCandidates()) = %d, want 2", len(got))
+	}
+
+	if got[0].Command != "second" || got[1].Command != "first" {
+		t.Fatalf("FetchCandidates() order = %q, %q; want second, first", got[0].Command, got[1].Command)
+	}
+}
+
 func TestOpenReadOnlyMissingFile(t *testing.T) {
 	missingPath := filepath.Join(t.TempDir(), "missing.db")
 

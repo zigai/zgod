@@ -59,7 +59,7 @@ func (r *HistoryRepo) Recent(limit int) ([]HistoryEntry, error) {
 		context.Background(),
 		`SELECT id, ts_ms, duration, exit_code, command, directory, session_id, hostname
 		 FROM history
-		 ORDER BY ts_ms DESC LIMIT ?`,
+		 ORDER BY ts_ms DESC, id DESC LIMIT ?`,
 		limit,
 	)
 	if err != nil {
@@ -76,7 +76,7 @@ func (r *HistoryRepo) RecentInDir(dir string, limit int) ([]HistoryEntry, error)
 		context.Background(),
 		`SELECT id, ts_ms, duration, exit_code, command, directory, session_id, hostname
 		 FROM history WHERE directory = ?
-		 ORDER BY ts_ms DESC LIMIT ?`,
+		 ORDER BY ts_ms DESC, id DESC LIMIT ?`,
 		dir, limit,
 	)
 	if err != nil {
@@ -118,7 +118,7 @@ func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, failFilter FailFil
 		query += " WHERE exit_code != 0"
 	}
 
-	query += " ORDER BY ts_ms DESC"
+	query += " ORDER BY ts_ms DESC, id DESC"
 	if limit > 0 {
 		query += " LIMIT ?"
 
