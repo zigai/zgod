@@ -25,6 +25,8 @@ var recordCmd = &cobra.Command{
 const (
 	recordMsPerSecond           int64 = 1000
 	recordUnixMillisCutoffValue int64 = 1_000_000_000_000
+	recordBusyRetryAttempts           = 5
+	recordBusyRetryBackoff            = 250 * time.Millisecond
 )
 
 func registerRecordCommand() {
@@ -69,25 +71,12 @@ func runRecord(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolving database path: %w", err)
 	}
 
-	database, err := db.Open(dbPath)
-	if err != nil {
-		if db.IsBusyError(err) {
-			return nil
-		}
-
-		return fmt.Errorf("opening database: %w", err)
-	}
-
-	defer func() { _ = database.Close() }()
-
 	nowMs := time.Now().UnixMilli()
 	ts, duration := parseRecordTiming(cmd, nowMs)
 	sessionID, _ := cmd.Flags().GetString("session")
 	hostname := getHostname()
 
-	repo := db.NewHistoryRepo(database)
-
-	_, err = repo.Insert(db.HistoryEntry{
+	entry := db.HistoryEntry{
 		ID:        0,
 		TsMs:      ts,
 		Duration:  duration,
@@ -96,16 +85,60 @@ func runRecord(cmd *cobra.Command, args []string) error {
 		Directory: directory,
 		SessionID: sessionID,
 		Hostname:  hostname,
-	})
-	if err != nil {
-		if db.IsBusyError(err) {
-			return nil
-		}
+	}
 
+	if err = insertRecordWithRetry(dbPath, entry); err != nil {
 		return fmt.Errorf("inserting history entry: %w", err)
 	}
 
 	return nil
+}
+
+func insertRecordWithRetry(dbPath string, entry db.HistoryEntry) error {
+	var lastBusyErr error
+
+	for attempt := 0; attempt <= recordBusyRetryAttempts; attempt++ {
+		database, err := db.Open(dbPath)
+		if err != nil {
+			if db.IsBusyError(err) {
+				lastBusyErr = err
+
+				sleepBeforeRecordRetry(attempt)
+
+				continue
+			}
+
+			return fmt.Errorf("opening database: %w", err)
+		}
+
+		repo := db.NewHistoryRepo(database)
+		_, err = repo.Insert(entry)
+
+		closeErr := database.Close()
+		if err == nil {
+			if closeErr != nil {
+				return fmt.Errorf("closing database: %w", closeErr)
+			}
+
+			return nil
+		}
+
+		if !db.IsBusyError(err) {
+			return fmt.Errorf("inserting history entry: %w", err)
+		}
+
+		lastBusyErr = err
+
+		sleepBeforeRecordRetry(attempt)
+	}
+
+	return lastBusyErr
+}
+
+func sleepBeforeRecordRetry(attempt int) {
+	if attempt < recordBusyRetryAttempts {
+		time.Sleep(recordBusyRetryBackoff)
+	}
 }
 
 func shouldRecordCommand(cfg config.Config, command string, exitCode int, directory string) (bool, error) {
