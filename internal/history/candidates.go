@@ -13,12 +13,7 @@ type CandidateOpts struct {
 }
 
 func FetchCandidates(repo *db.HistoryRepo, opts CandidateOpts) ([]db.HistoryEntry, error) {
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 10000
-	}
-
-	entries, err := repo.FetchCandidates(limit, opts.Dedupe, opts.FailFilter)
+	entries, err := repo.FetchCandidates(opts.Limit, opts.Dedupe, opts.FailFilter)
 	if err != nil {
 		return nil, fmt.Errorf("fetching history candidates: %w", err)
 	}

@@ -147,7 +147,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) loadEntries() {
 	entries, err := history.FetchCandidates(m.repo, history.CandidateOpts{
-		Limit:      10000,
 		Dedupe:     m.dedupe,
 		FailFilter: m.failFilter,
 	})

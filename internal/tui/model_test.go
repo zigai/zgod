@@ -259,6 +259,43 @@ func TestNewModelUsesConfiguredDefaultFailFilter(t *testing.T) {
 	}
 }
 
+func TestNewModelSearchesBeyondTenThousandEntries(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("db.Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := db.NewHistoryRepo(database)
+	if _, err = repo.Insert(db.HistoryEntry{TsMs: 1, Command: "old unique target"}); err != nil {
+		t.Fatalf("repo.Insert(old target) error: %v", err)
+	}
+
+	for i := range 10000 {
+		entry := db.HistoryEntry{
+			TsMs:    int64(i + 2),
+			Command: "newer filler command",
+		}
+		if _, err = repo.Insert(entry); err != nil {
+			t.Fatalf("repo.Insert(filler %d) error: %v", i, err)
+		}
+	}
+
+	cfg := config.Default()
+	m := NewModel(cfg, repo, "", "", 10, false, "target")
+
+	if len(m.displayEntries) == 0 {
+		t.Fatal("displayEntries is empty, want old target to be searchable")
+	}
+
+	if got, want := m.displayEntries[0].Entry.Command, "old unique target"; got != want {
+		t.Fatalf("displayEntries[0].Command = %q, want %q", got, want)
+	}
+}
+
 func testNavModel(entryCount int, height int) *Model {
 	return &Model{
 		cfg:            config.Default(),
