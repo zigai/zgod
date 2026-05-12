@@ -5,6 +5,7 @@ export ZGOD_CONFIG={{zshQuote .ConfigPath}}
 {{end}}
 
 __zgod_session_id=""
+__zgod_start_dir=""
 
 __zgod_has_command() {
     command -v zgod &>/dev/null
@@ -32,6 +33,7 @@ __zgod_preexec() {
     __zgod_init
     __zgod_command="$1"
     __zgod_start_ms=$(__zgod_get_time_ms)
+    __zgod_start_dir="$PWD"
 }
 
 __zgod_precmd() {
@@ -49,10 +51,11 @@ __zgod_precmd() {
         --ts "$__zgod_start_ms" \
         --exit-code "$exit_code" \
         --command "$__zgod_command" \
-        --directory "$PWD" \
+        --directory "${__zgod_start_dir:-$PWD}" \
         --session "$__zgod_session_id" &!
 
     __zgod_command=""
+    __zgod_start_dir=""
 }
 
 __zgod_search_widget() {

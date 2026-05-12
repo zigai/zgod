@@ -7,6 +7,7 @@ export ZGOD_CONFIG={{bashQuote .ConfigPath}}
 __zgod_session_id=""
 __zgod_command=""
 __zgod_start_ms=""
+__zgod_start_dir=""
 __zgod_last_exit_code=""
 __zgod_preexec_fired=""
 __zgod_in_hook=""
@@ -15,6 +16,7 @@ __zgod_original_prompt_command=""
 __zgod_original_prompt_command_is_array=""
 __zgod_original_prompt_command_array=()
 __zgod_original_debug_trap=""
+__zgod_last_history_line=""
 __zgod_ready=""
 
 __zgod_has_command() {
@@ -49,22 +51,34 @@ __zgod_extract_history_command() {
         return 1
     fi
 
-    if [[ "$history_line" =~ ^[[:space:]]*[0-9]+[[:space:]]+(.*)$ ]]; then
-        printf '%s' "${BASH_REMATCH[1]}"
-        return 0
+    history_line=${history_line#"${history_line%%[![:space:]]*}"}
+    if [[ "$history_line" =~ ^[0-9]+ ]]; then
+        history_line=${history_line#"${BASH_REMATCH[0]}"}
+        if [[ "$history_line" == "  "* ]]; then
+            printf '%s' "${history_line:2}"
+            return 0
+        fi
+
+        if [[ "$history_line" == " "* ]]; then
+            printf '%s' "${history_line:1}"
+            return 0
+        fi
     fi
 
-    history_line=${history_line#"${history_line%%[![:space:]]*}"}
     printf '%s' "$history_line"
 }
 
-__zgod_get_history_command() {
-    local history_line
+__zgod_get_history_line() {
     if ! [[ -o history ]]; then
         return 1
     fi
 
-    history_line=$(HISTTIMEFORMAT= builtin history 1 2>/dev/null)
+    HISTTIMEFORMAT= builtin history 1 2>/dev/null
+}
+
+__zgod_get_history_command() {
+    local history_line
+    history_line=$(__zgod_get_history_line)
     __zgod_extract_history_command "$history_line"
 }
 
@@ -188,11 +202,22 @@ __zgod_preexec() {
     fi
     __zgod_preexec_fired=1
     __zgod_init
-    __zgod_command=$(__zgod_get_history_command)
-    if [[ -z "$__zgod_command" ]]; then
+
+    local history_line
+    history_line=$(__zgod_get_history_line)
+    if [[ -n "$history_line" ]]; then
+        if [[ "$history_line" == "$__zgod_last_history_line" ]]; then
+            __zgod_command=""
+            __zgod_start_ms=""
+            return
+        fi
+
+        __zgod_command=$(__zgod_extract_history_command "$history_line")
+    else
         __zgod_command="$BASH_COMMAND"
     fi
     __zgod_start_ms=$(__zgod_get_time_ms)
+    __zgod_start_dir="$PWD"
 }
 
 __zgod_debug_trap() {
@@ -232,13 +257,15 @@ __zgod_prompt_command() {
                 --ts "$__zgod_start_ms" \
                 --exit-code "$exit_code" \
                 --command "$command" \
-                --directory "$PWD" \
+                --directory "${__zgod_start_dir:-$PWD}" \
                 --session "$__zgod_session_id" & disown
         fi
     fi
 
     __zgod_command=""
+    __zgod_start_dir=""
     __zgod_preexec_fired=""
+    __zgod_last_history_line=$(__zgod_get_history_line)
     __zgod_run_original_prompt_commands "$exit_code"
     __zgod_in_hook=""
 

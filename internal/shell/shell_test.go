@@ -176,6 +176,7 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 			mustContain: []string{
 				"__zgod_has_command()",
 				"if ! __zgod_has_command; then",
+				"__zgod_start_dir",
 				"zgod record",
 				"selected=$(zgod search",
 			},
@@ -186,6 +187,7 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 			mustContain: []string{
 				"__zgod_has_command()",
 				"if ! __zgod_has_command; then",
+				"__zgod_start_dir",
 				"zgod record",
 				"selected=$(zgod search",
 			},
@@ -196,6 +198,7 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 			mustContain: []string{
 				"function __zgod_has_command",
 				"if not __zgod_has_command",
+				"__zgod_start_dir",
 				"zgod record",
 				"set -l selected (zgod search",
 			},
@@ -206,6 +209,7 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 			mustContain: []string{
 				"function __zgod_has_command",
 				"if (-not (__zgod_has_command)) {",
+				"$script:__zgod_start_dir",
 				"$psi.FileName = \"zgod\"",
 				"$selected = zgod search",
 			},
@@ -504,6 +508,54 @@ func TestBashInitScriptIgnoresExistingPromptCommand(t *testing.T) {
 	}
 }
 
+func TestBashInitScriptPreservesLeadingSpaceCommand(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+
+	got := runBashInitScriptCommandCapture(t, bashCaptureOptions{
+		command: " echo private",
+	})
+	if got != " echo private" {
+		t.Fatalf("recorded command = %q, want %q", got, " echo private")
+	}
+}
+
+func TestBashInitScriptDoesNotRecordStaleHistoryLine(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+
+	got := runBashInitScriptCommandCaptures(t, bashCaptureOptions{
+		prelude: "HISTCONTROL=ignorespace",
+		command: "echo before\n echo skipped\necho after",
+	})
+
+	want := []string{"echo before", "echo after"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("recorded commands = %q, want %q", got, want)
+	}
+}
+
+func TestBashInitScriptRecordsStartingDirectory(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+
+	result := runBashInitScript(t, bashCaptureOptions{
+		prelude: "mkdir subdir",
+		command: "cd subdir",
+	})
+
+	if len(result.recordedDirs) == 0 {
+		t.Fatal("no directories were recorded")
+	}
+
+	if got, want := result.recordedDirs[len(result.recordedDirs)-1], result.tempDir; got != want {
+		t.Fatalf("recorded directory = %q, want %q", got, want)
+	}
+}
+
 func TestBashInitScriptPreservesOriginalPromptCommand(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
@@ -605,9 +657,10 @@ type bashCaptureOptions struct {
 }
 
 type bashRunResult struct {
-	recorded []string
-	tempDir  string
-	output   string
+	recorded     []string
+	recordedDirs []string
+	tempDir      string
+	output       string
 }
 
 func runBashInitScriptCommandCapture(t *testing.T, opts bashCaptureOptions) string {
@@ -637,6 +690,7 @@ func runBashInitScript(t *testing.T, opts bashCaptureOptions) bashRunResult {
 
 	tempDir := t.TempDir()
 	capturePath := filepath.Join(tempDir, "capture.log")
+	captureDirPath := filepath.Join(tempDir, "capture-dir.log")
 	fakeZgodPath := filepath.Join(tempDir, "zgod")
 	rcPath := filepath.Join(tempDir, "bashrc")
 
@@ -645,13 +699,28 @@ set -eu
 
 if [ "${1:-}" = "record" ]; then
 	shift
+	record_command=""
+	record_directory=""
 	while [ "$#" -gt 0 ]; do
-		if [ "$1" = "--command" ]; then
-			printf '%s\n' "$2" >> "$ZGOD_CAPTURE_FILE"
-			exit 0
-		fi
-		shift
+		case "$1" in
+			--command)
+				record_command=$2
+				shift 2
+				;;
+			--directory)
+				record_directory=$2
+				shift 2
+				;;
+			*)
+				shift
+				;;
+		esac
 	done
+	printf '%s\n' "$record_command" >> "$ZGOD_CAPTURE_FILE"
+	if [ -n "${ZGOD_CAPTURE_DIRECTORY_FILE:-}" ]; then
+		printf '%s\n' "$record_directory" >> "$ZGOD_CAPTURE_DIRECTORY_FILE"
+	fi
+	exit 0
 fi
 `
 
@@ -691,6 +760,7 @@ fi
 		"PATH="+tempDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"TERM=dumb",
 		"ZGOD_CAPTURE_FILE="+capturePath,
+		"ZGOD_CAPTURE_DIRECTORY_FILE="+captureDirPath,
 	)
 	cmd.Stdin = strings.NewReader(opts.command + "\nexit 0\n")
 
@@ -704,10 +774,16 @@ fi
 		t.Fatalf("waiting for recorded command failed: %v\n%s", err, output)
 	}
 
+	recordedDirs, err := waitForRecordedCommands(captureDirPath)
+	if err != nil {
+		t.Fatalf("waiting for recorded directories failed: %v\n%s", err, output)
+	}
+
 	return bashRunResult{
-		recorded: recorded,
-		tempDir:  tempDir,
-		output:   string(output),
+		recorded:     recorded,
+		recordedDirs: recordedDirs,
+		tempDir:      tempDir,
+		output:       string(output),
 	}
 }
 
@@ -726,7 +802,7 @@ func waitForRecordedCommands(path string) ([]string, error) {
 	for time.Now().Before(deadline) {
 		data, err := os.ReadFile(path)
 		if err == nil {
-			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+			lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
 
 			recorded := make([]string, 0, len(lines))
 			for i := range lines {

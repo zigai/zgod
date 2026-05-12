@@ -7,6 +7,7 @@ $env:ZGOD_CONFIG = {{powerShellQuote .ConfigPath}}
 $script:__zgod_session_id = ""
 $script:__zgod_command = ""
 $script:__zgod_start_ms = ""
+$script:__zgod_start_dir = ""
 $script:__zgod_in_hook = $false
 
 function __zgod_has_command {
@@ -32,6 +33,7 @@ function __zgod_preexec {
     __zgod_init
     $script:__zgod_command = $line
     $script:__zgod_start_ms = __zgod_get_time_ms
+    $script:__zgod_start_dir = $PWD.Path
 }
 
 function __zgod_resolve_exit_code {
@@ -89,12 +91,13 @@ function __zgod_postexec {
     $cmd = $script:__zgod_command
     $ts = $script:__zgod_start_ms
     $exitCode = __zgod_resolve_exit_code $success $lastExitCode
-    $dir = $PWD.Path
+    $dir = $script:__zgod_start_dir
     $session = $script:__zgod_session_id
 
     __zgod_record_async $cmd $ts $exitCode $dir $session
 
     $script:__zgod_command = ""
+    $script:__zgod_start_dir = ""
     $script:__zgod_in_hook = $false
 }
 
