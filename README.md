@@ -124,7 +124,7 @@ All fields are optional.
 
 ```toml
 [db]
-path = ""  # default: platform-specific history path (see above)
+path = ""  # default: platform-specific history path; custom paths must be absolute or use ~/
 
 [filters]
 ignore_space = true       # skip commands starting with a space

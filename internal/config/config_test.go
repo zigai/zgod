@@ -130,6 +130,20 @@ func TestValidateDefaultFailFilter(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsRelativeDatabasePath(t *testing.T) {
+	cfg := Default()
+	cfg.DB.Path = "relative/history.db"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() error = nil, want invalid db.path")
+	}
+
+	if !errors.Is(err, errInvalidDBPath) {
+		t.Fatalf("Validate() error = %v, want errInvalidDBPath", err)
+	}
+}
+
 func TestDatabasePath(t *testing.T) {
 	cfg := Default()
 	cfg.DB.Path = ""
@@ -152,5 +166,19 @@ func TestDatabasePath(t *testing.T) {
 
 	if path != "/custom/path.db" {
 		t.Errorf("DatabasePath() = %q, want /custom/path.db", path)
+	}
+}
+
+func TestDatabasePathRejectsRelativePath(t *testing.T) {
+	cfg := Default()
+	cfg.DB.Path = "relative/history.db"
+
+	_, err := cfg.DatabasePath()
+	if err == nil {
+		t.Fatal("DatabasePath() error = nil, want invalid db.path")
+	}
+
+	if !errors.Is(err, errInvalidDBPath) {
+		t.Fatalf("DatabasePath() error = %v, want errInvalidDBPath", err)
 	}
 }

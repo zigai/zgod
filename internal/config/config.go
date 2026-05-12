@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 
@@ -35,6 +36,7 @@ type FilterConfig struct {
 
 var (
 	errNoMatchModeEnabled       = errors.New("at least one match mode must be enabled")
+	errInvalidDBPath            = errors.New("invalid db.path")
 	errInvalidDefaultScope      = errors.New("invalid default_scope")
 	errDefaultModeNotEnabled    = errors.New("default_mode is not enabled")
 	errInvalidDefaultMode       = errors.New("invalid default_mode")
@@ -96,7 +98,12 @@ func Load() (Config, error) {
 }
 
 func (c Config) Validate() error {
-	err := c.validateEnabledModes()
+	err := c.validateDBPath()
+	if err != nil {
+		return err
+	}
+
+	err = c.validateEnabledModes()
 	if err != nil {
 		return err
 	}
@@ -150,6 +157,10 @@ func (c Config) DatabasePath() (string, error) {
 			return "", fmt.Errorf("expanding database path %q: %w", c.DB.Path, err)
 		}
 
+		if !filepath.IsAbs(path) {
+			return "", fmt.Errorf("%w %q: must be absolute or start with ~/", errInvalidDBPath, c.DB.Path)
+		}
+
 		return path, nil
 	}
 
@@ -159,6 +170,23 @@ func (c Config) DatabasePath() (string, error) {
 	}
 
 	return path, nil
+}
+
+func (c Config) validateDBPath() error {
+	if c.DB.Path == "" {
+		return nil
+	}
+
+	path, err := paths.ExpandTilde(c.DB.Path)
+	if err != nil {
+		return fmt.Errorf("expanding database path %q: %w", c.DB.Path, err)
+	}
+
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("%w %q: must be absolute or start with ~/", errInvalidDBPath, c.DB.Path)
+	}
+
+	return nil
 }
 
 func (c Config) validateEnabledModes() error {
