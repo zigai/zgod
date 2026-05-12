@@ -1154,32 +1154,94 @@ func truncateWithRanges(text string, info *match.Match, maxLen int) (string, *ma
 		return text, info
 	}
 
-	ellipsis := "..."
-	cutoff := maxLen - len(ellipsis)
-	cutoff = max(cutoff, 0)
-
-	truncated := string(runes[:cutoff]) + ellipsis
 	if info == nil || len(info.MatchedRanges) == 0 {
+		ellipsis := "..."
+		cutoff := max(maxLen-len(ellipsis), 0)
+		truncated := string(runes[:cutoff]) + ellipsis
+
 		return truncated, info
+	}
+
+	return truncateAroundMatch(runes, info, maxLen)
+}
+
+func truncateAroundMatch(runes []rune, info *match.Match, maxLen int) (string, *match.Match) {
+	const ellipsis = "..."
+
+	if maxLen <= len(ellipsis)*2 {
+		cutoff := max(maxLen-len(ellipsis), 0)
+		truncated := string(runes[:cutoff]) + ellipsis
+
+		infoCopy := *info
+		infoCopy.MatchedRanges = nil
+
+		return truncated, &infoCopy
+	}
+
+	firstMatchStart := len(runes)
+	for _, r := range info.MatchedRanges {
+		if r.Start < firstMatchStart {
+			firstMatchStart = r.Start
+		}
+	}
+
+	if firstMatchStart == len(runes) {
+		cutoff := max(maxLen-len(ellipsis), 0)
+		truncated := string(runes[:cutoff]) + ellipsis
+
+		infoCopy := *info
+		infoCopy.MatchedRanges = nil
+
+		return truncated, &infoCopy
+	}
+
+	prefixWidth := 0
+	suffixWidth := len(ellipsis)
+	windowWidth := maxLen - suffixWidth
+	start := 0
+
+	if firstMatchStart >= windowWidth {
+		prefixWidth = len(ellipsis)
+		windowWidth = maxLen - prefixWidth - suffixWidth
+		start = max(firstMatchStart-(windowWidth/3), 0)
+	}
+
+	end := min(start+windowWidth, len(runes))
+	if end == len(runes) {
+		suffixWidth = 0
+		windowWidth = maxLen - prefixWidth
+		start = max(end-windowWidth, 0)
+	}
+
+	truncatedRunes := make([]rune, 0, maxLen)
+	if prefixWidth > 0 {
+		truncatedRunes = append(truncatedRunes, []rune(ellipsis)...)
+	}
+
+	truncatedRunes = append(truncatedRunes, runes[start:end]...)
+	if suffixWidth > 0 {
+		truncatedRunes = append(truncatedRunes, []rune(ellipsis)...)
 	}
 
 	var ranges []match.Range
 
 	for _, r := range info.MatchedRanges {
-		if r.Start >= cutoff {
+		if r.End <= start || r.Start >= end {
 			continue
 		}
 
-		end := min(r.End, cutoff)
-		if end > r.Start {
-			ranges = append(ranges, match.Range{Start: r.Start, End: end})
+		rangeStart := max(r.Start, start) - start + prefixWidth
+		rangeEnd := min(r.End, end) - start + prefixWidth
+
+		if rangeEnd > rangeStart {
+			ranges = append(ranges, match.Range{Start: rangeStart, End: rangeEnd})
 		}
 	}
 
 	infoCopy := *info
 	infoCopy.MatchedRanges = ranges
 
-	return truncated, &infoCopy
+	return string(truncatedRunes), &infoCopy
 }
 
 func collapseRunes(textRunes []rune, symbolRunes []rune) ([]rune, []int) {

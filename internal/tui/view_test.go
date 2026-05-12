@@ -8,6 +8,7 @@ import (
 	"github.com/zigai/zgod/internal/config"
 	"github.com/zigai/zgod/internal/db"
 	"github.com/zigai/zgod/internal/history"
+	"github.com/zigai/zgod/internal/match"
 )
 
 func TestFormatMatchCountLabel(t *testing.T) {
@@ -257,5 +258,32 @@ func TestRenderResultsClipsExpandedMultilineToHeight(t *testing.T) {
 	rendered := m.renderResults()
 	if got := len(strings.Split(rendered, "\n")); got != m.height {
 		t.Fatalf("renderResults() returned %d lines, want %d", got, m.height)
+	}
+}
+
+func TestTruncateWithRangesCentersHiddenMatch(t *testing.T) {
+	t.Parallel()
+
+	info := match.Match{
+		MatchedRanges: []match.Range{{Start: 29, End: 35}},
+	}
+
+	got, gotInfo := truncateWithRanges("prefix text that is too long needle suffix", &info, 20)
+
+	if !strings.Contains(got, "needle") {
+		t.Fatalf("truncateWithRanges() text = %q, expected to contain hidden match", got)
+	}
+
+	if !strings.HasPrefix(got, "...") {
+		t.Fatalf("truncateWithRanges() text = %q, expected prefix ellipsis", got)
+	}
+
+	if gotInfo == nil || len(gotInfo.MatchedRanges) != 1 {
+		t.Fatalf("truncateWithRanges() ranges = %+v, want one remapped range", gotInfo)
+	}
+
+	r := gotInfo.MatchedRanges[0]
+	if got[r.Start:r.End] != "needle" {
+		t.Fatalf("remapped range points to %q, want needle in %q", got[r.Start:r.End], got)
 	}
 }
