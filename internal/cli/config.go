@@ -38,12 +38,24 @@ var configCmd = &cobra.Command{
 }
 
 var configShowCmd = &cobra.Command{
-	Use:   "show",
-	Short: "Print the current configuration",
+	Use:          "show",
+	Short:        "Print the current configuration",
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		raw, err := configShowRaw(cmd)
+		if err != nil {
+			return err
+		}
+
 		configPath, err := ensureConfigFile()
 		if err != nil {
 			return err
+		}
+
+		if !raw {
+			if _, err = config.Load(); err != nil {
+				return fmt.Errorf("validating config file: %w", err)
+			}
 		}
 
 		data, err := os.ReadFile(configPath)
@@ -58,6 +70,20 @@ var configShowCmd = &cobra.Command{
 
 		return nil
 	},
+}
+
+func configShowRaw(cmd *cobra.Command) (bool, error) {
+	flag := cmd.Flags().Lookup("raw")
+	if flag == nil {
+		return false, nil
+	}
+
+	raw, err := cmd.Flags().GetBool("raw")
+	if err != nil {
+		return false, fmt.Errorf("reading --raw flag: %w", err)
+	}
+
+	return raw, nil
 }
 
 var configEditCmd = &cobra.Command{
@@ -136,6 +162,7 @@ func splitCommandLine(command string) ([]string, error) {
 }
 
 func registerConfigCommand() {
+	configShowCmd.Flags().Bool("raw", false, "Print config without validating it")
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configEditCmd)
 	rootCmd.AddCommand(configCmd)

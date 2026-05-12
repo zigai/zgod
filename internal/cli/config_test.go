@@ -13,7 +13,7 @@ import (
 	"github.com/zigai/zgod/internal/paths"
 )
 
-func TestConfigShowPrintsInvalidConfig(t *testing.T) {
+func TestConfigShowRejectsInvalidConfig(t *testing.T) {
 	setConfigHomes(t)
 
 	configPath, err := paths.ConfigFile()
@@ -35,12 +35,48 @@ func TestConfigShowPrintsInvalidConfig(t *testing.T) {
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 
+	if err = configShowCmd.RunE(cmd, nil); err == nil {
+		t.Fatal("config show error = nil, want invalid config error")
+	}
+
+	if stdout.String() != "" {
+		t.Fatalf("config show output = %q, want empty output", stdout.String())
+	}
+}
+
+func TestConfigShowRawPrintsInvalidConfig(t *testing.T) {
+	setConfigHomes(t)
+
+	configPath, err := paths.ConfigFile()
+	if err != nil {
+		t.Fatalf("ConfigFile() error: %v", err)
+	}
+
+	if err = os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+
+	const brokenConfig = "not = [valid\n"
+	if err = os.WriteFile(configPath, []byte(brokenConfig), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("raw", false, "")
+
+	if err = cmd.Flags().Set("raw", "true"); err != nil {
+		t.Fatalf("setting raw flag: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
 	if err = configShowCmd.RunE(cmd, nil); err != nil {
-		t.Fatalf("config show error: %v", err)
+		t.Fatalf("config show --raw error: %v", err)
 	}
 
 	if stdout.String() != brokenConfig {
-		t.Fatalf("config show output = %q, want %q", stdout.String(), brokenConfig)
+		t.Fatalf("config show --raw output = %q, want %q", stdout.String(), brokenConfig)
 	}
 }
 
