@@ -147,7 +147,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) loadEntries() {
 	entries, err := history.FetchCandidates(m.repo, history.CandidateOpts{
-		Dedupe:     m.dedupe,
 		FailFilter: m.failFilter,
 	})
 
@@ -182,6 +181,10 @@ func (m *Model) loadEntries() {
 		entries = filtered
 	}
 
+	if m.dedupe {
+		entries = dedupeEntries(entries)
+	}
+
 	m.allEntries = entries
 
 	m.candidates = make([]string, len(entries))
@@ -190,6 +193,22 @@ func (m *Model) loadEntries() {
 	}
 
 	m.updateMatches()
+}
+
+func dedupeEntries(entries []db.HistoryEntry) []db.HistoryEntry {
+	seen := map[string]bool{}
+	result := make([]db.HistoryEntry, 0, len(entries))
+
+	for _, e := range entries {
+		if seen[e.Command] {
+			continue
+		}
+
+		seen[e.Command] = true
+		result = append(result, e)
+	}
+
+	return result
 }
 
 func (m *Model) updateMatches() {

@@ -259,6 +259,42 @@ func TestNewModelUsesConfiguredDefaultFailFilter(t *testing.T) {
 	}
 }
 
+func TestNewModelAppliesCWDFilterBeforeDedupe(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("db.Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := db.NewHistoryRepo(database)
+	entries := []db.HistoryEntry{
+		{TsMs: 1000, Command: "repeat", Directory: "/repo"},
+		{TsMs: 2000, Command: "repeat", Directory: "/elsewhere"},
+	}
+
+	for _, entry := range entries {
+		if _, err = repo.Insert(entry); err != nil {
+			t.Fatalf("repo.Insert(%q) error: %v", entry.Command, err)
+		}
+	}
+
+	cfg := config.Default()
+	m := NewModel(cfg, repo, "/repo", "", 10, true, "")
+
+	if got, want := len(m.allEntries), 1; got != want {
+		t.Fatalf("len(allEntries) = %d, want %d", got, want)
+	}
+
+	if got, want := m.allEntries[0].Directory, "/repo"; got != want {
+		t.Fatalf("allEntries[0].Directory = %q, want %q", got, want)
+	}
+}
+
 func TestNewModelSearchesBeyondTenThousandEntries(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
