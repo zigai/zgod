@@ -195,6 +195,33 @@ func TestCommandReferencesExistingPathsAllowsCreatorCommandTargets(t *testing.T)
 	}
 }
 
+func TestCommandReferencesExistingPathsCatBareFileArgument(t *testing.T) {
+	baseDir := t.TempDir()
+
+	filePath := filepath.Join(baseDir, "existing.txt")
+	if writeErr := os.WriteFile(filePath, []byte("ok"), 0o600); writeErr != nil {
+		t.Fatalf("WriteFile() error: %v", writeErr)
+	}
+
+	ok, err := commandReferencesExistingPaths("cat existing.txt", baseDir)
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if !ok {
+		t.Fatal("expected cat with existing bare file argument to pass")
+	}
+
+	ok, err = commandReferencesExistingPaths("cat missing.txt", baseDir)
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if ok {
+		t.Fatal("expected cat with missing bare file argument to fail")
+	}
+}
+
 func TestCommandReferencesExistingPathsPathLikeEchoArgumentStillRequiresExistingPath(t *testing.T) {
 	baseDir := t.TempDir()
 

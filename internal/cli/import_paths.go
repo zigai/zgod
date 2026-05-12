@@ -479,7 +479,7 @@ func contextualPathRequirement(
 		return 0, false
 	}
 
-	if commandName == "cd" || commandName == "pushd" {
+	if isDirectoryChangeCommand(commandName) {
 		if index == commandIndex+1 {
 			return pathMustExist, true
 		}
@@ -493,7 +493,24 @@ func contextualPathRequirement(
 		return pathMustExist, true
 	}
 
+	if isBareFileReaderCommand(commandName) && !strings.HasPrefix(token, "-") {
+		return pathMustExist, true
+	}
+
 	return 0, false
+}
+
+func isDirectoryChangeCommand(commandName string) bool {
+	return commandName == "cd" || commandName == "pushd"
+}
+
+func isBareFileReaderCommand(commandName string) bool {
+	switch commandName {
+	case "cat":
+		return true
+	default:
+		return false
+	}
 }
 
 func isEditorCommand(commandName string) bool {
