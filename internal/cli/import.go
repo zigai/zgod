@@ -130,26 +130,28 @@ func resolveTargetImportPath() (string, error) {
 }
 
 func openImportDatabases(targetPath string, sourcePath string) (*sql.DB, *sql.DB, error) {
-	if err := paths.EnsureDirs(); err != nil {
-		return nil, nil, fmt.Errorf("ensuring directories: %w", err)
-	}
-
-	targetDB, err := db.Open(targetPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("opening target database: %w", err)
-	}
-
 	sourceDB, err := db.OpenReadOnly(sourcePath)
 	if err != nil {
-		_ = targetDB.Close()
 		return nil, nil, wrapImportSourceAccessError("opening", sourcePath, err)
 	}
 
 	if err = db.ValidateHistorySchema(sourceDB); err != nil {
 		_ = sourceDB.Close()
-		_ = targetDB.Close()
 
 		return nil, nil, fmt.Errorf("validating source database schema: %w", err)
+	}
+
+	if err = paths.EnsureDirs(); err != nil {
+		_ = sourceDB.Close()
+
+		return nil, nil, fmt.Errorf("ensuring directories: %w", err)
+	}
+
+	targetDB, err := db.Open(targetPath)
+	if err != nil {
+		_ = sourceDB.Close()
+
+		return nil, nil, fmt.Errorf("opening target database: %w", err)
 	}
 
 	return targetDB, sourceDB, nil

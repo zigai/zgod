@@ -187,6 +187,27 @@ func TestOpenImportDatabasesReadableSourceDoesNotRequireAuth(t *testing.T) {
 	}
 }
 
+func TestOpenImportDatabasesDoesNotCreateTargetForInvalidSource(t *testing.T) {
+	setImportHomes(t)
+
+	sourcePath := filepath.Join(t.TempDir(), "source.db")
+	if err := os.WriteFile(sourcePath, []byte("not sqlite"), 0o600); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", sourcePath, err)
+	}
+
+	targetPath := filepath.Join(t.TempDir(), "target.db")
+
+	targetDB, sourceDB, err := openImportDatabases(targetPath, sourcePath)
+	if err == nil {
+		closeImportDatabases(targetDB, sourceDB)
+		t.Fatal("openImportDatabases() error = nil, want invalid source error")
+	}
+
+	if _, statErr := os.Stat(targetPath); !os.IsNotExist(statErr) {
+		t.Fatalf("target database should not be created, stat err = %v", statErr)
+	}
+}
+
 func setImportHomes(t *testing.T) {
 	t.Helper()
 
