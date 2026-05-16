@@ -157,15 +157,16 @@ func TestDatabasePath(t *testing.T) {
 		t.Error("DatabasePath() should not be empty with default config")
 	}
 
-	cfg.DB.Path = "/custom/path.db"
+	customPath := filepath.Join(t.TempDir(), "custom", "path.db")
+	cfg.DB.Path = customPath
 
 	path, err = cfg.DatabasePath()
 	if err != nil {
 		t.Fatalf("DatabasePath() error: %v", err)
 	}
 
-	if path != "/custom/path.db" {
-		t.Errorf("DatabasePath() = %q, want /custom/path.db", path)
+	if path != customPath {
+		t.Errorf("DatabasePath() = %q, want %q", path, customPath)
 	}
 }
 
