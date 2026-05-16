@@ -551,7 +551,8 @@ func TestBashInitScriptRecordsStartingDirectory(t *testing.T) {
 		t.Fatal("no directories were recorded")
 	}
 
-	if got, want := result.recordedDirs[len(result.recordedDirs)-1], result.tempDir; got != want {
+	want := bashWorkingDir(t, result.tempDir)
+	if got := result.recordedDirs[len(result.recordedDirs)-1]; got != want {
 		t.Fatalf("recorded directory = %q, want %q", got, want)
 	}
 }
@@ -785,6 +786,23 @@ fi
 		tempDir:      tempDir,
 		output:       string(output),
 	}
+}
+
+func bashWorkingDir(t *testing.T, dir string) string {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bash", "--noprofile", "--norc", "-c", "pwd")
+	cmd.Dir = dir
+
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running bash pwd failed: %v", err)
+	}
+
+	return strings.TrimSpace(string(output))
 }
 
 func setTestHome(t *testing.T, home string) {
