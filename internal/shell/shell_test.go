@@ -551,8 +551,8 @@ func TestBashInitScriptRecordsStartingDirectory(t *testing.T) {
 		t.Fatal("no directories were recorded")
 	}
 
-	want := bashWorkingDir(t, result.tempDir)
-	if got := result.recordedDirs[len(result.recordedDirs)-1]; got != want {
+	want := canonicalTestPath(bashWorkingDir(t, result.tempDir))
+	if got := canonicalTestPath(result.recordedDirs[len(result.recordedDirs)-1]); got != want {
 		t.Fatalf("recorded directory = %q, want %q", got, want)
 	}
 }
@@ -765,18 +765,23 @@ fi
 	)
 	cmd.Stdin = strings.NewReader(opts.command + "\nexit 0\n")
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("running bash failed: %v\n%s", err, output)
-	}
+	output, runErr := cmd.CombinedOutput()
 
 	recorded, err := waitForRecordedCommands(capturePath)
 	if err != nil {
+		if runErr != nil {
+			t.Fatalf("running bash failed: %v\n%s", runErr, output)
+		}
+
 		t.Fatalf("waiting for recorded command failed: %v\n%s", err, output)
 	}
 
 	recordedDirs, err := waitForRecordedCommands(captureDirPath)
 	if err != nil {
+		if runErr != nil {
+			t.Fatalf("running bash failed: %v\n%s", runErr, output)
+		}
+
 		t.Fatalf("waiting for recorded directories failed: %v\n%s", err, output)
 	}
 
@@ -803,6 +808,15 @@ func bashWorkingDir(t *testing.T, dir string) string {
 	}
 
 	return strings.TrimSpace(string(output))
+}
+
+func canonicalTestPath(path string) string {
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+
+	return canonical
 }
 
 func setTestHome(t *testing.T, home string) {
