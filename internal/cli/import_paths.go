@@ -19,6 +19,7 @@ var (
 const (
 	windowsDrivePrefixLength = 3
 	minSedScriptLength       = 4
+	shortOptionLength        = 2
 )
 
 type pathRequirement int
@@ -313,19 +314,29 @@ func looksLikeCompositeOptionValue(path string) bool {
 }
 
 func primaryCommand(tokens []string) (string, int) {
-	for index, rawToken := range tokens {
+	for index := 0; index < len(tokens); index++ {
+		rawToken := tokens[index]
+
 		token := strings.TrimSpace(rawToken)
 		if token == "" {
 			continue
 		}
 
-		if token == "sudo" ||
-			token == "command" ||
-			token == "builtin" ||
-			token == "nohup" ||
-			token == "time" ||
-			token == "env" ||
-			isEnvironmentAssignment(token) {
+		if isEnvironmentAssignment(token) {
+			continue
+		}
+
+		switch token {
+		case "command", "builtin", "nohup":
+			continue
+		case "sudo":
+			index = skipWrapperOptions(tokens, index+1, sudoOptionTakesValue)
+			continue
+		case "env":
+			index = skipEnvPrelude(tokens, index+1)
+			continue
+		case "time":
+			index = skipWrapperOptions(tokens, index+1, timeOptionTakesValue)
 			continue
 		}
 
@@ -333,6 +344,90 @@ func primaryCommand(tokens []string) (string, int) {
 	}
 
 	return "", -1
+}
+
+func skipWrapperOptions(tokens []string, index int, optionTakesValue func(string) bool) int {
+	for index < len(tokens) {
+		token := strings.TrimSpace(tokens[index])
+		if token == "" {
+			index++
+			continue
+		}
+
+		if token == "--" {
+			return index
+		}
+
+		if !strings.HasPrefix(token, "-") || token == "-" {
+			break
+		}
+
+		if optionTakesValue(token) && !strings.Contains(token, "=") {
+			index++
+		}
+
+		index++
+	}
+
+	return index - 1
+}
+
+func skipEnvPrelude(tokens []string, index int) int {
+	index = skipWrapperOptions(tokens, index, envOptionTakesValue) + 1
+	for index < len(tokens) {
+		token := strings.TrimSpace(tokens[index])
+		if token == "" || isEnvironmentAssignment(token) {
+			index++
+			continue
+		}
+
+		break
+	}
+
+	return index - 1
+}
+
+func sudoOptionTakesValue(option string) bool {
+	if strings.HasPrefix(option, "--") {
+		return sudoLongOptionTakesValue(option)
+	}
+
+	if len(option) == shortOptionLength {
+		return strings.ContainsAny(option[1:], "CDghpRrtTUu")
+	}
+
+	return false
+}
+
+func sudoLongOptionTakesValue(option string) bool {
+	switch option {
+	case "--close-from", "--chdir", "--group", "--host", "--prompt", "--role", "--type", "--user":
+		return true
+	default:
+		return false
+	}
+}
+
+func envOptionTakesValue(option string) bool {
+	switch option {
+	case "-0", "-i", "--ignore-environment", "--null":
+		return false
+	case "-C", "-S", "-u", "--chdir", "--split-string", "--unset":
+		return true
+	default:
+		return len(option) == 2 && strings.ContainsAny(option[1:], "CSu")
+	}
+}
+
+func timeOptionTakesValue(option string) bool {
+	switch option {
+	case "-p":
+		return false
+	case "-f", "-o", "--format", "--output":
+		return true
+	default:
+		return len(option) == 2 && strings.ContainsAny(option[1:], "fo")
+	}
 }
 
 func isEnvironmentAssignment(token string) bool {

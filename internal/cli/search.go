@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -94,7 +95,7 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 		return searchContext{}, fmt.Errorf("resolving database path: %w", err)
 	}
 
-	database, err := db.Open(dbPath)
+	database, err := openSearchDatabase(dbPath)
 	if err != nil {
 		return searchContext{}, fmt.Errorf("opening database: %w", err)
 	}
@@ -150,6 +151,33 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 		ttyOut:  ttyOut,
 		cleanup: cleanup,
 	}, nil
+}
+
+func openSearchDatabase(dbPath string) (*sql.DB, error) {
+	if _, err := os.Stat(dbPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			database, openErr := db.Open(dbPath)
+			if openErr != nil {
+				return nil, fmt.Errorf("opening search database %q: %w", dbPath, openErr)
+			}
+
+			return database, nil
+		}
+
+		return nil, fmt.Errorf("stating database file %q: %w", dbPath, err)
+	}
+
+	database, err := db.OpenReadOnly(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening search database read-only %q: %w", dbPath, err)
+	}
+
+	if err = db.ValidateHistorySchema(database); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("validating history schema: %w", err)
+	}
+
+	return database, nil
 }
 
 func resolveSearchResult(cfg config.Config, finalModel tea.Model) (int, error) {

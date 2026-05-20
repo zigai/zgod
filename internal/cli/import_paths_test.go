@@ -44,6 +44,49 @@ func TestSplitCommandTokensPreservesWindowsBackslashes(t *testing.T) {
 	}
 }
 
+func TestPrimaryCommandSkipsWrapperOptions(t *testing.T) {
+	tests := []struct {
+		name      string
+		tokens    []string
+		wantName  string
+		wantIndex int
+	}{
+		{
+			name:      "env options and assignments",
+			tokens:    []string{"env", "-i", "FOO=bar", "cat", "file.txt"},
+			wantName:  "cat",
+			wantIndex: 3,
+		},
+		{
+			name:      "sudo flag",
+			tokens:    []string{"sudo", "-E", "cat", "file.txt"},
+			wantName:  "cat",
+			wantIndex: 2,
+		},
+		{
+			name:      "sudo option with argument",
+			tokens:    []string{"sudo", "-u", "postgres", "psql"},
+			wantName:  "psql",
+			wantIndex: 3,
+		},
+		{
+			name:      "time flag",
+			tokens:    []string{"time", "-p", "cat", "file.txt"},
+			wantName:  "cat",
+			wantIndex: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotName, gotIndex := primaryCommand(tt.tokens)
+			if gotName != tt.wantName || gotIndex != tt.wantIndex {
+				t.Fatalf("primaryCommand(%v) = (%q, %d), want (%q, %d)", tt.tokens, gotName, gotIndex, tt.wantName, tt.wantIndex)
+			}
+		})
+	}
+}
+
 func TestCommandReferencesExistingPathsNoPathTokens(t *testing.T) {
 	ok, err := commandReferencesExistingPaths("echo hello", t.TempDir())
 	if err != nil {
