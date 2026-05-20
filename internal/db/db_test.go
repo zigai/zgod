@@ -24,7 +24,7 @@ func TestOpenAndInsert(t *testing.T) {
 	repo := NewHistoryRepo(database)
 
 	id, err := repo.Insert(HistoryEntry{
-		TsMs:      1000,
+		TSMs:      1000,
 		Duration:  50,
 		ExitCode:  0,
 		Command:   "echo hello",
@@ -55,7 +55,7 @@ func TestRecent(t *testing.T) {
 
 	for i, cmd := range []string{"first", "second", "third"} {
 		if _, err = repo.Insert(HistoryEntry{
-			TsMs:    int64(i * 1000),
+			TSMs:    int64(i * 1000),
 			Command: cmd,
 		}); err != nil {
 			t.Fatal(err)
@@ -88,7 +88,7 @@ func TestDelete(t *testing.T) {
 
 	repo := NewHistoryRepo(database)
 
-	id, err := repo.Insert(HistoryEntry{TsMs: 1000, Command: "delete me"})
+	id, err := repo.Insert(HistoryEntry{TSMs: 1000, Command: "delete me"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,11 +116,11 @@ func TestRecentInDir(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	repo := NewHistoryRepo(database)
-	if _, err = repo.Insert(HistoryEntry{TsMs: 1000, Command: "in dir", Directory: "/home"}); err != nil {
+	if _, err = repo.Insert(HistoryEntry{TSMs: 1000, Command: "in dir", Directory: "/home"}); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err = repo.Insert(HistoryEntry{TsMs: 2000, Command: "other dir", Directory: "/tmp"}); err != nil {
+	if _, err = repo.Insert(HistoryEntry{TSMs: 2000, Command: "other dir", Directory: "/tmp"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -149,15 +149,15 @@ func TestFetchCandidatesDedupe(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	repo := NewHistoryRepo(database)
-	if _, err = repo.Insert(HistoryEntry{TsMs: 1000, Command: "echo hello"}); err != nil {
+	if _, err = repo.Insert(HistoryEntry{TSMs: 1000, Command: "echo hello"}); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err = repo.Insert(HistoryEntry{TsMs: 2000, Command: "echo hello"}); err != nil {
+	if _, err = repo.Insert(HistoryEntry{TSMs: 2000, Command: "echo hello"}); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err = repo.Insert(HistoryEntry{TsMs: 3000, Command: "echo world"}); err != nil {
+	if _, err = repo.Insert(HistoryEntry{TSMs: 3000, Command: "echo world"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -179,10 +179,10 @@ func TestFetchCandidatesFailFilterModes(t *testing.T) {
 
 	repo := NewHistoryRepo(database)
 	entries := []HistoryEntry{
-		{TsMs: 1000, ExitCode: 0, Command: "echo ok one"},
-		{TsMs: 2000, ExitCode: 1, Command: "echo fail one"},
-		{TsMs: 3000, ExitCode: 0, Command: "echo ok two"},
-		{TsMs: 4000, ExitCode: 2, Command: "echo fail two"},
+		{TSMs: 1000, ExitCode: 0, Command: "echo ok one"},
+		{TSMs: 2000, ExitCode: 1, Command: "echo fail one"},
+		{TSMs: 3000, ExitCode: 0, Command: "echo ok two"},
+		{TSMs: 4000, ExitCode: 2, Command: "echo fail two"},
 	}
 
 	for _, entry := range entries {
@@ -250,9 +250,9 @@ func TestFetchCandidatesAppliesDedupeAfterFailFilter(t *testing.T) {
 
 	repo := NewHistoryRepo(database)
 	entries := []HistoryEntry{
-		{TsMs: 1000, ExitCode: 1, Command: "echo boom"},
-		{TsMs: 2000, ExitCode: 2, Command: "echo boom"},
-		{TsMs: 3000, ExitCode: 0, Command: "echo ok"},
+		{TSMs: 1000, ExitCode: 1, Command: "echo boom"},
+		{TSMs: 2000, ExitCode: 2, Command: "echo boom"},
+		{TSMs: 3000, ExitCode: 0, Command: "echo ok"},
 	}
 
 	for _, entry := range entries {
@@ -287,7 +287,7 @@ func TestFetchCandidatesOrdersEqualTimestampsByNewestID(t *testing.T) {
 
 	repo := NewHistoryRepo(database)
 	for _, command := range []string{"first", "second"} {
-		if _, err = repo.Insert(HistoryEntry{TsMs: 1000, Command: command}); err != nil {
+		if _, err = repo.Insert(HistoryEntry{TSMs: 1000, Command: command}); err != nil {
 			t.Fatalf("Insert(%q) error: %v", command, err)
 		}
 	}
@@ -303,6 +303,43 @@ func TestFetchCandidatesOrdersEqualTimestampsByNewestID(t *testing.T) {
 
 	if got[0].Command != "second" || got[1].Command != "first" {
 		t.Fatalf("FetchCandidates() order = %q, %q; want second, first", got[0].Command, got[1].Command)
+	}
+}
+
+func TestFetchCandidatesInDir(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := NewHistoryRepo(database)
+	entries := []HistoryEntry{
+		{TSMs: 1000, Command: "old cwd", Directory: "/repo"},
+		{TSMs: 2000, Command: "other", Directory: "/elsewhere"},
+		{TSMs: 3000, Command: "new cwd", Directory: "/repo"},
+	}
+
+	for _, entry := range entries {
+		if _, err = repo.Insert(entry); err != nil {
+			t.Fatalf("Insert(%q) error: %v", entry.Command, err)
+		}
+	}
+
+	got, err := repo.FetchCandidatesInDir(100, false, FailFilterInclude, "/repo")
+	if err != nil {
+		t.Fatalf("FetchCandidatesInDir() error: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("len(FetchCandidatesInDir()) = %d, want 2", len(got))
+	}
+
+	if got[0].Command != "new cwd" || got[1].Command != "old cwd" {
+		t.Fatalf("FetchCandidatesInDir() order = %q, %q; want new cwd, old cwd", got[0].Command, got[1].Command)
 	}
 }
 
@@ -373,7 +410,7 @@ func TestOpenReadOnlyAllowsReadsAndRejectsWrites(t *testing.T) {
 	}
 
 	repo := NewHistoryRepo(writableDB)
-	if _, err = repo.Insert(HistoryEntry{TsMs: 1000, Command: "echo seeded"}); err != nil {
+	if _, err = repo.Insert(HistoryEntry{TSMs: 1000, Command: "echo seeded"}); err != nil {
 		_ = writableDB.Close()
 
 		t.Fatalf("Insert() error: %v", err)
@@ -541,7 +578,7 @@ func TestListAll(t *testing.T) {
 	repo := NewHistoryRepo(database)
 
 	first := HistoryEntry{
-		TsMs:      2000,
+		TSMs:      2000,
 		Duration:  50,
 		ExitCode:  0,
 		Command:   "echo first",
@@ -550,7 +587,7 @@ func TestListAll(t *testing.T) {
 		Hostname:  "host-1",
 	}
 	second := HistoryEntry{
-		TsMs:      1000,
+		TSMs:      1000,
 		Duration:  10,
 		ExitCode:  1,
 		Command:   "echo second",
@@ -576,7 +613,7 @@ func TestListAll(t *testing.T) {
 		t.Fatalf("ListAll() returned %d entries, want 2", len(entries))
 	}
 
-	if entries[0].TsMs != 1000 || entries[1].TsMs != 2000 {
+	if entries[0].TSMs != 1000 || entries[1].TSMs != 2000 {
 		t.Fatalf("ListAll() returned unexpected order: %+v", entries)
 	}
 }
@@ -593,7 +630,7 @@ func TestInsertIfNotExistsTx(t *testing.T) {
 
 	repo := NewHistoryRepo(database)
 	existing := HistoryEntry{
-		TsMs:      2000,
+		TSMs:      2000,
 		Duration:  50,
 		ExitCode:  0,
 		Command:   "echo first",
@@ -625,7 +662,7 @@ func TestInsertIfNotExistsTx(t *testing.T) {
 	}
 
 	newEntry := HistoryEntry{
-		TsMs:      3000,
+		TSMs:      3000,
 		Duration:  20,
 		ExitCode:  0,
 		Command:   "echo third",

@@ -8,7 +8,7 @@ import (
 
 type HistoryEntry struct {
 	ID        int64
-	TsMs      int64 //nolint:staticcheck // TsMs is clearer than TSMs
+	TSMs      int64
 	Duration  int64
 	ExitCode  int
 	Command   string
@@ -30,7 +30,7 @@ func (r *HistoryRepo) Insert(entry HistoryEntry) (int64, error) {
 		context.Background(),
 		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		entry.TsMs, entry.Duration, entry.ExitCode, entry.Command,
+		entry.TSMs, entry.Duration, entry.ExitCode, entry.Command,
 		entry.Directory, entry.SessionID, entry.Hostname,
 	)
 	if err != nil {
@@ -105,18 +105,11 @@ func (r *HistoryRepo) ListAll() ([]HistoryEntry, error) {
 }
 
 func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, failFilter FailFilterMode) ([]HistoryEntry, error) {
-	query := `SELECT id, ts_ms, duration, exit_code, command, directory, session_id, hostname
-		 FROM history`
-	args := []any{}
+	return r.FetchCandidatesInDir(limit, dedupe, failFilter, "")
+}
 
-	switch failFilter {
-	case FailFilterInclude:
-		// No exit-code filter.
-	case FailFilterExclude:
-		query += " WHERE exit_code = 0"
-	case FailFilterOnly:
-		query += " WHERE exit_code != 0"
-	}
+func (r *HistoryRepo) FetchCandidatesInDir(limit int, dedupe bool, failFilter FailFilterMode, dir string) ([]HistoryEntry, error) {
+	query, args := candidateQuery(failFilter, dir)
 
 	query += " ORDER BY ts_ms DESC, id DESC"
 	if limit > 0 {
@@ -132,7 +125,7 @@ func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, failFilter FailFil
 
 	defer func() { _ = rows.Close() }()
 
-	entries, err := scanEntries(rows)
+	entries, err := scanCandidateEntries(rows)
 	if err != nil {
 		return nil, fmt.Errorf("scanning history candidates: %w", err)
 	}
@@ -142,6 +135,28 @@ func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, failFilter FailFil
 	}
 
 	return entries, nil
+}
+
+func candidateQuery(failFilter FailFilterMode, dir string) (string, []any) {
+	baseQuery := `SELECT id, ts_ms, duration, exit_code, command, directory
+		 FROM history`
+
+	switch {
+	case dir == "" && failFilter == FailFilterInclude:
+		return baseQuery, nil
+	case dir == "" && failFilter == FailFilterExclude:
+		return baseQuery + " WHERE exit_code = 0", nil
+	case dir == "" && failFilter == FailFilterOnly:
+		return baseQuery + " WHERE exit_code != 0", nil
+	case failFilter == FailFilterInclude:
+		return baseQuery + " WHERE directory = ?", []any{dir}
+	case failFilter == FailFilterExclude:
+		return baseQuery + " WHERE exit_code = 0 AND directory = ?", []any{dir}
+	case failFilter == FailFilterOnly:
+		return baseQuery + " WHERE exit_code != 0 AND directory = ?", []any{dir}
+	default:
+		return baseQuery, nil
+	}
 }
 
 func InsertIfNotExistsTx(tx *sql.Tx, entry HistoryEntry) (bool, error) {
@@ -159,14 +174,14 @@ func InsertIfNotExistsTx(tx *sql.Tx, entry HistoryEntry) (bool, error) {
 		     AND session_id = ?
 		     AND hostname = ?
 		 )`,
-		entry.TsMs,
+		entry.TSMs,
 		entry.Duration,
 		entry.ExitCode,
 		entry.Command,
 		entry.Directory,
 		entry.SessionID,
 		entry.Hostname,
-		entry.TsMs,
+		entry.TSMs,
 		entry.Duration,
 		entry.ExitCode,
 		entry.Command,
@@ -187,19 +202,41 @@ func InsertIfNotExistsTx(tx *sql.Tx, entry HistoryEntry) (bool, error) {
 }
 
 func dedupeEntries(entries []HistoryEntry) []HistoryEntry {
-	seen := map[string]bool{}
+	seen := make(map[string]struct{}, len(entries))
 
 	result := make([]HistoryEntry, 0, len(entries))
 	for _, e := range entries {
-		if seen[e.Command] {
+		if _, ok := seen[e.Command]; ok {
 			continue
 		}
 
-		seen[e.Command] = true
+		seen[e.Command] = struct{}{}
 		result = append(result, e)
 	}
 
 	return result
+}
+
+func scanCandidateEntries(rows *sql.Rows) ([]HistoryEntry, error) {
+	var entries []HistoryEntry
+
+	for rows.Next() {
+		var e HistoryEntry
+
+		err := rows.Scan(&e.ID, &e.TSMs, &e.Duration, &e.ExitCode, &e.Command, &e.Directory)
+		if err != nil {
+			return nil, fmt.Errorf("scanning history candidate row: %w", err)
+		}
+
+		entries = append(entries, e)
+	}
+
+	err := rows.Err()
+	if err != nil {
+		return nil, fmt.Errorf("iterating history candidate rows: %w", err)
+	}
+
+	return entries, nil
 }
 
 func scanEntries(rows *sql.Rows) ([]HistoryEntry, error) {
@@ -208,7 +245,7 @@ func scanEntries(rows *sql.Rows) ([]HistoryEntry, error) {
 	for rows.Next() {
 		var e HistoryEntry
 
-		err := rows.Scan(&e.ID, &e.TsMs, &e.Duration, &e.ExitCode,
+		err := rows.Scan(&e.ID, &e.TSMs, &e.Duration, &e.ExitCode,
 			&e.Command, &e.Directory, &e.SessionID, &e.Hostname)
 		if err != nil {
 			return nil, fmt.Errorf("scanning history row: %w", err)

@@ -27,7 +27,7 @@ func TestImportHistoryEntriesImportsValidSedCommandWithExistingInputFile(t *test
 	}
 
 	entry := db.HistoryEntry{
-		TsMs:      1,
+		TSMs:      1,
 		Duration:  10,
 		ExitCode:  0,
 		Command:   `sed 's/a/b/' file.txt`,
@@ -78,9 +78,9 @@ func TestImportHistoryEntriesAllowsBareCreatorTargets(t *testing.T) {
 	workingDirectory := t.TempDir()
 
 	entries := []db.HistoryEntry{
-		{TsMs: 1, Command: "touch new.txt", Directory: workingDirectory},
-		{TsMs: 2, Command: "mkdir out", Directory: workingDirectory},
-		{TsMs: 3, Command: "echo README.md", Directory: workingDirectory},
+		{TSMs: 1, Command: "touch new.txt", Directory: workingDirectory},
+		{TSMs: 2, Command: "mkdir out", Directory: workingDirectory},
+		{TSMs: 3, Command: "echo README.md", Directory: workingDirectory},
 	}
 
 	summary, err := importHistoryEntries(database, entries, importOptions{})
@@ -125,8 +125,8 @@ func TestImportHistoryEntriesSkipsMissingRequiredPaths(t *testing.T) {
 	workingDirectory := t.TempDir()
 
 	entries := []db.HistoryEntry{
-		{TsMs: 1, Command: "cd missing", Directory: workingDirectory},
-		{TsMs: 2, Command: `sed 's/a/b/' missing.txt`, Directory: workingDirectory},
+		{TSMs: 1, Command: "cd missing", Directory: workingDirectory},
+		{TSMs: 2, Command: `sed 's/a/b/' missing.txt`, Directory: workingDirectory},
 	}
 
 	summary, err := importHistoryEntries(database, entries, importOptions{})
@@ -158,7 +158,7 @@ func TestOpenImportDatabasesReadableSourceDoesNotRequireAuth(t *testing.T) {
 	}
 
 	sourceRepo := db.NewHistoryRepo(sourceDB)
-	if _, err = sourceRepo.Insert(db.HistoryEntry{TsMs: 1000, Command: "echo imported"}); err != nil {
+	if _, err = sourceRepo.Insert(db.HistoryEntry{TSMs: 1000, Command: "echo imported"}); err != nil {
 		_ = sourceDB.Close()
 
 		t.Fatalf("Insert(source) error: %v", err)

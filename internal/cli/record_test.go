@@ -45,7 +45,7 @@ func TestInsertRecordWithRetryWaitsForBusyDatabase(t *testing.T) {
 	}()
 
 	err = insertRecordWithRetry(dbPath, db.HistoryEntry{
-		TsMs:    2,
+		TSMs:    2,
 		Command: "recorded after lock",
 	})
 	if err != nil {

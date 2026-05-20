@@ -78,7 +78,7 @@ func runRecord(cmd *cobra.Command, args []string) error {
 
 	entry := db.HistoryEntry{
 		ID:        0,
-		TsMs:      ts,
+		TSMs:      ts,
 		Duration:  duration,
 		ExitCode:  exitCode,
 		Command:   command,
