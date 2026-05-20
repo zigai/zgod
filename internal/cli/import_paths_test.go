@@ -183,6 +183,15 @@ func TestCommandReferencesExistingPathsIgnoresGitCheckoutRef(t *testing.T) {
 	}
 }
 
+func TestShouldSkipGitRefTokenKeepsExplicitWindowsPaths(t *testing.T) {
+	tests := []string{`.\file.txt`, `..\file.txt`, `~\file.txt`, `C:\Users\me\file.txt`}
+	for _, token := range tests {
+		if shouldSkipGitRefToken("git", "checkout", token, false) {
+			t.Fatalf("shouldSkipGitRefToken(%q) = true, want false", token)
+		}
+	}
+}
+
 func TestCommandReferencesExistingPathsSedCommandUsesFileArgument(t *testing.T) {
 	baseDir := t.TempDir()
 

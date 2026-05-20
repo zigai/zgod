@@ -274,8 +274,11 @@ func shouldIgnorePathLikeToken(path string) bool {
 func hasExplicitPathPrefix(path string) bool {
 	return strings.HasPrefix(path, "/") ||
 		strings.HasPrefix(path, "./") ||
+		strings.HasPrefix(path, `.\`) ||
 		strings.HasPrefix(path, "../") ||
+		strings.HasPrefix(path, `..\`) ||
 		strings.HasPrefix(path, "~/") ||
+		strings.HasPrefix(path, `~\`) ||
 		path == "." ||
 		path == ".." ||
 		hasWindowsDrivePrefix(path)
@@ -520,11 +523,7 @@ func shouldSkipGitRefToken(commandName string, gitSubcommand string, token strin
 
 	switch gitSubcommand {
 	case "checkout", "switch":
-		return !strings.HasPrefix(token, "/") &&
-			!strings.HasPrefix(token, "./") &&
-			!strings.HasPrefix(token, "../") &&
-			!strings.HasPrefix(token, "~/") &&
-			!hasWindowsDrivePrefix(token)
+		return !hasExplicitPathPrefix(token)
 	default:
 		return false
 	}
