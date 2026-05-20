@@ -88,7 +88,7 @@ type -q zgod; and zgod init fish | source
 **PowerShell** (`$PROFILE`)
 
 ```powershell
-if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }
+if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init powershell) }
 ```
 
 ## Keybindings

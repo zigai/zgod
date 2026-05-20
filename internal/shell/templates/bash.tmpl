@@ -174,6 +174,24 @@ __zgod_run_original_debug_trap() {
     return "$trap_status"
 }
 
+__zgod_record_command_async() {
+    local command=$1
+    local ts=$2
+    local exit_code=$3
+    local dir=$4
+
+    if [[ -z "$command" ]] || ! __zgod_has_command; then
+        return
+    fi
+
+    zgod record \
+        --ts "$ts" \
+        --exit-code "$exit_code" \
+        --command "$command" \
+        --directory "$dir" \
+        --session "$__zgod_session_id" & disown
+}
+
 __zgod_capture_prompt_exit_code() {
     return 0
 }
@@ -252,14 +270,7 @@ __zgod_prompt_command() {
 
     if [[ -n "$__zgod_command" ]]; then
         command=$(__zgod_get_recorded_command)
-        if [[ -n "$command" ]] && __zgod_has_command; then
-            zgod record \
-                --ts "$__zgod_start_ms" \
-                --exit-code "$exit_code" \
-                --command "$command" \
-                --directory "${__zgod_start_dir:-$PWD}" \
-                --session "$__zgod_session_id" & disown
-        fi
+        __zgod_record_command_async "$command" "$__zgod_start_ms" "$exit_code" "${__zgod_start_dir:-$PWD}"
     fi
 
     __zgod_command=""
@@ -282,9 +293,16 @@ __zgod_search() {
     selected=$(zgod search --height 15 --query "$READLINE_LINE" </dev/tty)
     local rc=$?
     if [[ $rc -eq 2 ]] && [[ -n "$selected" ]]; then
+        __zgod_init
+        local start_ms=$(__zgod_get_time_ms)
+        local start_dir="$PWD"
         READLINE_LINE=""
         READLINE_POINT=0
         eval "$selected"
+        local exit_code=$?
+        __zgod_record_command_async "$selected" "$start_ms" "$exit_code" "$start_dir"
+        __zgod_in_hook=""
+        return "$exit_code"
     elif [[ $rc -eq 0 ]] && [[ -n "$selected" ]]; then
         READLINE_LINE="$selected"
         READLINE_POINT=${#selected}

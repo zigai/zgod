@@ -22,7 +22,7 @@ type InitOptions struct {
 }
 
 func InitScript(s Shell, opts InitOptions) (string, error) {
-	name := fmt.Sprintf("templates/%s.tmpl", s.String())
+	name := fmt.Sprintf("templates/%s.tmpl", templateName(s))
 
 	data, err := templateFS.ReadFile(name)
 	if err != nil {
@@ -47,17 +47,33 @@ func InitScript(s Shell, opts InitOptions) (string, error) {
 	return buf.String(), nil
 }
 
-func getPowerShellProfilePath() (string, error) {
+func templateName(s Shell) string {
+	if s == Pwsh {
+		return "powershell"
+	}
+
+	return s.String()
+}
+
+func getPowerShellProfilePath(s Shell) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("getting home directory for PowerShell profile: %w", err)
 	}
 
-	if runtime.GOOS == "windows" {
-		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"), nil
+	return powerShellProfilePathForHome(home, s, runtime.GOOS), nil
+}
+
+func powerShellProfilePathForHome(home string, s Shell, goos string) string {
+	if goos == "windows" {
+		if s == PowerShell {
+			return filepath.Join(home, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1")
+		}
+
+		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
 	}
 
-	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1"), nil
+	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1")
 }
 
 func ConfigFilePath(s Shell) (string, error) {
@@ -77,8 +93,8 @@ func configFilePathForHome(home string, s Shell) (string, error) {
 		return filepath.Join(home, ".zshrc"), nil
 	case Fish:
 		return filepath.Join(home, ".config", "fish", "conf.d", "zgod.fish"), nil
-	case PowerShell:
-		return getPowerShellProfilePath()
+	case PowerShell, Pwsh:
+		return getPowerShellProfilePath(s)
 	default:
 		return "", fmt.Errorf("%w: %s", errUnsupportedShell, s)
 	}
@@ -99,12 +115,12 @@ func setupLine(s Shell, customConfigPath string) string {
 		}
 
 		return fmt.Sprintf(`type -q zgod; and zgod init %s | source`, shellName)
-	case PowerShell:
+	case PowerShell, Pwsh:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell --config %s) }`, powerShellQuote(customConfigPath))
+			return fmt.Sprintf(`if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init %s --config %s) }`, shellName, powerShellQuote(customConfigPath))
 		}
 
-		return `if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }`
+		return fmt.Sprintf(`if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init %s) }`, shellName)
 	}
 
 	return ""
@@ -213,7 +229,7 @@ func Install(s Shell, customConfigPath string) error {
 
 	fmt.Printf("Added zgod to %s\n", configPath)
 
-	if s == PowerShell {
+	if s == PowerShell || s == Pwsh {
 		fmt.Println("Restart PowerShell or run: . $PROFILE")
 	} else {
 		fmt.Println("Restart your shell or run: source " + configPath)

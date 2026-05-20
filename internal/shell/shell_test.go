@@ -24,7 +24,7 @@ func TestParse(t *testing.T) {
 		{"bash", Bash, false},
 		{"fish", Fish, false},
 		{"powershell", PowerShell, false},
-		{"pwsh", PowerShell, false},
+		{"pwsh", Pwsh, false},
 		{"nushell", 0, true},
 	}
 	for _, tt := range tests {
@@ -87,13 +87,19 @@ func TestSetupLine(t *testing.T) {
 			name:       "powershell without config",
 			shell:      PowerShell,
 			configPath: "",
-			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }`,
+			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init powershell) }`,
 		},
 		{
 			name:       "powershell with config",
 			shell:      PowerShell,
 			configPath: "/custom/config.toml",
-			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell --config '/custom/config.toml') }`,
+			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init powershell --config '/custom/config.toml') }`,
+		},
+		{
+			name:       "pwsh without config",
+			shell:      Pwsh,
+			configPath: "",
+			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init pwsh) }`,
 		},
 	}
 
@@ -136,7 +142,7 @@ func TestSetupLineEscapesConfigPath(t *testing.T) {
 			name:       "powershell",
 			shell:      PowerShell,
 			configPath: `C:\tmp\o'hare`,
-			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell --config 'C:\tmp\o''hare') }`,
+			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init powershell --config 'C:\tmp\o''hare') }`,
 		},
 	}
 
@@ -151,7 +157,7 @@ func TestSetupLineEscapesConfigPath(t *testing.T) {
 }
 
 func TestInitScript(t *testing.T) {
-	for _, s := range []Shell{Zsh, Bash, Fish, PowerShell} {
+	for _, s := range []Shell{Zsh, Bash, Fish, PowerShell, Pwsh} {
 		script, err := InitScript(s, InitOptions{})
 		if err != nil {
 			t.Errorf("InitScript(%v) error: %v", s, err)
@@ -251,7 +257,7 @@ func TestFishInitScriptDisownsRecordedProcessByPID(t *testing.T) {
 
 func TestInitScriptWithConfig(t *testing.T) {
 	opts := InitOptions{ConfigPath: "/custom/config.toml"}
-	for _, s := range []Shell{Zsh, Bash, Fish, PowerShell} {
+	for _, s := range []Shell{Zsh, Bash, Fish, PowerShell, Pwsh} {
 		script, err := InitScript(s, opts)
 		if err != nil {
 			t.Errorf("InitScript(%v) error: %v", s, err)
@@ -322,7 +328,6 @@ func TestPowerShellInitScriptTracksPowerShellFailures(t *testing.T) {
 	}
 
 	mustContain := []string{
-		"$global:LASTEXITCODE = 0",
 		"$success = $?",
 		"$lastExitCode = $LASTEXITCODE",
 		"$exitCode = __zgod_resolve_exit_code $success $lastExitCode",
@@ -334,6 +339,54 @@ func TestPowerShellInitScriptTracksPowerShellFailures(t *testing.T) {
 		if !strings.Contains(script, needle) {
 			t.Fatalf("InitScript(PowerShell) output doesn't contain %q", needle)
 		}
+	}
+
+	if strings.Contains(script, "$global:LASTEXITCODE = 0") {
+		t.Fatal("InitScript(PowerShell) should not reset LASTEXITCODE in preexec")
+	}
+}
+
+func TestInstantExecutePathsRecordSelectedCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		shell       Shell
+		mustContain []string
+	}{
+		{
+			name:  "bash",
+			shell: Bash,
+			mustContain: []string{
+				"local start_ms=$(__zgod_get_time_ms)",
+				"local start_dir=\"$PWD\"",
+				"__zgod_record_command_async \"$selected\" \"$start_ms\" \"$exit_code\" \"$start_dir\"",
+				"return \"$exit_code\"",
+			},
+		},
+		{
+			name:  "powershell",
+			shell: PowerShell,
+			mustContain: []string{
+				"$ts = __zgod_get_time_ms",
+				"$dir = $PWD.Path",
+				"$exitCode = __zgod_resolve_exit_code $? $LASTEXITCODE",
+				"__zgod_record_async $selected $ts $exitCode $dir $script:__zgod_session_id",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			script, err := InitScript(tt.shell, InitOptions{})
+			if err != nil {
+				t.Fatalf("InitScript(%v) error: %v", tt.shell, err)
+			}
+
+			for _, needle := range tt.mustContain {
+				if !strings.Contains(script, needle) {
+					t.Fatalf("InitScript(%v) output doesn't contain %q", tt.shell, needle)
+				}
+			}
+		})
 	}
 }
 
@@ -399,6 +452,20 @@ func TestConfigFilePathFishUsesConfD(t *testing.T) {
 	want := filepath.Join(home, ".config", "fish", "conf.d", "zgod.fish")
 	if got != want {
 		t.Fatalf("ConfigFilePath(Fish) = %q, want %q", got, want)
+	}
+}
+
+func TestPowerShellProfilePathDistinguishesWindowsShells(t *testing.T) {
+	home := filepath.Join("C:", "Users", "me")
+
+	classic := powerShellProfilePathForHome(home, PowerShell, "windows")
+	if !strings.Contains(classic, filepath.Join("Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1")) {
+		t.Fatalf("classic PowerShell profile path = %q, want WindowsPowerShell profile", classic)
+	}
+
+	modern := powerShellProfilePathForHome(home, Pwsh, "windows")
+	if !strings.Contains(modern, filepath.Join("Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")) {
+		t.Fatalf("pwsh profile path = %q, want PowerShell profile", modern)
 	}
 }
 

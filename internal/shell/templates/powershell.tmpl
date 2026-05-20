@@ -1,5 +1,5 @@
 # zgod shell integration for PowerShell
-# if (Get-Command zgod -ErrorAction SilentlyContinue) { . (zgod init powershell) }
+# if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init powershell) }
 {{if .ConfigPath}}
 $env:ZGOD_CONFIG = {{powerShellQuote .ConfigPath}}
 {{end}}
@@ -29,7 +29,6 @@ function __zgod_preexec {
     if ($script:__zgod_in_hook) { return }
     if (-not $line -or $line -match '^\s*$') { return }
     if ($line -match '^zgod(\s|$)') { return }
-    $global:LASTEXITCODE = 0
     __zgod_init
     $script:__zgod_command = $line
     $script:__zgod_start_ms = __zgod_get_time_ms
@@ -117,8 +116,15 @@ if (Get-Module -Name PSReadLine) {
         $rc = $LASTEXITCODE
 
         if ($rc -eq 2 -and $selected) {
+            __zgod_init
+            $ts = __zgod_get_time_ms
+            $dir = $PWD.Path
             [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
             Invoke-Expression $selected
+            $exitCode = __zgod_resolve_exit_code $? $LASTEXITCODE
+            if (__zgod_has_command) {
+                __zgod_record_async $selected $ts $exitCode $dir $script:__zgod_session_id
+            }
         } elseif ($rc -eq 0 -and $selected) {
             [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
             [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
