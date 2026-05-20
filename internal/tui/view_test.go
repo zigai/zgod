@@ -219,6 +219,29 @@ func TestRenderExpandedResultLinesPreservesUTF8(t *testing.T) {
 	}
 }
 
+func TestFormatDirectoryTruncatesUnicodeWithoutPanic(t *testing.T) {
+	t.Parallel()
+
+	got := formatDirectory(strings.Repeat("é", 10), 12, "")
+	if !utf8.ValidString(got) {
+		t.Fatalf("formatDirectory() produced invalid UTF-8: %q", got)
+	}
+}
+
+func TestFormatDirectoryOnlyAbbreviatesActualHome(t *testing.T) {
+	t.Parallel()
+
+	got := formatDirectory("/home/me2/project", 80, "/home/me")
+	if got != "/home/me2/project" {
+		t.Fatalf("formatDirectory() = %q, want original path", got)
+	}
+
+	got = formatDirectory("/home/me/project", 80, "/home/me")
+	if got != "~/project" {
+		t.Fatalf("formatDirectory() = %q, want home abbreviation", got)
+	}
+}
+
 func TestRenderPreviewPopupPreservesUTF8(t *testing.T) {
 	t.Parallel()
 
@@ -258,6 +281,61 @@ func TestRenderResultsClipsExpandedMultilineToHeight(t *testing.T) {
 	rendered := m.renderResults()
 	if got := len(strings.Split(rendered, "\n")); got != m.height {
 		t.Fatalf("renderResults() returned %d lines, want %d", got, m.height)
+	}
+}
+
+func TestFuzzyRenderRanges(t *testing.T) {
+	t.Parallel()
+
+	got := fuzzyRenderRanges("gch", "git checkout")
+	want := []match.Range{
+		{Start: 0, End: 1},
+		{Start: 4, End: 6},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("len(fuzzyRenderRanges()) = %d, want %d: %+v", len(got), len(want), got)
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("fuzzyRenderRanges()[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestRegexRenderRangesUsesRuneRanges(t *testing.T) {
+	t.Parallel()
+
+	got := regexRenderRanges("é", "héllo")
+	want := []match.Range{{Start: 1, End: 2}}
+
+	if len(got) != len(want) {
+		t.Fatalf("len(regexRenderRanges()) = %d, want %d: %+v", len(got), len(want), got)
+	}
+
+	if got[0] != want[0] {
+		t.Fatalf("regexRenderRanges()[0] = %+v, want %+v", got[0], want[0])
+	}
+}
+
+func TestRegexRenderRangesLiteralFastPath(t *testing.T) {
+	t.Parallel()
+
+	got := regexRenderRanges("git", "Git git")
+	want := []match.Range{
+		{Start: 0, End: 3},
+		{Start: 4, End: 7},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("len(regexRenderRanges()) = %d, want %d: %+v", len(got), len(want), got)
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("regexRenderRanges()[%d] = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"github.com/zigai/zgod/internal/history"
 	"github.com/zigai/zgod/internal/match"
 )
+
+const modelRecencyIndexStep = 100
 
 type Model struct {
 	input          textinput.Model
@@ -40,6 +43,97 @@ type Model struct {
 	previewCommand string
 	repo           *db.HistoryRepo
 	dbError        error
+	indicatorCache indicatorCache
+	footerCache    footerCache
+	lastQuery      string
+	lastMode       match.Mode
+	lastEntryCount int
+	matchBuf       []match.Match
+	indexBuf       []int
+	lineCache      map[int]cachedResultLine
+	resultsCache   cachedResultsBlock
+	headerCache    cachedResultsHeader
+	regexCache     regexRenderCache
+	searchRegex    regexRenderCache
+}
+
+type indicatorCache struct {
+	key   indicatorCacheKey
+	value string
+	valid bool
+}
+
+type indicatorCacheKey struct {
+	width      int
+	mode       match.Mode
+	cwdMode    bool
+	dedupe     bool
+	failFilter db.FailFilterMode
+}
+
+type footerCache struct {
+	showPreviewHint bool
+	left            string
+	valid           bool
+}
+
+type cachedResultLine struct {
+	key  resultLineCacheKey
+	line string
+}
+
+type resultLineCacheKey struct {
+	width          int
+	cmdWidth       int
+	entryID        int64
+	query          string
+	mode           match.Mode
+	showDir        bool
+	timeFormat     string
+	durationFormat string
+	timeBucket     int64
+}
+
+type cachedResultsBlock struct {
+	key   resultsBlockCacheKey
+	value string
+	valid bool
+}
+
+type resultsBlockCacheKey struct {
+	width            int
+	height           int
+	cursor           int
+	displayLen       int
+	query            string
+	mode             match.Mode
+	showDir          bool
+	multilinePreview string
+	timeFormat       string
+	durationFormat   string
+	timeBucket       int64
+}
+
+type cachedResultsHeader struct {
+	key   resultsHeaderCacheKey
+	value string
+	valid bool
+}
+
+type resultsHeaderCacheKey struct {
+	width      int
+	cmdWidth   int
+	dirWidth   int
+	timeWidth  int
+	showDir    bool
+	barChar    string
+	prefixSize int
+}
+
+type regexRenderCache struct {
+	pattern string
+	re      *regexp.Regexp
+	valid   bool
 }
 
 func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir string, height int, cwdMode bool, initialQuery string) *Model {
@@ -146,8 +240,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) loadEntries() {
+	candidateCWD := ""
+	if m.cwdMode {
+		candidateCWD = m.cwd
+	}
+
 	entries, err := history.FetchCandidates(m.repo, history.CandidateOpts{
 		FailFilter: m.failFilter,
+		CWD:        candidateCWD,
 	})
 
 	m.dbError = err
@@ -155,19 +255,12 @@ func (m *Model) loadEntries() {
 		m.allEntries = nil
 		m.candidates = nil
 		m.displayEntries = nil
+		m.lineCache = nil
+		m.resultsCache = cachedResultsBlock{}
+		m.regexCache = regexRenderCache{}
+		m.searchRegex = regexRenderCache{}
 
 		return
-	}
-
-	if m.cwdMode && m.cwd != "" {
-		filtered := entries[:0:0]
-		for _, e := range entries {
-			if e.Directory == m.cwd {
-				filtered = append(filtered, e)
-			}
-		}
-
-		entries = filtered
 	}
 
 	if m.cfg.Display.HideMultiline {
@@ -192,19 +285,21 @@ func (m *Model) loadEntries() {
 		m.candidates[i] = e.Command
 	}
 
+	m.lastQuery = ""
+	m.lastEntryCount = len(m.candidates)
 	m.updateMatches()
 }
 
 func dedupeEntries(entries []db.HistoryEntry) []db.HistoryEntry {
-	seen := map[string]bool{}
+	seen := make(map[string]struct{}, len(entries))
 	result := make([]db.HistoryEntry, 0, len(entries))
 
 	for _, e := range entries {
-		if seen[e.Command] {
+		if _, ok := seen[e.Command]; ok {
 			continue
 		}
 
-		seen[e.Command] = true
+		seen[e.Command] = struct{}{}
 		result = append(result, e)
 	}
 
@@ -220,42 +315,184 @@ func (m *Model) updateMatches() {
 	}
 
 	if query == "" {
-		opts := history.DefaultScoringOpts(m.cwd)
-		opts.CWDBonus = cwdBonus
-
-		scored := make([]history.ScoredEntry, len(m.allEntries))
-		for i, e := range m.allEntries {
-			score := 0
-			if opts.CWD != "" && e.Directory == opts.CWD {
-				score += opts.CWDBonus
-			}
-
-			recency := max(opts.RecencyBase-(i/100), 0)
-			score += recency
-			scored[i] = history.ScoredEntry{
-				Entry:      e,
-				MatchInfo:  match.Match{Index: i},
-				FinalScore: score,
-			}
-		}
-
-		sort.SliceStable(scored, func(a, b int) bool {
-			return scored[a].FinalScore > scored[b].FinalScore
-		})
-		m.displayEntries = scored
-		m.cursor = 0
-
+		m.updateEmptyQueryMatches(query, cwdBonus)
 		return
 	}
 
-	matcher := match.New(m.mode)
-	matches := matcher.Match(query, m.candidates)
+	matches := m.matchCandidates(query)
 
 	opts := history.DefaultScoringOpts(m.cwd)
 	opts.CWDBonus = cwdBonus
 
-	m.displayEntries = history.ScoreAndSort(m.allEntries, matches, opts)
+	m.displayEntries = history.ScoreAndSortInto(m.displayEntries, m.allEntries, matches, opts)
 	m.cursor = 0
+	m.lineCache = nil
+
+	m.resultsCache = cachedResultsBlock{}
+	if m.mode != match.ModeRegex || query != m.regexCache.pattern {
+		m.regexCache = regexRenderCache{}
+	}
+
+	if m.mode != match.ModeRegex || query != m.searchRegex.pattern {
+		m.searchRegex = regexRenderCache{}
+	}
+
+	m.lastQuery = query
+	m.lastMode = m.mode
+	m.lastEntryCount = len(m.candidates)
+}
+
+func (m *Model) updateEmptyQueryMatches(query string, cwdBonus int) {
+	opts := history.DefaultScoringOpts(m.cwd)
+	opts.CWDBonus = cwdBonus
+
+	scored := m.emptyQueryScoredEntries(opts)
+
+	partitionCWD := opts.CWD != "" && opts.CWDBonus > opts.RecencyBase
+	if !partitionCWD && opts.CWD != "" && opts.CWDBonus != 0 {
+		sort.Sort(history.ScoredEntriesByScore(scored))
+	}
+
+	m.displayEntries = scored
+	m.cursor = 0
+	m.lineCache = nil
+	m.resultsCache = cachedResultsBlock{}
+	m.regexCache = regexRenderCache{}
+	m.searchRegex = regexRenderCache{}
+	m.lastQuery = query
+	m.lastMode = m.mode
+	m.lastEntryCount = len(m.candidates)
+}
+
+func (m *Model) emptyQueryScoredEntries(opts history.ScoringOpts) []history.ScoredEntry {
+	scored := m.displayEntries[:0]
+	if cap(scored) < len(m.allEntries) {
+		scored = make([]history.ScoredEntry, 0, len(m.allEntries))
+	}
+
+	scored = scored[:len(m.allEntries)]
+	partitionCWD := opts.CWD != "" && opts.CWDBonus > opts.RecencyBase
+	cwdWrite := 0
+	otherWrite := m.emptyQueryCWDPartitionStart(opts, partitionCWD)
+
+	for i, e := range m.allEntries {
+		scoredEntry := emptyQueryScoredEntry(e, i, opts)
+		switch {
+		case partitionCWD && e.Directory == opts.CWD:
+			scored[cwdWrite] = scoredEntry
+			cwdWrite++
+		case partitionCWD:
+			scored[otherWrite] = scoredEntry
+			otherWrite++
+		default:
+			scored[i] = scoredEntry
+		}
+	}
+
+	return scored
+}
+
+func (m *Model) emptyQueryCWDPartitionStart(opts history.ScoringOpts, partitionCWD bool) int {
+	if !partitionCWD {
+		return 0
+	}
+
+	count := 0
+
+	for _, e := range m.allEntries {
+		if e.Directory == opts.CWD {
+			count++
+		}
+	}
+
+	return count
+}
+
+func emptyQueryScoredEntry(e db.HistoryEntry, index int, opts history.ScoringOpts) history.ScoredEntry {
+	score := 0
+	if opts.CWD != "" && e.Directory == opts.CWD {
+		score += opts.CWDBonus
+	}
+
+	recency := max(opts.RecencyBase-(index/modelRecencyIndexStep), 0)
+	score += recency
+
+	return history.ScoredEntry{
+		Entry:      e,
+		MatchInfo:  match.Match{Index: index, Score: 0, MatchedRanges: nil},
+		FinalScore: score,
+	}
+}
+
+func (m *Model) matchCandidates(query string) []match.Match {
+	if m.canIncrementalFuzzyMatch(query) {
+		indexes := m.indexBuf[:0]
+		if cap(indexes) < len(m.displayEntries) {
+			indexes = make([]int, 0, len(m.displayEntries))
+		}
+
+		for _, entry := range m.displayEntries {
+			indexes = append(indexes, entry.MatchInfo.Index)
+		}
+
+		m.indexBuf = indexes
+
+		m.matchBuf = (&match.FuzzyMatcher{}).MatchIndexedInto(query, m.candidates, indexes, m.matchBuf)
+
+		return m.matchBuf
+	}
+
+	if m.mode == match.ModeFuzzy {
+		m.matchBuf = (&match.FuzzyMatcher{}).MatchInto(query, m.candidates, m.matchBuf)
+
+		return m.matchBuf
+	}
+
+	if m.mode == match.ModeRegex {
+		if match.IsLiteralRegex(query) {
+			m.matchBuf = match.MatchLiteralCommandsFold(query, m.candidates, m.matchBuf)
+
+			return m.matchBuf
+		}
+
+		re := m.searchRegex.re
+		if !m.searchRegex.valid || m.searchRegex.pattern != query {
+			compiled, err := regexp.Compile("(?i)" + query)
+			if err != nil {
+				return nil
+			}
+
+			m.searchRegex = regexRenderCache{
+				pattern: query,
+				re:      compiled,
+				valid:   true,
+			}
+			re = compiled
+		}
+
+		m.matchBuf = match.MatchRegexCommands(re, m.candidates, m.matchBuf)
+
+		return m.matchBuf
+	}
+
+	if m.mode == match.ModeGlob {
+		m.matchBuf = (&match.GlobMatcher{}).MatchInto(query, m.candidates, m.matchBuf)
+
+		return m.matchBuf
+	}
+
+	matcher := match.New(m.mode)
+
+	return matcher.Match(query, m.candidates)
+}
+
+func (m *Model) canIncrementalFuzzyMatch(query string) bool {
+	return m.mode == match.ModeFuzzy &&
+		m.lastMode == m.mode &&
+		m.lastQuery != "" &&
+		strings.HasPrefix(query, m.lastQuery) &&
+		len(m.candidates) == m.lastEntryCount &&
+		len(m.displayEntries) < len(m.candidates)
 }
 
 func (m *Model) handleNavigation(msg tea.KeyMsg) bool {

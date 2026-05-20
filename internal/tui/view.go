@@ -3,8 +3,14 @@ package tui
 import (
 	"fmt"
 	"math"
+	"os"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -85,6 +91,17 @@ func (m *Model) View() string {
 func (m *Model) renderIndicators() string {
 	width := m.getWidth()
 
+	key := indicatorCacheKey{
+		width:      width,
+		mode:       m.mode,
+		cwdMode:    m.cwdMode,
+		dedupe:     m.dedupe,
+		failFilter: m.failFilter,
+	}
+	if m.indicatorCache.valid && m.indicatorCache.key == key {
+		return m.indicatorCache.value
+	}
+
 	inactive := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
 		Background(lipgloss.Color("237")).
@@ -139,7 +156,14 @@ func (m *Model) renderIndicators() string {
 		}
 	}
 
-	return m.fitIndicators(indicators, width)
+	value := m.fitIndicators(indicators, width)
+	m.indicatorCache = indicatorCache{
+		key:   key,
+		value: value,
+		valid: true,
+	}
+
+	return value
 }
 
 func (m *Model) renderHeader() string {
@@ -249,25 +273,31 @@ func (m *Model) renderEmptyState(headerRows int) string {
 
 func (m *Model) renderResults() string {
 	width := m.getWidth()
+	layout := m.calcResultLayout()
+	now := time.Now()
 
 	headerRows := resultsHeaderRows
 	if m.height <= resultsHeaderRows {
 		headerRows = 0
 	}
 
-	visible := m.visibleResults()
-
-	if len(visible) == 0 {
+	start, end := m.visibleResultRange()
+	if start == end {
 		return m.renderEmptyState(headerRows)
+	}
+
+	cacheKey := m.resultsBlockCacheKey(layout, now)
+	if m.resultsCache.valid && m.resultsCache.key == cacheKey {
+		return m.resultsCache.value
 	}
 
 	var lines []string
 	if headerRows > 0 {
-		lines = append(lines, m.renderResultsHeader())
+		lines = append(lines, m.renderResultsHeaderWithLayout(layout))
 	}
 
 	expandMode := m.cfg.Display.MultilinePreview == "expand"
-	for _, idx := range visible {
+	for idx := start; idx < end; idx++ {
 		if len(lines) >= m.height {
 			break
 		}
@@ -275,7 +305,7 @@ func (m *Model) renderResults() string {
 		isSelected := idx == m.cursor
 
 		if expandMode && isSelected && m.entryIsMultiline(idx) {
-			expandedLines := m.renderExpandedResultLines(idx)
+			expandedLines := m.renderExpandedResultLinesWithLayout(idx, layout, now)
 
 			remaining := m.height - len(lines)
 			if remaining <= 0 {
@@ -291,7 +321,7 @@ func (m *Model) renderResults() string {
 			continue
 		}
 
-		line := m.renderResultLine(idx, isSelected)
+		line := m.renderResultLineWithLayout(idx, isSelected, layout, now)
 		if lineWidth := lipgloss.Width(line); lineWidth < width {
 			line += strings.Repeat(" ", width-lineWidth)
 		}
@@ -303,7 +333,30 @@ func (m *Model) renderResults() string {
 		lines = append(lines, strings.Repeat(" ", width))
 	}
 
-	return strings.Join(lines, "\n")
+	result := strings.Join(lines, "\n")
+	m.resultsCache = cachedResultsBlock{
+		key:   cacheKey,
+		value: result,
+		valid: true,
+	}
+
+	return result
+}
+
+func (m *Model) resultsBlockCacheKey(layout resultLayout, now time.Time) resultsBlockCacheKey {
+	return resultsBlockCacheKey{
+		width:            layout.width,
+		height:           m.height,
+		cursor:           m.cursor,
+		displayLen:       len(m.displayEntries),
+		query:            m.input.Value(),
+		mode:             m.mode,
+		showDir:          layout.showDir,
+		multilinePreview: m.cfg.Display.MultilinePreview,
+		timeFormat:       m.cfg.Display.TimeFormat,
+		durationFormat:   m.cfg.Display.DurationFormat,
+		timeBucket:       resultLineTimeBucket(m.cfg.Display.TimeFormat, now),
+	}
 }
 
 type resultLayout struct {
@@ -379,20 +432,76 @@ func (m *Model) renderSelectionPrefix(layout resultLayout, fullLineBg bool, selB
 	return barStyle.Render(layout.barChar)
 }
 
-func (m *Model) renderResultLine(entryIdx int, isSelected bool) string {
-	layout := m.calcResultLayout()
+func (m *Model) renderResultLineWithLayout(entryIdx int, isSelected bool, layout resultLayout, now time.Time) string {
 	if entryIdx >= len(m.displayEntries) {
 		return strings.Repeat(" ", layout.width)
 	}
 
 	entry := m.displayEntries[entryIdx]
+
+	cacheKey := m.resultLineCacheKey(entry, layout, now)
+	if cached, ok := m.cachedResultLine(entryIdx, cacheKey, isSelected); ok {
+		return cached
+	}
+
+	line := m.renderResultLineContent(entryIdx, entry, isSelected, layout, now)
+	if !isSelected {
+		line = strings.Repeat(" ", layout.prefixWidth) + line
+		m.cacheResultLine(entryIdx, cacheKey, line)
+
+		return line
+	}
+
+	return m.renderSelectedResultLine(line, layout)
+}
+
+func (m *Model) cachedResultLine(entryIdx int, cacheKey resultLineCacheKey, isSelected bool) (string, bool) {
+	if isSelected {
+		return "", false
+	}
+
+	cached, ok := m.lineCache[entryIdx]
+	if ok && cached.key == cacheKey {
+		return cached.line, true
+	}
+
+	return "", false
+}
+
+func (m *Model) renderResultLineContent(entryIdx int, entry history.ScoredEntry, isSelected bool, layout resultLayout, now time.Time) string {
+	cmd, renderedCmd := m.renderResultCommand(entryIdx, entry, isSelected, layout)
+	fullLineBg := isSelected && config.BoolDefault(m.cfg.Theme.SelectionFullLine, true)
+	selBg := parseColor(m.cfg.Theme.SelectedBg)
+	exitStyle, metaStyle := m.resultMetaStyles(entry.Entry.ExitCode, fullLineBg, selBg)
+
+	exitStyled := exitStyle.Render(formatExit(entry.Entry.ExitCode, layout.exitWidth))
+	durStyled := metaStyle.Render(formatDuration(entry.Entry.Duration, m.cfg.Display.DurationFormat, layout.durWidth))
+	timeStyled := metaStyle.Render(formatWhenAt(entry.Entry.TSMs, m.cfg.Display.TimeFormat, layout.timeWidth, now))
+	cmdStyled := padRenderedCell(renderedCmd, layout.cmdWidth, lipgloss.Width(cmd), fullLineBg, selBg)
+
+	styledSep := layout.sep
+	if fullLineBg {
+		styledSep = lipgloss.NewStyle().Background(selBg).Render(layout.sep)
+	}
+
+	if !layout.showDir {
+		return exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled
+	}
+
+	dirStyled := metaStyle.Render(padLeft(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir), layout.dirWidth))
+
+	return exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled + styledSep + dirStyled
+}
+
+func (m *Model) renderResultCommand(entryIdx int, entry history.ScoredEntry, isSelected bool, layout resultLayout) (string, string) {
 	cmd := entry.Entry.Command
-	matchInfo := &entry.MatchInfo
+	matchInfo := m.cachedRenderMatchInfo(entryIdx, cmd)
 
 	fullLineBg := isSelected && config.BoolDefault(m.cfg.Theme.SelectionFullLine, true)
 	selBg := parseColor(m.cfg.Theme.SelectedBg)
 
 	cmd, matchInfo = collapseMultiline(cmd, matchInfo, m.cfg.Display.MultilineCollapse)
+	matchInfo = m.ensureRenderMatchRanges(cmd, matchInfo)
 	cmd, matchInfo = truncateWithRanges(cmd, matchInfo, layout.cmdWidth)
 
 	cmdStyle := m.styles.Cmd
@@ -416,8 +525,12 @@ func (m *Model) renderResultLine(entryIdx int, isSelected bool) string {
 		renderedCmd = cmdStyle.Render(cmd)
 	}
 
+	return cmd, renderedCmd
+}
+
+func (m *Model) resultMetaStyles(exitCode int, fullLineBg bool, selBg lipgloss.TerminalColor) (lipgloss.Style, lipgloss.Style) {
 	exitStyle := m.styles.ExitOk
-	if entry.Entry.ExitCode != 0 {
+	if exitCode != 0 {
 		exitStyle = m.styles.ExitFail
 	}
 
@@ -428,29 +541,12 @@ func (m *Model) renderResultLine(entryIdx int, isSelected bool) string {
 		metaStyle = metaStyle.Background(selBg)
 	}
 
-	exitStyled := exitStyle.Width(layout.exitWidth).Align(lipgloss.Right).Render(formatExit(entry.Entry.ExitCode, layout.exitWidth))
-	durStyled := metaStyle.Width(layout.durWidth).Align(lipgloss.Right).Render(formatDuration(entry.Entry.Duration, m.cfg.Display.DurationFormat, layout.durWidth))
-	timeStyled := metaStyle.Width(layout.timeWidth).Align(lipgloss.Right).Render(formatWhen(entry.Entry.TsMs, m.cfg.Display.TimeFormat, layout.timeWidth))
-	cmdStyled := lipgloss.NewStyle().Width(layout.cmdWidth).Render(renderedCmd)
+	return exitStyle, metaStyle
+}
 
-	styledSep := layout.sep
-	if fullLineBg {
-		styledSep = lipgloss.NewStyle().Background(selBg).Render(layout.sep)
-	}
-
-	var line string
-
-	if layout.showDir {
-		dirStyled := metaStyle.Width(layout.dirWidth).Align(lipgloss.Right).Render(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir))
-		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled, dirStyled}, styledSep)
-	} else {
-		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled}, styledSep)
-	}
-
-	if !isSelected {
-		return strings.Repeat(" ", layout.prefixWidth) + line
-	}
-
+func (m *Model) renderSelectedResultLine(line string, layout resultLayout) string {
+	fullLineBg := config.BoolDefault(m.cfg.Theme.SelectionFullLine, true)
+	selBg := parseColor(m.cfg.Theme.SelectedBg)
 	prefix := m.renderSelectionPrefix(layout, fullLineBg, selBg)
 
 	fullLine := prefix + line
@@ -463,6 +559,43 @@ func (m *Model) renderResultLine(entryIdx int, isSelected bool) string {
 	return fullLine
 }
 
+func (m *Model) resultLineCacheKey(entry history.ScoredEntry, layout resultLayout, now time.Time) resultLineCacheKey {
+	return resultLineCacheKey{
+		width:          layout.width,
+		cmdWidth:       layout.cmdWidth,
+		entryID:        entry.Entry.ID,
+		query:          m.input.Value(),
+		mode:           m.mode,
+		showDir:        layout.showDir,
+		timeFormat:     m.cfg.Display.TimeFormat,
+		durationFormat: m.cfg.Display.DurationFormat,
+		timeBucket:     resultLineTimeBucket(m.cfg.Display.TimeFormat, now),
+	}
+}
+
+func resultLineTimeBucket(timeFormat string, now time.Time) int64 {
+	if timeFormat == "absolute" {
+		return 0
+	}
+
+	return now.Unix()
+}
+
+func (m *Model) cacheResultLine(entryIdx int, key resultLineCacheKey, line string) {
+	if m.lineCache == nil {
+		m.lineCache = make(map[int]cachedResultLine, m.pageSize()+1)
+	}
+
+	if len(m.lineCache) > max(m.pageSize()*4, 32) {
+		clear(m.lineCache)
+	}
+
+	m.lineCache[entryIdx] = cachedResultLine{
+		key:  key,
+		line: line,
+	}
+}
+
 func (m *Model) entryIsMultiline(idx int) bool {
 	if idx >= len(m.displayEntries) {
 		return false
@@ -471,8 +604,9 @@ func (m *Model) entryIsMultiline(idx int) bool {
 	return strings.Contains(m.displayEntries[idx].Entry.Command, "\n")
 }
 
-func (m *Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor, cmdLine string) string {
+func (m *Model) renderExpandedFirstLineAt(entry *history.ScoredEntry, layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor, cmdLine string, now time.Time) string {
 	matchInfo := &entry.MatchInfo
+	matchInfo = m.ensureRenderMatchRanges(cmdLine, matchInfo)
 	cmdLine, matchInfo = truncateWithRanges(cmdLine, matchInfo, layout.cmdWidth)
 
 	cmdStyle := m.styles.SelectedCmd
@@ -504,10 +638,10 @@ func (m *Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout resul
 		metaStyle = metaStyle.Background(selBg)
 	}
 
-	exitStyled := exitStyle.Width(layout.exitWidth).Align(lipgloss.Right).Render(formatExit(entry.Entry.ExitCode, layout.exitWidth))
-	durStyled := metaStyle.Width(layout.durWidth).Align(lipgloss.Right).Render(formatDuration(entry.Entry.Duration, m.cfg.Display.DurationFormat, layout.durWidth))
-	timeStyled := metaStyle.Width(layout.timeWidth).Align(lipgloss.Right).Render(formatWhen(entry.Entry.TsMs, m.cfg.Display.TimeFormat, layout.timeWidth))
-	cmdStyled := lipgloss.NewStyle().Width(layout.cmdWidth).Render(renderedCmd)
+	exitStyled := exitStyle.Render(formatExit(entry.Entry.ExitCode, layout.exitWidth))
+	durStyled := metaStyle.Render(formatDuration(entry.Entry.Duration, m.cfg.Display.DurationFormat, layout.durWidth))
+	timeStyled := metaStyle.Render(formatWhenAt(entry.Entry.TSMs, m.cfg.Display.TimeFormat, layout.timeWidth, now))
+	cmdStyled := padRenderedCell(renderedCmd, layout.cmdWidth, lipgloss.Width(cmdLine), fullLineBg, selBg)
 
 	styledSep := layout.sep
 	if fullLineBg {
@@ -517,10 +651,10 @@ func (m *Model) renderExpandedFirstLine(entry *history.ScoredEntry, layout resul
 	var line string
 
 	if layout.showDir {
-		dirStyled := metaStyle.Width(layout.dirWidth).Align(lipgloss.Right).Render(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir))
-		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled, dirStyled}, styledSep)
+		dirStyled := metaStyle.Render(padLeft(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir), layout.dirWidth))
+		line = exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled + styledSep + dirStyled
 	} else {
-		line = strings.Join([]string{exitStyled, durStyled, timeStyled, cmdStyled}, styledSep)
+		line = exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled
 	}
 
 	prefix := m.renderSelectionPrefix(layout, fullLineBg, selBg)
@@ -547,7 +681,7 @@ func (m *Model) renderExpandedContinuationLine(layout resultLayout, fullLineBg b
 	}
 
 	padding := strings.Repeat(" ", metaWidth)
-	cmdStyled := lipgloss.NewStyle().Width(layout.cmdWidth).Render(renderedCmd)
+	cmdStyled := padRenderedCell(renderedCmd, layout.cmdWidth, lipgloss.Width(cmdLine), fullLineBg, selBg)
 	lineContent := continuationChar + padding + cmdStyled
 
 	if fullLineBg {
@@ -571,8 +705,35 @@ func (m *Model) padLine(line string, width int, fullLineBg bool, selBg lipgloss.
 	return line + padding
 }
 
+func padRenderedCell(rendered string, width int, visibleWidth int, fullLineBg bool, bg lipgloss.TerminalColor) string {
+	padding := width - visibleWidth
+	if padding <= 0 {
+		return rendered
+	}
+
+	spaces := strings.Repeat(" ", padding)
+	if fullLineBg {
+		spaces = lipgloss.NewStyle().Background(bg).Render(spaces)
+	}
+
+	return rendered + spaces
+}
+
+func padLeft(s string, width int) string {
+	padding := width - lipgloss.Width(s)
+	if padding <= 0 {
+		return s
+	}
+
+	return strings.Repeat(" ", padding) + s
+}
+
 func (m *Model) renderExpandedResultLines(entryIdx int) []string {
 	layout := m.calcResultLayout()
+	return m.renderExpandedResultLinesWithLayout(entryIdx, layout, time.Now())
+}
+
+func (m *Model) renderExpandedResultLinesWithLayout(entryIdx int, layout resultLayout, now time.Time) []string {
 	if entryIdx >= len(m.displayEntries) {
 		return nil
 	}
@@ -590,7 +751,7 @@ func (m *Model) renderExpandedResultLines(entryIdx int) []string {
 
 		var line string
 		if i == 0 {
-			line = m.renderExpandedFirstLine(&entry, layout, fullLineBg, selBg, cmdLine)
+			line = m.renderExpandedFirstLineAt(&entry, layout, fullLineBg, selBg, cmdLine, now)
 		} else {
 			line = m.renderExpandedContinuationLine(layout, fullLineBg, selBg, cmdLine)
 		}
@@ -603,6 +764,20 @@ func (m *Model) renderExpandedResultLines(entryIdx int) []string {
 
 func (m *Model) renderFooter() string {
 	width := m.getWidth()
+	left := m.renderFooterLeft()
+	right := m.styles.HelpDesc.Render(formatMatchCountLabel(len(m.displayEntries)))
+	contentWidth := max(width-lipgloss.Width(m.styles.Footer.Render("")), 0)
+	line := layoutFooterLine(left, right, contentWidth)
+
+	return m.styles.Footer.Width(width).Render(line)
+}
+
+func (m *Model) renderFooterLeft() string {
+	showPreviewHint := m.cfg.Display.MultilinePreview == "popup" && m.selectedIsMultiline()
+	if m.footerCache.valid && m.footerCache.showPreviewHint == showPreviewHint {
+		return m.footerCache.left
+	}
+
 	keys := []struct {
 		key  string
 		desc string
@@ -616,26 +791,27 @@ func (m *Model) renderFooter() string {
 		{m.cfg.Keys.Help, "help"},
 	}
 
-	var parts []string
-
+	parts := make([]string, 0, len(keys)+1)
 	for _, k := range keys {
 		key := m.styles.HelpKey.Render(k.key)
 		desc := m.styles.HelpDesc.Render(k.desc)
 		parts = append(parts, key+" "+desc)
 	}
 
-	if m.cfg.Display.MultilinePreview == "popup" && m.selectedIsMultiline() {
+	if showPreviewHint {
 		key := m.styles.HelpKey.Render(m.cfg.Keys.PreviewCommand)
 		desc := m.styles.HelpDesc.Render("preview")
 		parts = append(parts, key+" "+desc)
 	}
 
 	left := strings.Join(parts, "  ")
-	right := m.styles.HelpDesc.Render(formatMatchCountLabel(len(m.displayEntries)))
-	contentWidth := max(width-lipgloss.Width(m.styles.Footer.Render("")), 0)
-	line := layoutFooterLine(left, right, contentWidth)
+	m.footerCache = footerCache{
+		showPreviewHint: showPreviewHint,
+		left:            left,
+		valid:           true,
+	}
 
-	return m.styles.Footer.Width(width).Render(line)
+	return left
 }
 
 func formatMatchCountLabel(count int) string {
@@ -809,16 +985,16 @@ func (m *Model) getWidth() int {
 	return m.width
 }
 
-func (m *Model) visibleResults() []int {
+func (m *Model) visibleResultRange() (int, int) {
 	count := len(m.displayEntries)
 	if count == 0 {
-		return nil
+		return 0, 0
 	}
 
 	maxVisible := min(m.pageSize(), count)
 
 	if maxVisible == 0 {
-		return nil
+		return 0, 0
 	}
 
 	// Window scrolling
@@ -833,64 +1009,55 @@ func (m *Model) visibleResults() []int {
 		start = max(end-maxVisible, 0)
 	}
 
-	indices := make([]int, end-start)
-	for i := range indices {
-		indices[i] = start + i
-	}
-
-	return indices
+	return start, end
 }
 
 func (m *Model) renderResultsHeader() string {
-	width := m.getWidth()
+	return m.renderResultsHeaderWithLayout(m.calcResultLayout())
+}
 
-	barChar := m.cfg.Theme.SelectionBarChar
-	if barChar == "" {
-		barChar = defaultSelectionChar
+func (m *Model) renderResultsHeaderWithLayout(layout resultLayout) string {
+	key := resultsHeaderCacheKey{
+		width:      layout.width,
+		cmdWidth:   layout.cmdWidth,
+		dirWidth:   layout.dirWidth,
+		timeWidth:  layout.timeWidth,
+		showDir:    layout.showDir,
+		barChar:    layout.barChar,
+		prefixSize: layout.prefixWidth,
+	}
+	if m.headerCache.valid && m.headerCache.key == key {
+		return m.headerCache.value
 	}
 
-	prefixWidth := lipgloss.Width(barChar)
-	exitWidth := 4
-	durWidth := 8
-	timeWidth := timeColumnWidth(m.cfg.Display.TimeFormat)
-	sep := "  "
+	exit := m.styles.ColumnHeader.Width(layout.exitWidth).Align(lipgloss.Right).Render("exit")
+	dur := m.styles.ColumnHeader.Width(layout.durWidth).Align(lipgloss.Right).Render("time")
+	when := m.styles.ColumnHeader.Width(layout.timeWidth).Align(lipgloss.Right).Render("when")
+	cmd := m.styles.ColumnHeader.Width(layout.cmdWidth).Render("command")
 
-	var dirWidth int
-	if m.cfg.Display.ShowDirectory {
-		dirWidth = dirColumnWidth(width)
-	}
-
-	columnsWidth := prefixWidth + exitWidth + durWidth + timeWidth + (len(sep) * 3)
-	if m.cfg.Display.ShowDirectory {
-		columnsWidth += dirWidth + len(sep)
-	}
-
-	cmdWidth := width - columnsWidth
-	if cmdWidth < 10 {
-		cmdWidth = width
-	}
-
-	exit := m.styles.ColumnHeader.Width(exitWidth).Align(lipgloss.Right).Render("exit")
-	dur := m.styles.ColumnHeader.Width(durWidth).Align(lipgloss.Right).Render("time")
-	when := m.styles.ColumnHeader.Width(timeWidth).Align(lipgloss.Right).Render("when")
-	cmd := m.styles.ColumnHeader.Width(cmdWidth).Render("command")
-
-	prefix := strings.Repeat(" ", prefixWidth)
+	prefix := strings.Repeat(" ", layout.prefixWidth)
 
 	var line string
 
-	if m.cfg.Display.ShowDirectory {
-		dir := m.styles.ColumnHeader.Width(dirWidth).Align(lipgloss.Right).Render("dir")
-		line = prefix + strings.Join([]string{exit, dur, when, cmd, dir}, sep)
+	if layout.showDir {
+		dir := m.styles.ColumnHeader.Width(layout.dirWidth).Align(lipgloss.Right).Render("dir")
+		line = prefix + strings.Join([]string{exit, dur, when, cmd, dir}, layout.sep)
 	} else {
-		line = prefix + strings.Join([]string{exit, dur, when, cmd}, sep)
+		line = prefix + strings.Join([]string{exit, dur, when, cmd}, layout.sep)
 	}
 
-	if lipgloss.Width(line) < width {
-		line += strings.Repeat(" ", width-lipgloss.Width(line))
+	if lipgloss.Width(line) < layout.width {
+		line += strings.Repeat(" ", layout.width-lipgloss.Width(line))
 	}
 
-	return m.styles.ColumnHeaderBar.Width(width).Render(line)
+	value := m.styles.ColumnHeaderBar.Width(layout.width).Render(line)
+	m.headerCache = cachedResultsHeader{
+		key:   key,
+		value: value,
+		valid: true,
+	}
+
+	return value
 }
 
 func (m *Model) fitIndicators(indicators []string, width int) string {
@@ -918,38 +1085,326 @@ func (m *Model) highlightMatches(text string, ranges []match.Range, baseStyle li
 		return baseStyle.Render(text)
 	}
 
-	runes := []rune(text)
-	inMatch := map[int]bool{}
-
-	for _, r := range ranges {
-		for i := r.Start; i < r.End && i < len(runes); i++ {
-			inMatch[i] = true
-		}
+	if isASCII(text) {
+		return highlightASCIIMatches(text, ranges, baseStyle, matchStyle)
 	}
+
+	runes := []rune(text)
 
 	var b strings.Builder
 
-	inRun := false
-	runStart := 0
+	pos := 0
 
-	for i := 0; i <= len(runes); i++ {
-		current := i < len(runes) && inMatch[i]
-		if i == len(runes) || current != inRun {
-			if i > runStart {
-				chunk := string(runes[runStart:i])
-				if inRun {
-					b.WriteString(matchStyle.Render(chunk))
-				} else {
-					b.WriteString(baseStyle.Render(chunk))
-				}
-			}
+	for _, r := range ranges {
+		start := min(max(r.Start, 0), len(runes))
 
-			inRun = current
-			runStart = i
+		end := min(max(r.End, start), len(runes))
+		if start > pos {
+			b.WriteString(baseStyle.Render(string(runes[pos:start])))
+		}
+
+		start = max(start, pos)
+		if end > start {
+			b.WriteString(matchStyle.Render(string(runes[start:end])))
+			pos = end
 		}
 	}
 
+	if pos < len(runes) {
+		b.WriteString(baseStyle.Render(string(runes[pos:])))
+	}
+
 	return b.String()
+}
+
+func highlightASCIIMatches(text string, ranges []match.Range, baseStyle lipgloss.Style, matchStyle lipgloss.Style) string {
+	var b strings.Builder
+
+	pos := 0
+
+	for _, r := range ranges {
+		start := min(max(r.Start, 0), len(text))
+
+		end := min(max(r.End, start), len(text))
+		if start > pos {
+			b.WriteString(baseStyle.Render(text[pos:start]))
+		}
+
+		start = max(start, pos)
+		if end > start {
+			b.WriteString(matchStyle.Render(text[start:end]))
+			pos = end
+		}
+	}
+
+	if pos < len(text) {
+		b.WriteString(baseStyle.Render(text[pos:]))
+	}
+
+	return b.String()
+}
+
+func isASCII(s string) bool {
+	for i := range len(s) {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (m *Model) cachedRenderMatchInfo(entryIdx int, text string) *match.Match {
+	info := &m.displayEntries[entryIdx].MatchInfo
+	if len(info.MatchedRanges) > 0 || m.mode != match.ModeFuzzy || strings.ContainsAny(text, "\n\r\t") {
+		return info
+	}
+
+	ranges := fuzzyRenderRanges(m.input.Value(), text)
+	if len(ranges) == 0 {
+		return info
+	}
+
+	m.displayEntries[entryIdx].MatchInfo.MatchedRanges = ranges
+
+	return &m.displayEntries[entryIdx].MatchInfo
+}
+
+func (m *Model) ensureRenderMatchRanges(text string, info *match.Match) *match.Match {
+	if info == nil || len(info.MatchedRanges) > 0 {
+		return info
+	}
+
+	var ranges []match.Range
+
+	switch m.mode {
+	case match.ModeFuzzy:
+		ranges = fuzzyRenderRanges(m.input.Value(), text)
+	case match.ModeRegex:
+		ranges = m.regexRenderRanges(text)
+	case match.ModeGlob:
+		return info
+	default:
+		return info
+	}
+
+	if len(ranges) == 0 {
+		return info
+	}
+
+	infoCopy := *info
+	infoCopy.MatchedRanges = ranges
+
+	return &infoCopy
+}
+
+func (m *Model) regexRenderRanges(text string) []match.Range {
+	pattern := m.input.Value()
+	if pattern == "" || text == "" {
+		return nil
+	}
+
+	if match.IsLiteralRegex(pattern) {
+		if ranges, ok := literalFoldRanges(pattern, text); ok {
+			return ranges
+		}
+	}
+
+	re := m.regexCache.re
+	if !m.regexCache.valid || m.regexCache.pattern != pattern {
+		compiled, err := regexp.Compile("(?i)" + pattern)
+		if err != nil {
+			return nil
+		}
+
+		m.regexCache = regexRenderCache{
+			pattern: pattern,
+			re:      compiled,
+			valid:   true,
+		}
+		re = compiled
+	}
+
+	return regexRanges(re, text)
+}
+
+func fuzzyRenderRanges(pattern string, text string) []match.Range {
+	if pattern == "" || text == "" {
+		return nil
+	}
+
+	patternRunes := []rune(pattern)
+	patternIndex := 0
+	rangeStart := -1
+	previousMatch := -2
+	ranges := make([]match.Range, 0, len(patternRunes))
+
+	runeIndex := 0
+
+	for _, r := range text {
+		if equalFoldRune(r, patternRunes[patternIndex]) {
+			if rangeStart < 0 {
+				rangeStart = runeIndex
+			} else if runeIndex != previousMatch+1 {
+				ranges = append(ranges, match.Range{Start: rangeStart, End: previousMatch + 1})
+				rangeStart = runeIndex
+			}
+
+			previousMatch = runeIndex
+
+			patternIndex++
+			if patternIndex == len(patternRunes) {
+				return append(ranges, match.Range{Start: rangeStart, End: previousMatch + 1})
+			}
+		}
+
+		runeIndex++
+	}
+
+	return nil
+}
+
+func regexRenderRanges(pattern string, text string) []match.Range {
+	if pattern == "" || text == "" {
+		return nil
+	}
+
+	if match.IsLiteralRegex(pattern) {
+		if ranges, ok := literalFoldRanges(pattern, text); ok {
+			return ranges
+		}
+	}
+
+	re, err := regexp.Compile("(?i)" + pattern)
+	if err != nil {
+		return nil
+	}
+
+	return regexRanges(re, text)
+}
+
+func literalFoldRanges(pattern string, text string) ([]match.Range, bool) {
+	if !isASCII(pattern) || !isASCII(text) {
+		return nil, false
+	}
+
+	lowerPattern := strings.ToLower(pattern)
+
+	var ranges []match.Range
+
+	for start := 0; start <= len(text)-len(lowerPattern); {
+		idx := indexFoldASCII(text[start:], lowerPattern)
+		if idx < 0 {
+			break
+		}
+
+		matchStart := start + idx
+		matchEnd := matchStart + len(lowerPattern)
+		ranges = append(ranges, match.Range{Start: matchStart, End: matchEnd})
+		start = matchEnd
+	}
+
+	return ranges, true
+}
+
+func indexFoldASCII(text string, lowerPattern string) int {
+	if lowerPattern == "" {
+		return 0
+	}
+
+	first := lowerPattern[0]
+
+	limit := len(text) - len(lowerPattern)
+	for i := 0; i <= limit; i++ {
+		if toLowerASCII(text[i]) != first {
+			continue
+		}
+
+		matched := true
+
+		for j := 1; j < len(lowerPattern); j++ {
+			if toLowerASCII(text[i+j]) != lowerPattern[j] {
+				matched = false
+				break
+			}
+		}
+
+		if matched {
+			return i
+		}
+	}
+
+	return -1
+}
+
+func toLowerASCII(b byte) byte {
+	if 'A' <= b && b <= 'Z' {
+		return b + ('a' - 'A')
+	}
+
+	return b
+}
+
+func regexRanges(re *regexp.Regexp, text string) []match.Range {
+	locs := re.FindAllStringIndex(text, -1)
+	if len(locs) == 0 {
+		return nil
+	}
+
+	ranges := make([]match.Range, len(locs))
+	if isASCII(text) {
+		for i, loc := range locs {
+			ranges[i] = match.Range{Start: loc[0], End: loc[1]}
+		}
+
+		return ranges
+	}
+
+	runeStarts := buildRuneByteOffsets(text)
+	for i, loc := range locs {
+		ranges[i] = match.Range{
+			Start: byteOffsetToRuneIndex(runeStarts, loc[0]),
+			End:   byteOffsetToRuneIndex(runeStarts, loc[1]),
+		}
+	}
+
+	return ranges
+}
+
+func buildRuneByteOffsets(s string) []int {
+	offsets := make([]int, 0, len([]rune(s))+1)
+	for i := range s {
+		offsets = append(offsets, i)
+	}
+
+	offsets = append(offsets, len(s))
+
+	return offsets
+}
+
+func byteOffsetToRuneIndex(offsets []int, byteOffset int) int {
+	return sort.SearchInts(offsets, byteOffset)
+}
+
+func equalFoldRune(a rune, b rune) bool {
+	if a == b {
+		return true
+	}
+
+	if a < b {
+		a, b = b, a
+	}
+
+	if a < utf8.RuneSelf {
+		return 'A' <= b && b <= 'Z' && a == b+'a'-'A'
+	}
+
+	r := unicode.SimpleFold(b)
+	for r != b && r < a {
+		r = unicode.SimpleFold(r)
+	}
+
+	return r == a
 }
 
 func timeColumnWidth(mode string) int {
@@ -975,21 +1430,47 @@ func dirColumnWidth(width int) int {
 }
 
 func formatDirectory(dir string, width int, home string) string {
-	if home != "" && strings.HasPrefix(dir, home) {
+	if home != "" && (dir == home || strings.HasPrefix(dir, home+string(filepathSeparator()))) {
 		dir = "~" + dir[len(home):]
 	}
 
-	if len(dir) <= width {
+	if width <= 0 {
+		return ""
+	}
+
+	if lipgloss.Width(dir) <= width {
 		return dir
 	}
 
 	runes := []rune(dir)
 
-	return "…" + string(runes[len(runes)-width+1:])
+	remainingWidth := width - lipgloss.Width("…")
+	if remainingWidth <= 0 {
+		return "…"
+	}
+
+	start := len(runes)
+	usedWidth := 0
+
+	for start > 0 {
+		runeWidth := lipgloss.Width(string(runes[start-1]))
+		if usedWidth+runeWidth > remainingWidth {
+			break
+		}
+
+		usedWidth += runeWidth
+		start--
+	}
+
+	return "…" + string(runes[start:])
+}
+
+func filepathSeparator() rune {
+	return os.PathSeparator
 }
 
 func formatExit(code int, width int) string {
-	return fmt.Sprintf("%*d", width, code)
+	return padLeftASCII(strconv.Itoa(code), width)
 }
 
 func formatDuration(ms int64, mode string, width int) string {
@@ -997,26 +1478,27 @@ func formatDuration(ms int64, mode string, width int) string {
 
 	switch mode {
 	case "ms":
-		s = fmt.Sprintf("%dms", ms)
+		s = strconv.FormatInt(ms, 10) + "ms"
 	case "s":
-		s = fmt.Sprintf("%.2fs", float64(ms)/1000.0)
+		s = strconv.FormatFloat(float64(ms)/1000.0, 'f', 2, 64) + "s"
 	default:
 		s = humanDuration(ms)
 	}
 
-	s = trimToWidth(s, width)
+	if len(s) > width {
+		s = trimToWidth(s, width)
+	}
 
-	return fmt.Sprintf("%*s", width, s)
+	return padLeftASCII(s, width)
 }
 
-func formatWhen(tsMs int64, mode string, width int) string {
+func formatWhenAt(tsMs int64, mode string, width int, now time.Time) string {
 	tsMs = normalizeTimestampMs(tsMs)
 	if tsMs <= 0 {
-		return fmt.Sprintf("%*s", width, trimToWidth("n/a", width))
+		return padLeftASCII("n/a", width)
 	}
 
 	t := time.UnixMilli(tsMs)
-	now := time.Now()
 
 	var s string
 
@@ -1027,29 +1509,31 @@ func formatWhen(tsMs int64, mode string, width int) string {
 		s = humanSince(safeSub(now, t))
 	}
 
-	s = trimToWidth(s, width)
+	if len(s) > width {
+		s = trimToWidth(s, width)
+	}
 
-	return fmt.Sprintf("%*s", width, s)
+	return padLeftASCII(s, width)
 }
 
 func humanDuration(ms int64) string {
 	if ms < 1000 {
-		return fmt.Sprintf("%dms", ms)
+		return strconv.FormatInt(ms, 10) + "ms"
 	}
 
 	sec := float64(ms) / 1000.0
 	if sec < 60 {
-		return fmt.Sprintf("%.1fs", sec)
+		return strconv.FormatFloat(sec, 'f', 1, 64) + "s"
 	}
 
 	minutes := sec / 60.0
 	if minutes < 60 {
-		return fmt.Sprintf("%.1fm", minutes)
+		return strconv.FormatFloat(minutes, 'f', 1, 64) + "m"
 	}
 
 	h := minutes / 60.0
 
-	return fmt.Sprintf("%.1fh", h)
+	return strconv.FormatFloat(h, 'f', 1, 64) + "h"
 }
 
 func humanSince(d time.Duration) string {
@@ -1063,20 +1547,29 @@ func humanSince(d time.Duration) string {
 
 	switch {
 	case d < time.Minute:
-		return fmt.Sprintf("%ds ago", int(d.Seconds()))
+		return strconv.Itoa(int(d.Seconds())) + "s ago"
 	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+		return strconv.Itoa(int(d.Minutes())) + "m ago"
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
+		return strconv.Itoa(int(d.Hours())) + "h ago"
 	case d < 7*24*time.Hour:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+		return strconv.Itoa(int(d.Hours()/24)) + "d ago"
 	case d < 30*24*time.Hour:
-		return fmt.Sprintf("%dw ago", int(d.Hours()/(24*7)))
+		return strconv.Itoa(int(d.Hours()/(24*7))) + "w ago"
 	case d < 365*24*time.Hour:
-		return fmt.Sprintf("%dmo ago", int(d.Hours()/(24*30)))
+		return strconv.Itoa(int(d.Hours()/(24*30))) + "mo ago"
 	default:
-		return fmt.Sprintf("%dy ago", int(d.Hours()/(24*365)))
+		return strconv.Itoa(int(d.Hours()/(24*365))) + "y ago"
 	}
+}
+
+func padLeftASCII(s string, width int) string {
+	padding := width - len(s)
+	if padding <= 0 {
+		return s
+	}
+
+	return strings.Repeat(" ", padding) + s
 }
 
 func safeSub(a, b time.Time) time.Duration {

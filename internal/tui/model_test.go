@@ -10,6 +10,7 @@ import (
 	"github.com/zigai/zgod/internal/config"
 	"github.com/zigai/zgod/internal/db"
 	"github.com/zigai/zgod/internal/history"
+	"github.com/zigai/zgod/internal/match"
 )
 
 func TestHandleKeyAcceptUsesSelectedEntryWhenAvailable(t *testing.T) {
@@ -169,9 +170,9 @@ func TestHandleToggleFailsCyclesFailFilterModesAndReloadsEntries(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	entries := []db.HistoryEntry{
-		{TsMs: 1000, ExitCode: 0, Command: "echo ok one"},
-		{TsMs: 2000, ExitCode: 1, Command: "echo fail"},
-		{TsMs: 3000, ExitCode: 0, Command: "echo ok two"},
+		{TSMs: 1000, ExitCode: 0, Command: "echo ok one"},
+		{TSMs: 2000, ExitCode: 1, Command: "echo fail"},
+		{TSMs: 3000, ExitCode: 0, Command: "echo ok two"},
 	}
 
 	for _, entry := range entries {
@@ -231,8 +232,8 @@ func TestNewModelUsesConfiguredDefaultFailFilter(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	entries := []db.HistoryEntry{
-		{TsMs: 1000, ExitCode: 0, Command: "echo ok"},
-		{TsMs: 2000, ExitCode: 1, Command: "echo fail"},
+		{TSMs: 1000, ExitCode: 0, Command: "echo ok"},
+		{TSMs: 2000, ExitCode: 1, Command: "echo fail"},
 	}
 
 	for _, entry := range entries {
@@ -273,8 +274,8 @@ func TestNewModelAppliesCWDFilterBeforeDedupe(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	entries := []db.HistoryEntry{
-		{TsMs: 1000, Command: "repeat", Directory: "/repo"},
-		{TsMs: 2000, Command: "repeat", Directory: "/elsewhere"},
+		{TSMs: 1000, Command: "repeat", Directory: "/repo"},
+		{TSMs: 2000, Command: "repeat", Directory: "/elsewhere"},
 	}
 
 	for _, entry := range entries {
@@ -306,13 +307,13 @@ func TestNewModelSearchesBeyondTenThousandEntries(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	repo := db.NewHistoryRepo(database)
-	if _, err = repo.Insert(db.HistoryEntry{TsMs: 1, Command: "old unique target"}); err != nil {
+	if _, err = repo.Insert(db.HistoryEntry{TSMs: 1, Command: "old unique target"}); err != nil {
 		t.Fatalf("repo.Insert(old target) error: %v", err)
 	}
 
 	for i := range 10000 {
 		entry := db.HistoryEntry{
-			TsMs:    int64(i + 2),
+			TSMs:    int64(i + 2),
 			Command: "newer filler command",
 		}
 		if _, err = repo.Insert(entry); err != nil {
@@ -330,6 +331,57 @@ func TestNewModelSearchesBeyondTenThousandEntries(t *testing.T) {
 	if got, want := m.displayEntries[0].Entry.Command, "old unique target"; got != want {
 		t.Fatalf("displayEntries[0].Command = %q, want %q", got, want)
 	}
+}
+
+func TestIncrementalFuzzyMatchMatchesFullSearch(t *testing.T) {
+	t.Parallel()
+
+	m := testFuzzySearchModel(1_000, "gc")
+	m.input.SetValue("gct")
+	incremental := m.matchCandidates("gct")
+
+	fresh := testFuzzySearchModel(1_000, "")
+	fresh.input.SetValue("gct")
+	full := fresh.matchCandidates("gct")
+
+	if len(incremental) != len(full) {
+		t.Fatalf("incremental matches = %d, full matches = %d", len(incremental), len(full))
+	}
+
+	for i := range full {
+		if incremental[i].Index != full[i].Index || incremental[i].Score != full[i].Score {
+			t.Fatalf("match %d = %+v, want %+v", i, incremental[i], full[i])
+		}
+	}
+}
+
+func testFuzzySearchModel(entryCount int, query string) *Model {
+	ti := textinput.New()
+	ti.SetValue(query)
+
+	cfg := config.Default()
+	m := &Model{
+		input: ti,
+		cfg:   cfg,
+		mode:  match.ModeFuzzy,
+	}
+
+	m.allEntries = make([]db.HistoryEntry, entryCount)
+
+	m.candidates = make([]string, entryCount)
+	for i := range entryCount {
+		command := "echo filler"
+		if i%2 == 0 {
+			command = "git checkout target"
+		}
+
+		m.allEntries[i] = db.HistoryEntry{TSMs: int64(i), Command: command}
+		m.candidates[i] = command
+	}
+
+	m.updateMatches()
+
+	return m
 }
 
 func testNavModel(entryCount int, height int) *Model {
