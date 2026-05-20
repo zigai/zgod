@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"math"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -1430,7 +1429,7 @@ func dirColumnWidth(width int) int {
 }
 
 func formatDirectory(dir string, width int, home string) string {
-	if home != "" && (dir == home || strings.HasPrefix(dir, home+string(filepathSeparator()))) {
+	if isHomeDirectoryPath(dir, home) {
 		dir = "~" + dir[len(home):]
 	}
 
@@ -1465,8 +1464,21 @@ func formatDirectory(dir string, width int, home string) string {
 	return "…" + string(runes[start:])
 }
 
-func filepathSeparator() rune {
-	return os.PathSeparator
+func isHomeDirectoryPath(dir string, home string) bool {
+	if home == "" || !strings.HasPrefix(dir, home) {
+		return false
+	}
+
+	if len(dir) == len(home) {
+		return true
+	}
+
+	switch dir[len(home)] {
+	case '/', '\\':
+		return true
+	default:
+		return false
+	}
 }
 
 func formatExit(code int, width int) string {

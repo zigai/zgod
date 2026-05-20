@@ -240,6 +240,16 @@ func TestFormatDirectoryOnlyAbbreviatesActualHome(t *testing.T) {
 	if got != "~/project" {
 		t.Fatalf("formatDirectory() = %q, want home abbreviation", got)
 	}
+
+	got = formatDirectory(`C:\Users\me2\project`, 80, `C:\Users\me`)
+	if got != `C:\Users\me2\project` {
+		t.Fatalf("formatDirectory() = %q, want original Windows path", got)
+	}
+
+	got = formatDirectory(`C:\Users\me\project`, 80, `C:\Users\me`)
+	if got != `~\project` {
+		t.Fatalf("formatDirectory() = %q, want Windows home abbreviation", got)
+	}
 }
 
 func TestRenderPreviewPopupPreservesUTF8(t *testing.T) {
