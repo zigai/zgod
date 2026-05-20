@@ -150,6 +150,17 @@ func TestExpandTildeWindowsBackslash(t *testing.T) {
 	}
 }
 
+func TestExpandTildeRejectsUserForm(t *testing.T) {
+	_, err := ExpandTilde("~postgres/history.db")
+	if err == nil {
+		t.Fatal("ExpandTilde should reject unsupported ~user form")
+	}
+
+	if !strings.Contains(err.Error(), "unsupported tilde form") {
+		t.Fatalf("ExpandTilde error = %v, want unsupported tilde form", err)
+	}
+}
+
 func TestConfigFile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg")
 

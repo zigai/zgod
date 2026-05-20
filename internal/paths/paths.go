@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-var errHomeDirectoryEmpty = errors.New("home directory is empty")
+var (
+	errHomeDirectoryEmpty = errors.New("home directory is empty")
+	errUnsupportedTilde   = errors.New("unsupported tilde form")
+)
 
 func ConfigFile() (string, error) {
 	if path := os.Getenv("ZGOD_CONFIG"); path != "" {
@@ -90,5 +93,5 @@ func ExpandTilde(path string) (string, error) {
 		return filepath.Join(home, path[2:]), nil
 	}
 
-	return filepath.Join(home, path[1:]), nil
+	return "", fmt.Errorf("%w %q; use ~/", errUnsupportedTilde, path)
 }
