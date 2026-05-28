@@ -76,11 +76,31 @@ var (
 )
 
 func ensureSchema(db *sql.DB) error {
+	version, err := readSQLiteUserVersion(db)
+	if err != nil {
+		return fmt.Errorf("reading schema version: %w", err)
+	}
+
+	if version == currentSchemaVersion {
+		return nil
+	}
+
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		return fmt.Errorf("applying schema: %w", err)
 	}
 
 	return nil
+}
+
+func readSQLiteUserVersion(db *sql.DB) (int, error) {
+	row := db.QueryRowContext(context.Background(), `PRAGMA user_version`)
+
+	var version int
+	if err := row.Scan(&version); err != nil {
+		return 0, fmt.Errorf("scanning sqlite user_version: %w", err)
+	}
+
+	return version, nil
 }
 
 func ValidateHistorySchema(db *sql.DB) error {
@@ -134,10 +154,8 @@ func ValidateHistorySchema(db *sql.DB) error {
 }
 
 func ValidateSupportedSchemaVersion(db *sql.DB) error {
-	row := db.QueryRowContext(context.Background(), `PRAGMA user_version`)
-
-	var version int
-	if err := row.Scan(&version); err != nil {
+	version, err := readSQLiteUserVersion(db)
+	if err != nil {
 		return fmt.Errorf("reading schema version: %w", err)
 	}
 

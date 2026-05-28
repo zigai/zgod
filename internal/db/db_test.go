@@ -497,6 +497,42 @@ func TestValidateHistorySchema(t *testing.T) {
 	}
 }
 
+func TestOpenCurrentSchemaDoesNotApplySchemaUnderWriteLock(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "schema-current.db")
+	ctx := context.Background()
+
+	database, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	if err = database.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	locker, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(locker) error: %v", err)
+	}
+
+	defer func() { _ = locker.Close() }()
+
+	if _, err = locker.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		t.Fatalf("starting write-reservation transaction: %v", err)
+	}
+
+	defer func() {
+		_, _ = locker.ExecContext(ctx, "ROLLBACK")
+	}()
+
+	opened, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() with current schema under write lock error: %v", err)
+	}
+
+	defer func() { _ = opened.Close() }()
+}
+
 func TestValidateHistorySchemaMissingColumns(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "bad-schema.db")
 
