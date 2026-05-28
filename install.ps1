@@ -63,7 +63,10 @@ function Main {
 
         Write-Host "Verifying checksum..."
         $checksums = Get-Content $checksumPath
-        $expectedLine = $checksums | Where-Object { $_.Contains($archive) }
+        $expectedLine = $checksums | Where-Object {
+            $fields = $_ -split "\s+", 2
+            $fields.Count -eq 2 -and $fields[1] -eq $archive
+        } | Select-Object -First 1
         if (-not $expectedLine) {
             throw "Checksum not found for $archive"
         }

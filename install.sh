@@ -58,7 +58,7 @@ main() {
 
     echo "Verifying checksum..."
     cd "$tmpdir"
-    expected=$(grep -F "$archive" checksums.txt | awk '{print $1}')
+    expected=$(awk -v f="$archive" '$2 == f {print $1}' checksums.txt)
     if [ -z "$expected" ]; then
         echo "Checksum not found for $archive" >&2
         exit 1
