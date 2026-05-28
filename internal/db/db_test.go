@@ -698,6 +698,56 @@ func TestInsertIfNotExistsTx(t *testing.T) {
 	}
 }
 
+func TestLatestCommandCacheTracksNewestCommand(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := NewHistoryRepo(database)
+
+	oldID, err := repo.Insert(HistoryEntry{TSMs: 1000, Command: "repeat", Directory: "/old"})
+	if err != nil {
+		t.Fatalf("Insert(old) error: %v", err)
+	}
+
+	newID, err := repo.Insert(HistoryEntry{TSMs: 2000, Command: "repeat", Directory: "/new"})
+	if err != nil {
+		t.Fatalf("Insert(new) error: %v", err)
+	}
+
+	var (
+		historyID int64
+		dir       string
+	)
+
+	row := database.QueryRowContext(context.Background(), `SELECT history_id, directory FROM latest_command WHERE command = ?`, "repeat")
+	if err = row.Scan(&historyID, &dir); err != nil {
+		t.Fatalf("reading latest_command: %v", err)
+	}
+
+	if historyID != newID || dir != "/new" {
+		t.Fatalf("latest_command = (%d, %q), want (%d, /new)", historyID, dir, newID)
+	}
+
+	if err = repo.Delete(newID); err != nil {
+		t.Fatalf("Delete(new) error: %v", err)
+	}
+
+	row = database.QueryRowContext(context.Background(), `SELECT history_id, directory FROM latest_command WHERE command = ?`, "repeat")
+	if err = row.Scan(&historyID, &dir); err != nil {
+		t.Fatalf("reading latest_command after delete: %v", err)
+	}
+
+	if historyID != oldID || dir != "/old" {
+		t.Fatalf("latest_command after delete = (%d, %q), want (%d, /old)", historyID, dir, oldID)
+	}
+}
+
 func TestIsBusyErrorRecognizesSQLiteBusy(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "busy.db")
 	ctx := context.Background()

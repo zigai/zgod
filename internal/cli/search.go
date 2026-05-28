@@ -172,9 +172,9 @@ func openSearchDatabase(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening search database read-only %q: %w", dbPath, err)
 	}
 
-	if err = db.ValidateHistorySchema(database); err != nil {
+	if err = db.ValidateSupportedSchemaVersion(database); err != nil {
 		_ = database.Close()
-		return nil, fmt.Errorf("validating history schema: %w", err)
+		return nil, fmt.Errorf("validating history schema version: %w", err)
 	}
 
 	return database, nil
