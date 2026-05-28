@@ -184,14 +184,19 @@ func (r *HistoryRepo) queryCandidates(limit int, dedupe bool, failFilter FailFil
 		}
 
 		if !spec.fallback {
-			return nil, err
+			return nil, fmt.Errorf("querying history candidates: %w", err)
 		}
 	}
 
 	query, args := candidateQuery(failFilter, dir)
 	query, args = appendCandidateLimit(query, args, limit)
 
-	return r.db.QueryContext(context.Background(), query, args...)
+	rows, err := r.db.QueryContext(context.Background(), query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying fallback history candidates: %w", err)
+	}
+
+	return rows, nil
 }
 
 type candidateQuerySpec struct {
