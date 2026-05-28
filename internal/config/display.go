@@ -1,6 +1,9 @@
 package config
 
-const defaultCWDBoost = 50
+const (
+	defaultCWDBoost     = 50
+	defaultStartupLimit = 10000
+)
 
 type DisplayConfig struct {
 	TimeFormat        string `toml:"time_format"`
@@ -15,6 +18,7 @@ type DisplayConfig struct {
 	DefaultScope      string `toml:"default_scope"`
 	DefaultMode       string `toml:"default_mode"`
 	DefaultFailFilter string `toml:"default_fail_filter"`
+	StartupLimit      int    `toml:"startup_limit"`
 	HideMultiline     bool   `toml:"hide_multiline"`
 	MultilinePreview  string `toml:"multiline_preview"`
 	MultilineCollapse string `toml:"multiline_collapse"`
@@ -34,6 +38,7 @@ func DefaultDisplay() DisplayConfig {
 		DefaultScope:      "normal",
 		DefaultMode:       "fuzzy",
 		DefaultFailFilter: "include",
+		StartupLimit:      defaultStartupLimit,
 		HideMultiline:     false,
 		MultilinePreview:  "popup",
 		MultilineCollapse: " ",
