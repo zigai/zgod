@@ -229,9 +229,23 @@ func TestCommandReferencesExistingPathsBareChangeDirectoryTarget(t *testing.T) {
 func TestCommandReferencesExistingPathsAllowsCreatorCommandTargets(t *testing.T) {
 	baseDir := t.TempDir()
 
+	nestedDir := filepath.Join(baseDir, "nested")
+	if err := os.Mkdir(nestedDir, 0o755); err != nil {
+		t.Fatalf("Mkdir() error: %v", err)
+	}
+
+	existingPath := filepath.Join(baseDir, "existing.txt")
+	if err := os.WriteFile(existingPath, []byte("ok"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
 	tests := []string{
 		"touch new.txt",
+		"touch nested/file.txt",
 		"mkdir out",
+		"mkdir nested/dir",
+		"cp existing.txt nested/new.txt",
+		"mv existing.txt nested/new.txt",
 		"echo README.md",
 	}
 

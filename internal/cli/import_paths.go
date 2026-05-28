@@ -74,6 +74,7 @@ func extractPathCandidates(tokens []string, workingDirectory string) []pathCandi
 		afterDoubleDash:       false,
 		expectSedExpression:   false,
 		sedScriptConsumed:     false,
+		lastOperandIndex:      lastCommandOperandIndex(tokens, commandIndex),
 		seen:                  map[string]pathRequirement{},
 		pendingRequirement:    0,
 		hasPendingRequirement: false,
@@ -102,6 +103,7 @@ type pathExtractor struct {
 	afterDoubleDash       bool
 	expectSedExpression   bool
 	sedScriptConsumed     bool
+	lastOperandIndex      int
 	seen                  map[string]pathRequirement
 	pendingRequirement    pathRequirement
 	hasPendingRequirement bool
@@ -228,6 +230,7 @@ func (e *pathExtractor) consumeContextualPath(index int, token string) bool {
 		token,
 		index,
 		e.commandIndex,
+		e.lastOperandIndex,
 		e.sedScriptConsumed,
 	)
 	if !ok {
@@ -314,6 +317,21 @@ func looksLikeSedScript(path string) bool {
 
 func looksLikeCompositeOptionValue(path string) bool {
 	return strings.ContainsRune(path, ',') && strings.ContainsRune(path, '=')
+}
+
+func lastCommandOperandIndex(tokens []string, commandIndex int) int {
+	lastIndex := -1
+
+	for index := commandIndex + 1; index < len(tokens); index++ {
+		token := strings.TrimSpace(tokens[index])
+		if token == "" || token == "--" || strings.HasPrefix(token, "-") {
+			continue
+		}
+
+		lastIndex = index
+	}
+
+	return lastIndex
 }
 
 func primaryCommand(tokens []string) (string, int) {
@@ -567,31 +585,60 @@ func contextualPathRequirement(
 	token string,
 	index int,
 	commandIndex int,
+	lastOperandIndex int,
 	sedScriptConsumed bool,
 ) (pathRequirement, bool) {
 	if token == "" || token == "-" {
 		return 0, false
 	}
 
-	if isDirectoryChangeCommand(commandName) {
-		if index == commandIndex+1 {
-			return pathMustExist, true
-		}
+	if requirement, ok := directoryChangePathRequirement(commandName, index, commandIndex); ok {
+		return requirement, true
 	}
 
-	if isEditorCommand(commandName) && !strings.HasPrefix(token, "-") {
-		return pathParentMustExist, true
+	if strings.HasPrefix(token, "-") {
+		return 0, false
 	}
 
-	if commandName == "sed" && sedScriptConsumed && !strings.HasPrefix(token, "-") {
-		return pathMustExist, true
-	}
+	return operandPathRequirement(commandName, index, lastOperandIndex, sedScriptConsumed)
+}
 
-	if isBareFileReaderCommand(commandName) && !strings.HasPrefix(token, "-") {
+func directoryChangePathRequirement(commandName string, index int, commandIndex int) (pathRequirement, bool) {
+	if isDirectoryChangeCommand(commandName) && index == commandIndex+1 {
 		return pathMustExist, true
 	}
 
 	return 0, false
+}
+
+func operandPathRequirement(
+	commandName string,
+	index int,
+	lastOperandIndex int,
+	sedScriptConsumed bool,
+) (pathRequirement, bool) {
+	switch {
+	case isEditorCommand(commandName):
+		return pathParentMustExist, true
+	case commandName == "sed" && sedScriptConsumed:
+		return pathMustExist, true
+	case isBareFileReaderCommand(commandName):
+		return pathMustExist, true
+	case isCreatorCommand(commandName):
+		return pathParentMustExist, true
+	case isCopyOrMoveCommand(commandName):
+		return copyOrMovePathRequirement(index, lastOperandIndex), true
+	default:
+		return 0, false
+	}
+}
+
+func copyOrMovePathRequirement(index int, lastOperandIndex int) pathRequirement {
+	if index == lastOperandIndex {
+		return pathParentMustExist
+	}
+
+	return pathMustExist
 }
 
 func isDirectoryChangeCommand(commandName string) bool {
@@ -614,6 +661,19 @@ func isEditorCommand(commandName string) bool {
 	default:
 		return false
 	}
+}
+
+func isCreatorCommand(commandName string) bool {
+	switch commandName {
+	case "mkdir", "tee", "touch":
+		return true
+	default:
+		return false
+	}
+}
+
+func isCopyOrMoveCommand(commandName string) bool {
+	return commandName == "cp" || commandName == "mv"
 }
 
 func bareTokenResolvesToExistingPath(token string, workingDirectory string) bool {
