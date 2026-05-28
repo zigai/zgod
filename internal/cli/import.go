@@ -41,6 +41,7 @@ type importSummary struct {
 	imported           int
 	skippedFailed      int
 	skippedMissingPath int
+	skippedPathError   int
 	skippedDuplicate   int
 }
 
@@ -175,11 +176,12 @@ func listSourceEntries(sourceDB *sql.DB) ([]db.HistoryEntry, error) {
 
 func printImportSummary(cmd *cobra.Command, summary importSummary) {
 	cmd.Printf(
-		"Import complete: total=%d imported=%d skipped_failed=%d skipped_missing_paths=%d skipped_duplicates=%d\n",
+		"Import complete: total=%d imported=%d skipped_failed=%d skipped_missing_paths=%d skipped_path_errors=%d skipped_duplicates=%d\n",
 		summary.total,
 		summary.imported,
 		summary.skippedFailed,
 		summary.skippedMissingPath,
+		summary.skippedPathError,
 		summary.skippedDuplicate,
 	)
 }
@@ -326,7 +328,12 @@ func importHistoryEntries(
 
 		if !opts.includeMissingPaths {
 			pathsExist, pathsErr := commandReferencesExistingPaths(entry.Command, entry.Directory)
-			if pathsErr != nil || !pathsExist {
+			if pathsErr != nil {
+				summary.skippedPathError++
+				continue
+			}
+
+			if !pathsExist {
 				summary.skippedMissingPath++
 				continue
 			}
@@ -360,6 +367,7 @@ func newImportSummary() importSummary {
 		imported:           0,
 		skippedFailed:      0,
 		skippedMissingPath: 0,
+		skippedPathError:   0,
 		skippedDuplicate:   0,
 	}
 }
