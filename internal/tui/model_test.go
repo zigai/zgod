@@ -183,6 +183,7 @@ func TestHandleToggleFailsCyclesFailFilterModesAndReloadsEntries(t *testing.T) {
 
 	cfg := config.Default()
 	m := NewModel(cfg, repo, "", "", 10, false, "")
+	m.loadEntries()
 
 	if got, want := m.failFilter, db.FailFilterInclude; got != want {
 		t.Fatalf("initial failFilter = %v, want %v", got, want)
@@ -203,10 +204,12 @@ func TestHandleToggleFailsCyclesFailFilterModesAndReloadsEntries(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		handled := m.handleToggle(tea.KeyMsg{Type: tea.KeyCtrlF})
+		cmd, handled := m.handleToggle(tea.KeyMsg{Type: tea.KeyCtrlF})
 		if !handled {
 			t.Fatalf("handleToggle(%s) = false, want true", tc.name)
 		}
+
+		runHistoryLoadCmd(t, m, cmd)
 
 		if got := m.failFilter; got != tc.wantMode {
 			t.Fatalf("failFilter after %s = %v, want %v", tc.name, got, tc.wantMode)
@@ -246,6 +249,7 @@ func TestNewModelUsesConfiguredDefaultFailFilter(t *testing.T) {
 	cfg.Display.DefaultFailFilter = "exclude"
 
 	m := NewModel(cfg, repo, "", "", 10, false, "")
+	m.loadEntries()
 
 	if got, want := m.failFilter, db.FailFilterExclude; got != want {
 		t.Fatalf("failFilter = %v, want %v", got, want)
@@ -286,6 +290,7 @@ func TestNewModelAppliesCWDFilterBeforeDedupe(t *testing.T) {
 
 	cfg := config.Default()
 	m := NewModel(cfg, repo, "/repo", "", 10, true, "")
+	m.loadEntries()
 
 	if got, want := len(m.allEntries), 1; got != want {
 		t.Fatalf("len(allEntries) = %d, want %d", got, want)
@@ -323,6 +328,7 @@ func TestNewModelSearchesBeyondTenThousandEntries(t *testing.T) {
 
 	cfg := config.Default()
 	m := NewModel(cfg, repo, "", "", 10, false, "target")
+	m.loadEntries()
 
 	if len(m.displayEntries) == 0 {
 		t.Fatal("displayEntries is empty, want old target to be searchable")
@@ -330,6 +336,59 @@ func TestNewModelSearchesBeyondTenThousandEntries(t *testing.T) {
 
 	if got, want := m.displayEntries[0].Entry.Command, "old unique target"; got != want {
 		t.Fatalf("displayEntries[0].Command = %q, want %q", got, want)
+	}
+}
+
+func TestHistoryLoadsInLimitedBatchThenFullSet(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("db.Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := db.NewHistoryRepo(database)
+	for i, command := range []string{"old target", "middle command", "new command"} {
+		if _, err = repo.Insert(db.HistoryEntry{TSMs: int64(i + 1), Command: command}); err != nil {
+			t.Fatalf("repo.Insert(%q) error: %v", command, err)
+		}
+	}
+
+	cfg := config.Default()
+	cfg.Display.StartupLimit = 2
+
+	m := NewModel(cfg, repo, "", "", 10, false, "")
+	if len(m.allEntries) != 0 {
+		t.Fatalf("len(allEntries) before loading = %d, want 0", len(m.allEntries))
+	}
+
+	if !m.loadingHistory {
+		t.Fatal("loadingHistory before first batch = false, want true")
+	}
+
+	cmd := m.loadEntriesCmd(m.startupLimit(), false, m.historyLoadGen)
+	next := runHistoryLoadCmd(t, m, cmd)
+
+	if got, want := len(m.allEntries), 2; got != want {
+		t.Fatalf("len(allEntries) after first batch = %d, want %d", got, want)
+	}
+
+	if m.historyComplete {
+		t.Fatal("historyComplete after first batch = true, want false")
+	}
+
+	runHistoryLoadCmd(t, m, next)
+
+	if got, want := len(m.allEntries), 3; got != want {
+		t.Fatalf("len(allEntries) after full load = %d, want %d", got, want)
+	}
+
+	if !m.historyComplete {
+		t.Fatal("historyComplete after full load = false, want true")
 	}
 }
 
@@ -382,6 +441,19 @@ func testFuzzySearchModel(entryCount int, query string) *Model {
 	m.updateMatches()
 
 	return m
+}
+
+func runHistoryLoadCmd(t *testing.T, m *Model, cmd tea.Cmd) tea.Cmd {
+	t.Helper()
+
+	if cmd == nil {
+		t.Fatal("history load command is nil")
+	}
+
+	msg := cmd()
+	_, next := m.Update(msg)
+
+	return next
 }
 
 func testNavModel(entryCount int, height int) *Model {

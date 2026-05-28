@@ -252,6 +252,8 @@ func (m *Model) emptyStateMessage() string {
 	switch {
 	case m.dbError != nil:
 		return m.styles.ExitFail.Render("  Error: " + m.dbError.Error())
+	case m.loadingHistory:
+		return m.styles.Dimmed.Render("  loading history...")
 	case m.input.Value() == "":
 		return m.styles.Dimmed.Render("  No history entries found")
 	default:
@@ -764,11 +766,24 @@ func (m *Model) renderExpandedResultLinesWithLayout(entryIdx int, layout resultL
 func (m *Model) renderFooter() string {
 	width := m.getWidth()
 	left := m.renderFooterLeft()
-	right := m.styles.HelpDesc.Render(formatMatchCountLabel(len(m.displayEntries)))
+	right := m.styles.HelpDesc.Render(m.matchCountLabel())
 	contentWidth := max(width-lipgloss.Width(m.styles.Footer.Render("")), 0)
 	line := layoutFooterLine(left, right, contentWidth)
 
 	return m.styles.Footer.Width(width).Render(line)
+}
+
+func (m *Model) matchCountLabel() string {
+	label := formatMatchCountLabel(len(m.displayEntries))
+	if !m.historyComplete && len(m.displayEntries) > 0 && len(m.allEntries) > 0 {
+		return label + "+"
+	}
+
+	if m.loadingHistory {
+		return "loading more..."
+	}
+
+	return label
 }
 
 func (m *Model) renderFooterLeft() string {

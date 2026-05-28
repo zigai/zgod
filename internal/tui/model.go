@@ -17,44 +17,54 @@ import (
 
 const modelRecencyIndexStep = 100
 
+type historyBatchLoadedMsg struct {
+	generation uint64
+	entries    []db.HistoryEntry
+	done       bool
+	err        error
+}
+
 type Model struct {
-	input          textinput.Model
-	cfg            config.Config
-	styles         Styles
-	allEntries     []db.HistoryEntry
-	candidates     []string
-	displayEntries []history.ScoredEntry
-	cursor         int
-	width          int
-	height         int
-	maxHeight      int
-	selected       string
-	mode           match.Mode
-	enabledModes   []match.Mode
-	cwdMode        bool
-	dedupe         bool
-	failFilter     db.FailFilterMode
-	cwd            string
-	homeDir        string
-	quitting       bool
-	canceled       bool
-	showHelp       bool
-	showPreview    bool
-	previewCommand string
-	repo           *db.HistoryRepo
-	dbError        error
-	indicatorCache indicatorCache
-	footerCache    footerCache
-	lastQuery      string
-	lastMode       match.Mode
-	lastEntryCount int
-	matchBuf       []match.Match
-	indexBuf       []int
-	lineCache      map[int]cachedResultLine
-	resultsCache   cachedResultsBlock
-	headerCache    cachedResultsHeader
-	regexCache     regexRenderCache
-	searchRegex    regexRenderCache
+	input           textinput.Model
+	cfg             config.Config
+	styles          Styles
+	allEntries      []db.HistoryEntry
+	candidates      []string
+	displayEntries  []history.ScoredEntry
+	cursor          int
+	width           int
+	height          int
+	maxHeight       int
+	selected        string
+	mode            match.Mode
+	enabledModes    []match.Mode
+	cwdMode         bool
+	dedupe          bool
+	failFilter      db.FailFilterMode
+	cwd             string
+	homeDir         string
+	quitting        bool
+	canceled        bool
+	showHelp        bool
+	showPreview     bool
+	previewCommand  string
+	repo            *db.HistoryRepo
+	dbError         error
+	loadingHistory  bool
+	historyComplete bool
+	historyLoadGen  uint64
+	indicatorCache  indicatorCache
+	footerCache     footerCache
+	lastQuery       string
+	lastMode        match.Mode
+	lastEntryCount  int
+	matchBuf        []match.Match
+	indexBuf        []int
+	lineCache       map[int]cachedResultLine
+	resultsCache    cachedResultsBlock
+	headerCache     cachedResultsHeader
+	regexCache      regexRenderCache
+	searchRegex     regexRenderCache
 }
 
 type indicatorCache struct {
@@ -177,22 +187,23 @@ func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir strin
 	failFilter, _ := db.ParseFailFilterMode(cfg.Display.DefaultFailFilter)
 
 	m := Model{
-		input:        ti,
-		cfg:          cfg,
-		styles:       NewStyles(cfg.Theme),
-		width:        width,
-		height:       height,
-		maxHeight:    height,
-		mode:         initialMode,
-		enabledModes: enabledModes,
-		cwdMode:      cwdMode,
-		dedupe:       true,
-		failFilter:   failFilter,
-		cwd:          cwd,
-		homeDir:      homeDir,
-		repo:         repo,
+		input:          ti,
+		cfg:            cfg,
+		styles:         NewStyles(cfg.Theme),
+		width:          width,
+		height:         height,
+		maxHeight:      height,
+		mode:           initialMode,
+		enabledModes:   enabledModes,
+		cwdMode:        cwdMode,
+		dedupe:         true,
+		failFilter:     failFilter,
+		cwd:            cwd,
+		homeDir:        homeDir,
+		repo:           repo,
+		loadingHistory: true,
+		historyLoadGen: 1,
 	}
-	m.loadEntries()
 
 	return &m
 }
@@ -206,7 +217,7 @@ func (m *Model) Canceled() bool {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, m.loadEntriesCmd(m.startupLimit(), false, m.historyLoadGen))
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -230,6 +241,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.Width = max(m.width-4, 1)
 
 		return m, nil
+	case historyBatchLoadedMsg:
+		return m.handleHistoryBatchLoaded(msg)
 	}
 
 	var cmd tea.Cmd
@@ -239,45 +252,82 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *Model) loadEntries() {
+func (m *Model) startupLimit() int {
+	if m.cfg.Display.StartupLimit < 0 {
+		return 0
+	}
+
+	return m.cfg.Display.StartupLimit
+}
+
+func (m *Model) loadEntriesCmd(limit int, done bool, generation uint64) tea.Cmd {
 	candidateCWD := ""
 	if m.cwdMode {
 		candidateCWD = m.cwd
 	}
 
-	entries, err := history.FetchCandidates(m.repo, history.CandidateOpts{
+	opts := history.CandidateOpts{
+		Limit:      limit,
+		Dedupe:     m.dedupe,
 		FailFilter: m.failFilter,
 		CWD:        candidateCWD,
-	})
+	}
+
+	return func() tea.Msg {
+		entries, err := history.FetchCandidates(m.repo, opts)
+
+		return historyBatchLoadedMsg{
+			generation: generation,
+			entries:    entries,
+			done:       done || limit <= 0,
+			err:        err,
+		}
+	}
+}
+
+func (m *Model) startLoadingEntries() tea.Cmd {
+	m.historyLoadGen++
+	m.loadingHistory = true
+	m.historyComplete = false
+	m.dbError = nil
+	m.allEntries = nil
+	m.candidates = nil
+	m.displayEntries = nil
+	m.cursor = 0
+	m.invalidateHistoryCaches()
+
+	return m.loadEntriesCmd(m.startupLimit(), false, m.historyLoadGen)
+}
+
+func (m *Model) handleHistoryBatchLoaded(msg historyBatchLoadedMsg) (tea.Model, tea.Cmd) {
+	if msg.generation != m.historyLoadGen {
+		return m, nil
+	}
+
+	m.applyLoadedEntries(msg.entries, msg.err, msg.done)
+
+	if msg.err != nil || msg.done {
+		return m, nil
+	}
+
+	return m, m.loadEntriesCmd(0, true, msg.generation)
+}
+
+func (m *Model) applyLoadedEntries(entries []db.HistoryEntry, err error, done bool) {
+	m.loadingHistory = false
+	m.historyComplete = done
 
 	m.dbError = err
 	if err != nil {
 		m.allEntries = nil
 		m.candidates = nil
 		m.displayEntries = nil
-		m.lineCache = nil
-		m.resultsCache = cachedResultsBlock{}
-		m.regexCache = regexRenderCache{}
-		m.searchRegex = regexRenderCache{}
+		m.invalidateHistoryCaches()
 
 		return
 	}
 
-	if m.cfg.Display.HideMultiline {
-		filtered := entries[:0:0]
-		for _, e := range entries {
-			if !strings.Contains(e.Command, "\n") {
-				filtered = append(filtered, e)
-			}
-		}
-
-		entries = filtered
-	}
-
-	if m.dedupe {
-		entries = dedupeEntries(entries)
-	}
-
+	entries = m.prepareEntries(entries)
 	m.allEntries = entries
 
 	m.candidates = make([]string, len(entries))
@@ -290,20 +340,42 @@ func (m *Model) loadEntries() {
 	m.updateMatches()
 }
 
-func dedupeEntries(entries []db.HistoryEntry) []db.HistoryEntry {
-	seen := make(map[string]struct{}, len(entries))
-	result := make([]db.HistoryEntry, 0, len(entries))
-
-	for _, e := range entries {
-		if _, ok := seen[e.Command]; ok {
-			continue
-		}
-
-		seen[e.Command] = struct{}{}
-		result = append(result, e)
+func (m *Model) loadEntries() {
+	candidateCWD := ""
+	if m.cwdMode {
+		candidateCWD = m.cwd
 	}
 
-	return result
+	entries, err := history.FetchCandidates(m.repo, history.CandidateOpts{
+		Dedupe:     m.dedupe,
+		FailFilter: m.failFilter,
+		CWD:        candidateCWD,
+	})
+
+	m.applyLoadedEntries(entries, err, true)
+}
+
+func (m *Model) prepareEntries(entries []db.HistoryEntry) []db.HistoryEntry {
+	if m.cfg.Display.HideMultiline {
+		filtered := entries[:0:0]
+		for _, e := range entries {
+			if !strings.Contains(e.Command, "\n") {
+				filtered = append(filtered, e)
+			}
+		}
+
+		entries = filtered
+	}
+
+	return entries
+}
+
+func (m *Model) invalidateHistoryCaches() {
+	m.lineCache = nil
+	m.resultsCache = cachedResultsBlock{}
+	m.regexCache = regexRenderCache{}
+	m.searchRegex = regexRenderCache{}
+	m.footerCache = footerCache{}
 }
 
 func (m *Model) updateMatches() {
@@ -559,7 +631,7 @@ func (m *Model) handleModeSwitch(msg tea.KeyMsg) bool {
 	return true
 }
 
-func (m *Model) handleToggle(msg tea.KeyMsg) bool {
+func (m *Model) handleToggle(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch {
 	case matchKey(msg, m.cfg.Keys.ToggleCWD):
 		m.cwdMode = !m.cwdMode
@@ -568,12 +640,10 @@ func (m *Model) handleToggle(msg tea.KeyMsg) bool {
 	case matchKey(msg, m.cfg.Keys.ToggleFails):
 		m.failFilter = m.failFilter.Next()
 	default:
-		return false
+		return nil, false
 	}
 
-	m.loadEntries()
-
-	return true
+	return m.startLoadingEntries(), true
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -632,12 +702,10 @@ func (m *Model) handleControlKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, true
 	case m.handleModeSwitch(msg):
 		return nil, true
-	case m.handleToggle(msg):
-		return nil, true
 	case m.handlePreview(msg):
 		return nil, true
 	default:
-		return nil, false
+		return m.handleToggle(msg)
 	}
 }
 
