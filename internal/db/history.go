@@ -211,7 +211,7 @@ func (s candidateQuerySpec) withLimit(limit int) (string, []any) {
 
 func candidateQuerySpecs(dedupe bool, failFilter FailFilterMode, dir string) []candidateQuerySpec {
 	query, args := candidateQuery(failFilter, dir)
-	specs := []candidateQuerySpec{{query: query, args: args}}
+	specs := []candidateQuerySpec{{query: query, args: args, fallback: false}}
 
 	if !dedupe {
 		return specs
