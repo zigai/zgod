@@ -18,7 +18,10 @@ type ThemeConfig struct {
 }
 
 func DefaultTheme() ThemeConfig {
-	t := true
+	matchBold := true
+	matchUnderline := true
+	selectionBarShow := true
+	selectionFullLine := true
 
 	return ThemeConfig{
 		Prompt:      "> ",
@@ -29,14 +32,14 @@ func DefaultTheme() ThemeConfig {
 		ModeColor:   "240",
 		BorderColor: "",
 
-		MatchBold:      &t,
-		MatchUnderline: &t,
+		MatchBold:      &matchBold,
+		MatchUnderline: &matchUnderline,
 		MatchBg:        "",
 
-		SelectionBarShow:  &t,
+		SelectionBarShow:  &selectionBarShow,
 		SelectionBarChar:  "▌ ",
 		SelectionBarColor: "14",
-		SelectionFullLine: &t,
+		SelectionFullLine: &selectionFullLine,
 	}
 }
 
