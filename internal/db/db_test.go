@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -479,6 +481,66 @@ func TestOpenReadOnlySupportsURIUnsafePathCharacters(t *testing.T) {
 
 	if err = ValidateHistorySchema(readOnlyDB); err != nil {
 		t.Fatalf("ValidateHistorySchema() error: %v", err)
+	}
+}
+
+func TestSQLiteDSNsApplyConnectionPragmas(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history #1.db")
+
+	writableDSN, err := sqliteWritableDSN(dbPath)
+	if err != nil {
+		t.Fatalf("sqliteWritableDSN() error: %v", err)
+	}
+
+	writableURL, err := url.Parse(writableDSN)
+	if err != nil {
+		t.Fatalf("url.Parse(writableDSN) error: %v", err)
+	}
+
+	writableQuery := writableURL.Query()
+	if writableQuery.Get("mode") != "" {
+		t.Fatalf("writable DSN mode = %q, want empty", writableQuery.Get("mode"))
+	}
+
+	writablePragmas := writableQuery["_pragma"]
+	for _, want := range []string{
+		"busy_timeout(2000)",
+		"foreign_keys(ON)",
+		"synchronous(NORMAL)",
+	} {
+		if !slices.Contains(writablePragmas, want) {
+			t.Fatalf("writable DSN pragmas = %v, missing %q", writablePragmas, want)
+		}
+	}
+
+	readOnlyDSN, err := sqliteReadOnlyDSN(dbPath)
+	if err != nil {
+		t.Fatalf("sqliteReadOnlyDSN() error: %v", err)
+	}
+
+	readOnlyURL, err := url.Parse(readOnlyDSN)
+	if err != nil {
+		t.Fatalf("url.Parse(readOnlyDSN) error: %v", err)
+	}
+
+	readOnlyQuery := readOnlyURL.Query()
+	if got, want := readOnlyQuery.Get("mode"), "ro"; got != want {
+		t.Fatalf("read-only DSN mode = %q, want %q", got, want)
+	}
+
+	readOnlyPragmas := readOnlyQuery["_pragma"]
+	for _, want := range []string{
+		"busy_timeout(2000)",
+		"foreign_keys(ON)",
+		"query_only(ON)",
+	} {
+		if !slices.Contains(readOnlyPragmas, want) {
+			t.Fatalf("read-only DSN pragmas = %v, missing %q", readOnlyPragmas, want)
+		}
+	}
+
+	if slices.Contains(readOnlyPragmas, "synchronous(NORMAL)") {
+		t.Fatalf("read-only DSN pragmas = %v, want no synchronous pragma", readOnlyPragmas)
 	}
 }
 
