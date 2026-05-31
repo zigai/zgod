@@ -34,18 +34,14 @@ func Open(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("ensuring database file permissions for %q: %w", dbPath, err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	writableDSN, err := sqliteWritableDSN(dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("opening sqlite database %q: %w", dbPath, err)
+		return nil, fmt.Errorf("building sqlite DSN for %q: %w", dbPath, err)
 	}
 
-	if err = applySQLitePragmas(db, []string{
-		fmt.Sprintf("PRAGMA busy_timeout=%d", sqliteBusyTimeoutMs),
-		"PRAGMA synchronous=NORMAL",
-		"PRAGMA foreign_keys=ON",
-	}); err != nil {
-		_ = db.Close()
-		return nil, err
+	db, err := sql.Open("sqlite", writableDSN)
+	if err != nil {
+		return nil, fmt.Errorf("opening sqlite database %q: %w", dbPath, err)
 	}
 
 	if err = ensureSQLiteJournalModeWAL(db); err != nil {
@@ -89,6 +85,28 @@ func OpenReadOnly(dbPath string) (*sql.DB, error) {
 }
 
 func sqliteReadOnlyDSN(dbPath string) (string, error) {
+	return sqliteDSN(dbPath, sqliteDSNOptions{
+		mode:        "ro",
+		queryOnly:   true,
+		synchronous: "",
+	})
+}
+
+func sqliteWritableDSN(dbPath string) (string, error) {
+	return sqliteDSN(dbPath, sqliteDSNOptions{
+		mode:        "",
+		queryOnly:   false,
+		synchronous: "NORMAL",
+	})
+}
+
+type sqliteDSNOptions struct {
+	mode        string
+	queryOnly   bool
+	synchronous string
+}
+
+func sqliteDSN(dbPath string, opts sqliteDSNOptions) (string, error) {
 	absolutePath, err := filepath.Abs(dbPath)
 	if err != nil {
 		return "", fmt.Errorf("building absolute path: %w", err)
@@ -100,10 +118,20 @@ func sqliteReadOnlyDSN(dbPath string) (string, error) {
 	}
 
 	query := url.Values{}
-	query.Set("mode", "ro")
-	query.Add("_pragma", "query_only(ON)")
+	if opts.mode != "" {
+		query.Set("mode", opts.mode)
+	}
+
+	if opts.queryOnly {
+		query.Add("_pragma", "query_only(ON)")
+	}
+
 	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", sqliteBusyTimeoutMs))
 	query.Add("_pragma", "foreign_keys(ON)")
+
+	if opts.synchronous != "" {
+		query.Add("_pragma", fmt.Sprintf("synchronous(%s)", opts.synchronous))
+	}
 
 	return (&url.URL{
 		Scheme:   "file",
@@ -147,17 +175,6 @@ func ensureFilePermissions(path string, mode os.FileMode) error {
 		}
 
 		return nil
-	}
-
-	return nil
-}
-
-func applySQLitePragmas(db *sql.DB, pragmas []string) error {
-	ctx := context.Background()
-	for _, pragma := range pragmas {
-		if _, err := db.ExecContext(ctx, pragma); err != nil {
-			return fmt.Errorf("applying sqlite pragma %q: %w", pragma, err)
-		}
 	}
 
 	return nil
