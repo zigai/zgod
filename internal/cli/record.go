@@ -88,7 +88,7 @@ func runRecord(cmd *cobra.Command, args []string) error {
 	}
 
 	if err = insertRecordWithRetry(dbPath, entry); err != nil {
-		return fmt.Errorf("inserting history entry: %w", err)
+		return fmt.Errorf("recording command history: %w", err)
 	}
 
 	return nil
@@ -124,7 +124,7 @@ func insertRecordWithRetry(dbPath string, entry db.HistoryEntry) error {
 		}
 
 		if !db.IsBusyError(err) {
-			return fmt.Errorf("inserting history entry: %w", err)
+			return fmt.Errorf("writing history record: %w", err)
 		}
 
 		lastBusyErr = err
