@@ -3,6 +3,9 @@ name: CI
 on:
   push:
 
+env:
+  GOLANGCI_LINT_VERSION: v2.12.2
+
 permissions:
   contents: read
 
@@ -46,5 +49,5 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.9.0
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
           install-mode: binary

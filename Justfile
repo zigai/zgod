@@ -1,4 +1,7 @@
 
+golangci_lint_version := "v2.12.2"
+goreleaser_version := "v2.13.3"
+
 @_:
   just --list
 
@@ -8,11 +11,11 @@ test:
 
 # Run golangci-lint with --fix
 fix:
-    golangci-lint run --fix
+    go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{golangci_lint_version}} run --fix
 
 # Run golangci-lint without --fix
 lint:
-    golangci-lint run
+    go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{golangci_lint_version}} run
 
 # Build the binary
 build:
@@ -32,7 +35,7 @@ build-dev:
 
 # Test goreleaser locally
 release-dry-run:
-    goreleaser release --snapshot --clean
+    go run github.com/goreleaser/goreleaser/v2@{{goreleaser_version}} release --snapshot --clean
 
 # Pre-release safety checks
 _release-check:
