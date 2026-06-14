@@ -177,6 +177,11 @@ func openSearchDatabase(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("validating history schema version: %w", err)
 	}
 
+	if err = db.ValidateHistorySchema(database); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("validating history schema: %w", err)
+	}
+
 	return database, nil
 }
 
