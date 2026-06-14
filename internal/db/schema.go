@@ -76,9 +76,9 @@ var (
 )
 
 func ensureSchema(db *sql.DB) error {
-	version, err := readSQLiteUserVersion(db)
+	version, err := validateSupportedSchemaVersion(db)
 	if err != nil {
-		return fmt.Errorf("reading schema version: %w", err)
+		return err
 	}
 
 	if version == currentSchemaVersion {
@@ -90,6 +90,19 @@ func ensureSchema(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+func validateSupportedSchemaVersion(db *sql.DB) (int, error) {
+	version, err := readSQLiteUserVersion(db)
+	if err != nil {
+		return 0, fmt.Errorf("reading schema version: %w", err)
+	}
+
+	if version > currentSchemaVersion {
+		return 0, fmt.Errorf("%w %d: max supported is %d", errUnsupportedSchema, version, currentSchemaVersion)
+	}
+
+	return version, nil
 }
 
 func readSQLiteUserVersion(db *sql.DB) (int, error) {
@@ -154,14 +167,6 @@ func ValidateHistorySchema(db *sql.DB) error {
 }
 
 func ValidateSupportedSchemaVersion(db *sql.DB) error {
-	version, err := readSQLiteUserVersion(db)
-	if err != nil {
-		return fmt.Errorf("reading schema version: %w", err)
-	}
-
-	if version > currentSchemaVersion {
-		return fmt.Errorf("%w %d: max supported is %d", errUnsupportedSchema, version, currentSchemaVersion)
-	}
-
-	return nil
+	_, err := validateSupportedSchemaVersion(db)
+	return err
 }

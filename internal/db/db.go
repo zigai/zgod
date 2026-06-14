@@ -44,6 +44,11 @@ func Open(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening sqlite database %q: %w", dbPath, err)
 	}
 
+	if _, err = validateSupportedSchemaVersion(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("validating database schema version: %w", err)
+	}
+
 	if err = ensureSQLiteJournalModeWAL(db); err != nil {
 		_ = db.Close()
 		return nil, err
