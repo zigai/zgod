@@ -23,6 +23,23 @@ var (
 	errImportSourceNotFound     = errors.New("source database does not exist")
 )
 
+const (
+	createImportStageSQL = `
+CREATE TEMP TABLE import_stage (
+    stage_id   INTEGER PRIMARY KEY,
+    ts_ms      INTEGER NOT NULL,
+    duration   INTEGER NOT NULL,
+    exit_code  INTEGER NOT NULL,
+    command    TEXT    NOT NULL,
+    directory  TEXT    NOT NULL,
+    session_id TEXT    NOT NULL,
+    hostname   TEXT    NOT NULL,
+    UNIQUE (ts_ms, duration, exit_code, command, directory, session_id, hostname)
+)`
+
+	dropImportStageSQL = `DROP TABLE IF EXISTS temp.import_stage`
+)
+
 var importCmd = &cobra.Command{
 	Use:          "import <source-db-path>",
 	Short:        "Import history from another SQLite database",
@@ -43,6 +60,48 @@ type importSummary struct {
 	skippedMissingPath int
 	skippedPathError   int
 	skippedDuplicate   int
+}
+
+type historyEntryStreamer func(context.Context, func(db.HistoryEntry) error) error
+
+type importStageResult struct {
+	summary     importSummary
+	stagedCount int
+}
+
+type importStageBuilder struct {
+	tx          *sql.Tx
+	opts        importOptions
+	pathChecker *importPathCheckCache
+	result      importStageResult
+}
+
+type importPathCheckStatus int
+
+const (
+	importPathExists importPathCheckStatus = iota
+	importPathMissing
+	importPathError
+)
+
+type importPathCheckCache struct {
+	commands map[importCommandPathKey]importPathCheckStatus
+	paths    map[importResolvedPathKey]importPathCheckResult
+}
+
+type importCommandPathKey struct {
+	command          string
+	workingDirectory string
+}
+
+type importResolvedPathKey struct {
+	path        string
+	requirement pathRequirement
+}
+
+type importPathCheckResult struct {
+	exists bool
+	err    error
 }
 
 func registerImportCommand() {
@@ -73,12 +132,7 @@ func runImport(cmd *cobra.Command, args []string) error {
 
 	defer closeImportDatabases(targetDB, sourceDB)
 
-	sourceEntries, err := listSourceEntries(sourceDB)
-	if err != nil {
-		return err
-	}
-
-	summary, err := importHistoryEntries(targetDB, sourceEntries, opts)
+	summary, err := importSourceHistoryEntries(targetDB, sourceDB, opts)
 	if err != nil {
 		return err
 	}
@@ -161,17 +215,6 @@ func openImportDatabases(targetPath string, sourcePath string) (*sql.DB, *sql.DB
 func closeImportDatabases(targetDB *sql.DB, sourceDB *sql.DB) {
 	_ = sourceDB.Close()
 	_ = targetDB.Close()
-}
-
-func listSourceEntries(sourceDB *sql.DB) ([]db.HistoryEntry, error) {
-	sourceRepo := db.NewHistoryRepo(sourceDB)
-
-	sourceEntries, err := sourceRepo.ListAll()
-	if err != nil {
-		return nil, fmt.Errorf("reading source history entries: %w", err)
-	}
-
-	return sourceEntries, nil
 }
 
 func printImportSummary(cmd *cobra.Command, summary importSummary) {
@@ -299,12 +342,46 @@ func pathsReferToSameFile(sourcePath string, targetPath string) (bool, error) {
 	return sourcePath == targetPath, nil
 }
 
+func importSourceHistoryEntries(targetDB *sql.DB, sourceDB *sql.DB, opts importOptions) (importSummary, error) {
+	sourceRepo := db.NewHistoryRepo(sourceDB)
+
+	return importHistoryEntriesFromStreamer(targetDB, opts, sourceRepo.ForEach)
+}
+
 func importHistoryEntries(
 	targetDB *sql.DB,
 	entries []db.HistoryEntry,
-	opts importOptions,
 ) (importSummary, error) {
-	tx, err := targetDB.BeginTx(context.Background(), nil)
+	return importHistoryEntriesFromStreamer(
+		targetDB,
+		importOptions{
+			includeFailed:       false,
+			includeMissingPaths: false,
+		},
+		func(ctx context.Context, visit func(db.HistoryEntry) error) error {
+			for _, entry := range entries {
+				if err := ctx.Err(); err != nil {
+					return fmt.Errorf("checking import context: %w", err)
+				}
+
+				if err := visit(entry); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		},
+	)
+}
+
+func importHistoryEntriesFromStreamer(
+	targetDB *sql.DB,
+	opts importOptions,
+	stream historyEntryStreamer,
+) (importSummary, error) {
+	ctx := context.Background()
+
+	tx, err := targetDB.BeginTx(ctx, nil)
 	if err != nil {
 		return importSummary{}, fmt.Errorf("starting import transaction: %w", err)
 	}
@@ -317,39 +394,32 @@ func importHistoryEntries(
 		}
 	}()
 
-	summary := newImportSummary()
-	for _, entry := range entries {
-		summary.total++
+	if err = resetImportStageTx(ctx, tx); err != nil {
+		return importSummary{}, err
+	}
 
-		if !opts.includeFailed && entry.ExitCode != 0 {
-			summary.skippedFailed++
-			continue
+	stageResult, err := stageStreamedImportEntriesTx(ctx, tx, opts, stream)
+	if err != nil {
+		return importSummary{}, err
+	}
+
+	imported, err := insertStagedHistoryTx(ctx, tx)
+	if err != nil {
+		return importSummary{}, err
+	}
+
+	summary := stageResult.summary
+	summary.imported = imported
+	summary.skippedDuplicate += stageResult.stagedCount - imported
+
+	if stageResult.stagedCount > 0 {
+		if err = upsertLatestCommandsForImportStageTx(ctx, tx); err != nil {
+			return importSummary{}, err
 		}
+	}
 
-		if !opts.includeMissingPaths {
-			pathsExist, pathsErr := commandReferencesExistingPaths(entry.Command, entry.Directory)
-			if pathsErr != nil {
-				summary.skippedPathError++
-				continue
-			}
-
-			if !pathsExist {
-				summary.skippedMissingPath++
-				continue
-			}
-		}
-
-		inserted, insertErr := db.InsertIfNotExistsTx(tx, entry)
-		if insertErr != nil {
-			return importSummary{}, fmt.Errorf("importing history entry: %w", insertErr)
-		}
-
-		if inserted {
-			summary.imported++
-			continue
-		}
-
-		summary.skippedDuplicate++
+	if err = dropImportStageTx(ctx, tx); err != nil {
+		return importSummary{}, err
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -359,6 +429,235 @@ func importHistoryEntries(
 	committed = true
 
 	return summary, nil
+}
+
+func stageStreamedImportEntriesTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	opts importOptions,
+	stream historyEntryStreamer,
+) (importStageResult, error) {
+	builder := importStageBuilder{
+		tx:          tx,
+		opts:        opts,
+		pathChecker: newImportPathCheckCache(),
+		result: importStageResult{
+			summary:     newImportSummary(),
+			stagedCount: 0,
+		},
+	}
+
+	err := stream(ctx, func(entry db.HistoryEntry) error {
+		return builder.stage(ctx, entry)
+	})
+	if err != nil {
+		return importStageResult{}, fmt.Errorf("streaming source history entries: %w", err)
+	}
+
+	return builder.result, nil
+}
+
+func (b *importStageBuilder) stage(ctx context.Context, entry db.HistoryEntry) error {
+	b.result.summary.total++
+
+	if b.skip(entry) {
+		return nil
+	}
+
+	inserted, err := stageImportEntryTx(ctx, b.tx, entry)
+	if err != nil {
+		return fmt.Errorf("staging history entry: %w", err)
+	}
+
+	if inserted {
+		b.result.stagedCount++
+		return nil
+	}
+
+	b.result.summary.skippedDuplicate++
+
+	return nil
+}
+
+func (b *importStageBuilder) skip(entry db.HistoryEntry) bool {
+	if !b.opts.includeFailed && entry.ExitCode != 0 {
+		b.result.summary.skippedFailed++
+		return true
+	}
+
+	if b.opts.includeMissingPaths {
+		return false
+	}
+
+	switch b.pathChecker.commandPathStatus(entry.Command, entry.Directory) {
+	case importPathExists:
+		return false
+	case importPathMissing:
+		b.result.summary.skippedMissingPath++
+	case importPathError:
+		b.result.summary.skippedPathError++
+	}
+
+	return true
+}
+
+func resetImportStageTx(ctx context.Context, tx *sql.Tx) error {
+	if err := dropImportStageTx(ctx, tx); err != nil {
+		return err
+	}
+
+	_, err := tx.ExecContext(ctx, createImportStageSQL)
+	if err != nil {
+		return fmt.Errorf("creating temporary import stage: %w", err)
+	}
+
+	return nil
+}
+
+func dropImportStageTx(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, dropImportStageSQL)
+	if err != nil {
+		return fmt.Errorf("dropping temporary import stage: %w", err)
+	}
+
+	return nil
+}
+
+func stageImportEntryTx(ctx context.Context, tx *sql.Tx, entry db.HistoryEntry) (bool, error) {
+	res, err := tx.ExecContext(
+		ctx,
+		`INSERT OR IGNORE INTO import_stage (
+		   ts_ms, duration, exit_code, command, directory, session_id, hostname
+		 )
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		entry.TSMs,
+		entry.Duration,
+		entry.ExitCode,
+		entry.Command,
+		entry.Directory,
+		entry.SessionID,
+		entry.Hostname,
+	)
+	if err != nil {
+		return false, fmt.Errorf("inserting temporary import stage row: %w", err)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("reading affected rows for temporary import stage row: %w", err)
+	}
+
+	return rowsAffected > 0, nil
+}
+
+func insertStagedHistoryTx(ctx context.Context, tx *sql.Tx) (int, error) {
+	res, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
+		 SELECT s.ts_ms, s.duration, s.exit_code, s.command, s.directory, s.session_id, s.hostname
+		 FROM import_stage s
+		 WHERE NOT EXISTS (
+		   SELECT 1 FROM history h
+		   WHERE h.ts_ms = s.ts_ms
+		     AND h.duration = s.duration
+		     AND h.exit_code = s.exit_code
+		     AND h.command = s.command
+		     AND h.directory = s.directory
+		     AND h.session_id = s.session_id
+		     AND h.hostname = s.hostname
+		 )
+		 ORDER BY s.stage_id`,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("inserting staged history rows: %w", err)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("reading affected rows for staged history insert: %w", err)
+	}
+
+	return int(rowsAffected), nil
+}
+
+func upsertLatestCommandsForImportStageTx(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO latest_command (command, history_id, ts_ms, duration, exit_code, directory)
+		 SELECT h.command, h.id, h.ts_ms, h.duration, h.exit_code, h.directory
+		 FROM history h
+		 JOIN import_stage s
+		   ON h.ts_ms = s.ts_ms
+		  AND h.duration = s.duration
+		  AND h.exit_code = s.exit_code
+		  AND h.command = s.command
+		  AND h.directory = s.directory
+		  AND h.session_id = s.session_id
+		  AND h.hostname = s.hostname
+		 WHERE 1 = 1
+		 ON CONFLICT(command) DO UPDATE SET
+		   history_id = excluded.history_id,
+		   ts_ms = excluded.ts_ms,
+		   duration = excluded.duration,
+		   exit_code = excluded.exit_code,
+		   directory = excluded.directory
+		 WHERE excluded.ts_ms > latest_command.ts_ms
+		    OR (excluded.ts_ms = latest_command.ts_ms AND excluded.history_id > latest_command.history_id)`,
+	)
+	if err != nil {
+		return fmt.Errorf("updating latest command cache for import: %w", err)
+	}
+
+	return nil
+}
+
+func newImportPathCheckCache() *importPathCheckCache {
+	return &importPathCheckCache{
+		commands: map[importCommandPathKey]importPathCheckStatus{},
+		paths:    map[importResolvedPathKey]importPathCheckResult{},
+	}
+}
+
+func (c *importPathCheckCache) commandPathStatus(command string, workingDirectory string) importPathCheckStatus {
+	key := importCommandPathKey{
+		command:          command,
+		workingDirectory: workingDirectory,
+	}
+	if status, ok := c.commands[key]; ok {
+		return status
+	}
+
+	exists, err := commandReferencesExistingPathsWithMatcher(command, workingDirectory, c.pathMatchesRequirement)
+	status := importPathExists
+
+	switch {
+	case err != nil:
+		status = importPathError
+	case !exists:
+		status = importPathMissing
+	}
+
+	c.commands[key] = status
+
+	return status
+}
+
+func (c *importPathCheckCache) pathMatchesRequirement(path string, requirement pathRequirement) (bool, error) {
+	key := importResolvedPathKey{
+		path:        path,
+		requirement: requirement,
+	}
+	if result, ok := c.paths[key]; ok {
+		return result.exists, result.err
+	}
+
+	exists, err := commandPathMatchesRequirement(path, requirement)
+	c.paths[key] = importPathCheckResult{
+		exists: exists,
+		err:    err,
+	}
+
+	return exists, err
 }
 
 func newImportSummary() importSummary {

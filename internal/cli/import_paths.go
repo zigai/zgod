@@ -35,6 +35,14 @@ type pathCandidate struct {
 }
 
 func commandReferencesExistingPaths(command string, workingDirectory string) (bool, error) {
+	return commandReferencesExistingPathsWithMatcher(command, workingDirectory, commandPathMatchesRequirement)
+}
+
+func commandReferencesExistingPathsWithMatcher(
+	command string,
+	workingDirectory string,
+	matchesRequirement func(string, pathRequirement) (bool, error),
+) (bool, error) {
 	tokens, err := splitCommandTokens(command)
 	if err != nil {
 		tokens = strings.Fields(command)
@@ -51,7 +59,7 @@ func commandReferencesExistingPaths(command string, workingDirectory string) (bo
 			return false, fmt.Errorf("resolving path candidate %q: %w", candidate.value, resolveErr)
 		}
 
-		exists, existsErr := commandPathMatchesRequirement(resolvedPath, candidate.requirement)
+		exists, existsErr := matchesRequirement(resolvedPath, candidate.requirement)
 		if existsErr != nil {
 			return false, fmt.Errorf("checking path candidate %q: %w", candidate.value, existsErr)
 		}

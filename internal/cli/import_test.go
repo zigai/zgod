@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -36,7 +37,7 @@ func TestImportHistoryEntriesImportsValidSedCommandWithExistingInputFile(t *test
 		Hostname:  "host-1",
 	}
 
-	summary, err := importHistoryEntries(database, []db.HistoryEntry{entry}, importOptions{})
+	summary, err := importHistoryEntries(database, []db.HistoryEntry{entry})
 	if err != nil {
 		t.Fatalf("importHistoryEntries() error: %v", err)
 	}
@@ -83,7 +84,7 @@ func TestImportHistoryEntriesAllowsBareCreatorTargets(t *testing.T) {
 		{TSMs: 3, Command: "echo README.md", Directory: workingDirectory},
 	}
 
-	summary, err := importHistoryEntries(database, entries, importOptions{})
+	summary, err := importHistoryEntries(database, entries)
 	if err != nil {
 		t.Fatalf("importHistoryEntries() error: %v", err)
 	}
@@ -129,7 +130,7 @@ func TestImportHistoryEntriesSkipsMissingRequiredPaths(t *testing.T) {
 		{TSMs: 2, Command: `sed 's/a/b/' missing.txt`, Directory: workingDirectory},
 	}
 
-	summary, err := importHistoryEntries(database, entries, importOptions{})
+	summary, err := importHistoryEntries(database, entries)
 	if err != nil {
 		t.Fatalf("importHistoryEntries() error: %v", err)
 	}
@@ -144,6 +145,181 @@ func TestImportHistoryEntriesSkipsMissingRequiredPaths(t *testing.T) {
 
 	if summary.skippedMissingPath != len(entries) {
 		t.Fatalf("summary.skippedMissingPath = %d, want %d", summary.skippedMissingPath, len(entries))
+	}
+}
+
+func TestImportHistoryEntriesCountsDuplicateSourceRows(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	entry := db.HistoryEntry{
+		TSMs:      1000,
+		Duration:  10,
+		ExitCode:  0,
+		Command:   "echo duplicate",
+		Directory: "/tmp",
+		SessionID: "session-1",
+		Hostname:  "host-1",
+	}
+
+	summary, err := importHistoryEntries(database, []db.HistoryEntry{entry, entry})
+	if err != nil {
+		t.Fatalf("importHistoryEntries() error: %v", err)
+	}
+
+	if summary.total != 2 {
+		t.Fatalf("summary.total = %d, want 2", summary.total)
+	}
+
+	if summary.imported != 1 {
+		t.Fatalf("summary.imported = %d, want 1", summary.imported)
+	}
+
+	if summary.skippedDuplicate != 1 {
+		t.Fatalf("summary.skippedDuplicate = %d, want 1", summary.skippedDuplicate)
+	}
+
+	repo := db.NewHistoryRepo(database)
+
+	entries, err := repo.ListAll()
+	if err != nil {
+		t.Fatalf("ListAll() error: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("ListAll() returned %d entries, want 1", len(entries))
+	}
+}
+
+func TestImportHistoryEntriesCountsExistingTargetRowsAsDuplicates(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := db.NewHistoryRepo(database)
+	existing := db.HistoryEntry{
+		TSMs:      1000,
+		Duration:  10,
+		ExitCode:  0,
+		Command:   "echo already imported",
+		Directory: "/tmp",
+		SessionID: "session-1",
+		Hostname:  "host-1",
+	}
+
+	if _, err = repo.Insert(existing); err != nil {
+		t.Fatalf("Insert(existing) error: %v", err)
+	}
+
+	summary, err := importHistoryEntries(database, []db.HistoryEntry{existing})
+	if err != nil {
+		t.Fatalf("importHistoryEntries() error: %v", err)
+	}
+
+	if summary.imported != 0 {
+		t.Fatalf("summary.imported = %d, want 0", summary.imported)
+	}
+
+	if summary.skippedDuplicate != 1 {
+		t.Fatalf("summary.skippedDuplicate = %d, want 1", summary.skippedDuplicate)
+	}
+
+	entries, err := repo.ListAll()
+	if err != nil {
+		t.Fatalf("ListAll() error: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("ListAll() returned %d entries, want 1", len(entries))
+	}
+}
+
+func TestImportHistoryEntriesUpdatesLatestCommandForNewestStagedRow(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	entries := []db.HistoryEntry{
+		{TSMs: 1000, Command: "repeat", Directory: "/old"},
+		{TSMs: 2000, Command: "repeat", Directory: "/new"},
+	}
+
+	summary, err := importHistoryEntries(database, entries)
+	if err != nil {
+		t.Fatalf("importHistoryEntries() error: %v", err)
+	}
+
+	if summary.imported != len(entries) {
+		t.Fatalf("summary.imported = %d, want %d", summary.imported, len(entries))
+	}
+
+	var (
+		tsMs      int64
+		directory string
+	)
+
+	row := database.QueryRowContext(context.Background(), `SELECT ts_ms, directory FROM latest_command WHERE command = ?`, "repeat")
+	if err = row.Scan(&tsMs, &directory); err != nil {
+		t.Fatalf("reading latest_command: %v", err)
+	}
+
+	if tsMs != 2000 || directory != "/new" {
+		t.Fatalf("latest_command = (%d, %q), want (2000, /new)", tsMs, directory)
+	}
+}
+
+func TestImportHistoryEntriesFiltersBeforeStaging(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	workingDirectory := t.TempDir()
+	entries := []db.HistoryEntry{
+		{TSMs: 1, ExitCode: 1, Command: "echo failed", Directory: workingDirectory},
+		{TSMs: 2, Command: "cat missing.txt", Directory: workingDirectory},
+		{TSMs: 3, Command: "echo imported", Directory: workingDirectory},
+	}
+
+	summary, err := importHistoryEntries(database, entries)
+	if err != nil {
+		t.Fatalf("importHistoryEntries() error: %v", err)
+	}
+
+	if summary.total != len(entries) {
+		t.Fatalf("summary.total = %d, want %d", summary.total, len(entries))
+	}
+
+	if summary.imported != 1 {
+		t.Fatalf("summary.imported = %d, want 1", summary.imported)
+	}
+
+	if summary.skippedFailed != 1 {
+		t.Fatalf("summary.skippedFailed = %d, want 1", summary.skippedFailed)
+	}
+
+	if summary.skippedMissingPath != 1 {
+		t.Fatalf("summary.skippedMissingPath = %d, want 1", summary.skippedMissingPath)
 	}
 }
 
@@ -177,13 +353,13 @@ func TestOpenImportDatabasesReadableSourceDoesNotRequireAuth(t *testing.T) {
 
 	defer closeImportDatabases(targetDB, readOnlySourceDB)
 
-	entries, err := listSourceEntries(readOnlySourceDB)
+	summary, err := importSourceHistoryEntries(targetDB, readOnlySourceDB, importOptions{})
 	if err != nil {
-		t.Fatalf("listSourceEntries() error: %v", err)
+		t.Fatalf("importSourceHistoryEntries() error: %v", err)
 	}
 
-	if len(entries) != 1 {
-		t.Fatalf("len(listSourceEntries()) = %d, want 1", len(entries))
+	if summary.imported != 1 {
+		t.Fatalf("summary.imported = %d, want 1", summary.imported)
 	}
 }
 
