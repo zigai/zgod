@@ -149,6 +149,40 @@ func (r *HistoryRepo) ListAll() ([]HistoryEntry, error) {
 	return scanEntries(rows)
 }
 
+func (r *HistoryRepo) ForEach(ctx context.Context, visit func(HistoryEntry) error) error {
+	rows, err := r.db.QueryContext(
+		ctx,
+		`SELECT id, ts_ms, duration, exit_code, command, directory, session_id, hostname
+		 FROM history
+		 ORDER BY ts_ms ASC, id ASC`,
+	)
+	if err != nil {
+		return fmt.Errorf("querying full history: %w", err)
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var e HistoryEntry
+
+		err = rows.Scan(&e.ID, &e.TSMs, &e.Duration, &e.ExitCode,
+			&e.Command, &e.Directory, &e.SessionID, &e.Hostname)
+		if err != nil {
+			return fmt.Errorf("scanning history row: %w", err)
+		}
+
+		if err = visit(e); err != nil {
+			return fmt.Errorf("visiting history row: %w", err)
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("iterating history rows: %w", err)
+	}
+
+	return nil
+}
+
 func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, failFilter FailFilterMode) ([]HistoryEntry, error) {
 	return r.FetchCandidatesInDir(limit, dedupe, failFilter, "")
 }
