@@ -15,6 +15,8 @@ const (
 	Pwsh
 )
 
+const shellNamePowerShell = "powershell"
+
 var errUnsupportedShell = errors.New("unsupported shell")
 
 func Parse(name string) (Shell, error) {
@@ -25,7 +27,7 @@ func Parse(name string) (Shell, error) {
 		return Bash, nil
 	case "fish":
 		return Fish, nil
-	case "powershell":
+	case shellNamePowerShell:
 		return PowerShell, nil
 	case "pwsh":
 		return Pwsh, nil
@@ -43,7 +45,7 @@ func (s Shell) String() string {
 	case Fish:
 		return "fish"
 	case PowerShell:
-		return "powershell"
+		return shellNamePowerShell
 	case Pwsh:
 		return "pwsh"
 	default:

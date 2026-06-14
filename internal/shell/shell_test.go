@@ -23,7 +23,7 @@ func TestParse(t *testing.T) {
 		{"zsh", Zsh, false},
 		{"bash", Bash, false},
 		{"fish", Fish, false},
-		{"powershell", PowerShell, false},
+		{shellNamePowerShell, PowerShell, false},
 		{"pwsh", Pwsh, false},
 		{"nushell", 0, true},
 	}
@@ -139,7 +139,7 @@ func TestSetupLineEscapesConfigPath(t *testing.T) {
 			want:       `type -q zgod; and zgod init fish --config "/tmp/\$HOME\"cfg" | source`,
 		},
 		{
-			name:       "powershell",
+			name:       shellNamePowerShell,
 			shell:      PowerShell,
 			configPath: `C:\tmp\o'hare`,
 			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init powershell --config 'C:\tmp\o''hare') }`,
@@ -210,7 +210,7 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 			},
 		},
 		{
-			name:  "powershell",
+			name:  shellNamePowerShell,
 			shell: PowerShell,
 			mustContain: []string{
 				"function __zgod_has_command",
@@ -300,7 +300,7 @@ func TestInitScriptEscapesConfigPath(t *testing.T) {
 			want:       `set -gx ZGOD_CONFIG "/tmp/\$HOME\"cfg"`,
 		},
 		{
-			name:       "powershell",
+			name:       shellNamePowerShell,
 			shell:      PowerShell,
 			configPath: `C:\tmp\o'hare`,
 			want:       `$env:ZGOD_CONFIG = 'C:\tmp\o''hare'`,
@@ -363,7 +363,7 @@ func TestInstantExecutePathsRecordSelectedCommand(t *testing.T) {
 			},
 		},
 		{
-			name:  "powershell",
+			name:  shellNamePowerShell,
 			shell: PowerShell,
 			mustContain: []string{
 				"$ts = __zgod_get_time_ms",

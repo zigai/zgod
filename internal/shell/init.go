@@ -49,7 +49,7 @@ func InitScript(s Shell, opts InitOptions) (string, error) {
 
 func templateName(s Shell) string {
 	if s == Pwsh {
-		return "powershell"
+		return shellNamePowerShell
 	}
 
 	return s.String()
@@ -73,7 +73,7 @@ func powerShellProfilePathForHome(home string, s Shell, goos string) string {
 		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
 	}
 
-	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1")
+	return filepath.Join(home, ".config", shellNamePowerShell, "Microsoft.PowerShell_profile.ps1")
 }
 
 func ConfigFilePath(s Shell) (string, error) {
