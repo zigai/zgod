@@ -3,13 +3,18 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
+
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zigai/zgod/internal/config"
 	"github.com/zigai/zgod/internal/db"
 	"github.com/zigai/zgod/internal/history"
 	"github.com/zigai/zgod/internal/match"
 )
+
+const wideTestRune = "\u754c"
 
 func TestFormatMatchCountLabel(t *testing.T) {
 	t.Parallel()
@@ -219,6 +224,60 @@ func TestRenderExpandedResultLinesPreservesUTF8(t *testing.T) {
 	}
 }
 
+func TestRenderResultLineFitsWideUnicodeCommand(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	m := &Model{
+		cfg:    cfg,
+		styles: NewStyles(cfg.Theme),
+		width:  40,
+		displayEntries: []history.ScoredEntry{
+			{Entry: db.HistoryEntry{Command: strings.Repeat(wideTestRune, 10)}},
+		},
+	}
+
+	layout := m.calcResultLayout()
+
+	rendered := m.renderResultLineWithLayout(0, false, layout, time.Unix(0, 0))
+	if got := lipgloss.Width(rendered); got > layout.width {
+		t.Fatalf("renderResultLineWithLayout() width = %d, want <= %d: %q", got, layout.width, rendered)
+	}
+}
+
+func TestTrimToWidthUsesCellWidth(t *testing.T) {
+	t.Parallel()
+
+	want := strings.Repeat(wideTestRune, 2)
+
+	got := trimToWidth(want+"a", 4)
+	if got != want {
+		t.Fatalf("trimToWidth() = %q, want %q", got, want)
+	}
+
+	if width := lipgloss.Width(got); width > 4 {
+		t.Fatalf("trimToWidth() width = %d, want <= 4", width)
+	}
+}
+
+func TestWrapToWidthUsesCellWidth(t *testing.T) {
+	t.Parallel()
+
+	wide := strings.Repeat(wideTestRune, 2)
+	got := wrapToWidth(wide+"ab", 4)
+
+	want := []string{wide, "ab"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("wrapToWidth() = %q, want %q", got, want)
+	}
+
+	for _, line := range got {
+		if width := lipgloss.Width(line); width > 4 {
+			t.Fatalf("wrapToWidth() line width = %d, want <= 4: %q", width, line)
+		}
+	}
+}
+
 func TestFormatDirectoryTruncatesUnicodeWithoutPanic(t *testing.T) {
 	t.Parallel()
 
@@ -373,5 +432,24 @@ func TestTruncateWithRangesCentersHiddenMatch(t *testing.T) {
 	r := gotInfo.MatchedRanges[0]
 	if got[r.Start:r.End] != "needle" {
 		t.Fatalf("remapped range points to %q, want needle in %q", got[r.Start:r.End], got)
+	}
+}
+
+func TestTruncateWithRangesUsesCellWidth(t *testing.T) {
+	t.Parallel()
+
+	want := wideTestRune + "..."
+
+	got, gotInfo := truncateWithRanges(strings.Repeat(wideTestRune, 3)+"a", nil, 5)
+	if got != want {
+		t.Fatalf("truncateWithRanges() text = %q, want %q", got, want)
+	}
+
+	if gotInfo != nil {
+		t.Fatalf("truncateWithRanges() match info = %+v, want nil", gotInfo)
+	}
+
+	if width := lipgloss.Width(got); width > 5 {
+		t.Fatalf("truncateWithRanges() width = %d, want <= 5", width)
 	}
 }

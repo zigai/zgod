@@ -1636,12 +1636,14 @@ func trimToWidth(s string, width int) string {
 		return ""
 	}
 
-	runes := []rune(s)
-	if len(runes) <= width {
+	if lipgloss.Width(s) <= width {
 		return s
 	}
 
-	return string(runes[:width])
+	runes := []rune(s)
+	end := prefixRuneCountForWidth(runes, width)
+
+	return string(runes[:end])
 }
 
 func wrapToWidth(s string, width int) []string {
@@ -1654,33 +1656,29 @@ func wrapToWidth(s string, width int) []string {
 		return []string{""}
 	}
 
-	lines := make([]string, 0, (len(runes)+width-1)/width)
-	for len(runes) > width {
-		lines = append(lines, string(runes[:width]))
-		runes = runes[width:]
-	}
+	lines := make([]string, 0, (lipgloss.Width(s)+width-1)/width)
+	for len(runes) > 0 {
+		end := prefixRuneCountForWidth(runes, width)
+		if end == 0 {
+			end = 1
+		}
 
-	lines = append(lines, string(runes))
+		lines = append(lines, string(runes[:end]))
+		runes = runes[end:]
+	}
 
 	return lines
 }
 
 func truncateWithRanges(text string, info *match.Match, maxLen int) (string, *match.Match) {
-	if maxLen <= 0 || len(text) <= maxLen {
+	if maxLen <= 0 || lipgloss.Width(text) <= maxLen {
 		return text, info
 	}
 
 	runes := []rune(text)
-	if len(runes) <= maxLen {
-		return text, info
-	}
 
 	if info == nil || len(info.MatchedRanges) == 0 {
-		ellipsis := "..."
-		cutoff := max(maxLen-len(ellipsis), 0)
-		truncated := string(runes[:cutoff]) + ellipsis
-
-		return truncated, info
+		return truncatePrefixRunes(runes, maxLen), info
 	}
 
 	return truncateAroundMatch(runes, info, maxLen)
@@ -1689,9 +1687,9 @@ func truncateWithRanges(text string, info *match.Match, maxLen int) (string, *ma
 func truncateAroundMatch(runes []rune, info *match.Match, maxLen int) (string, *match.Match) {
 	const ellipsis = "..."
 
-	if maxLen <= len(ellipsis)*2 {
-		cutoff := max(maxLen-len(ellipsis), 0)
-		truncated := string(runes[:cutoff]) + ellipsis
+	ellipsisWidth := lipgloss.Width(ellipsis)
+	if maxLen <= ellipsisWidth*2 {
+		truncated := truncatePrefixRunes(runes, maxLen)
 
 		infoCopy := *info
 		infoCopy.MatchedRanges = nil
@@ -1707,8 +1705,7 @@ func truncateAroundMatch(runes []rune, info *match.Match, maxLen int) (string, *
 	}
 
 	if firstMatchStart == len(runes) {
-		cutoff := max(maxLen-len(ellipsis), 0)
-		truncated := string(runes[:cutoff]) + ellipsis
+		truncated := truncatePrefixRunes(runes, maxLen)
 
 		infoCopy := *info
 		infoCopy.MatchedRanges = nil
@@ -1717,21 +1714,21 @@ func truncateAroundMatch(runes []rune, info *match.Match, maxLen int) (string, *
 	}
 
 	prefixWidth := 0
-	suffixWidth := len(ellipsis)
+	suffixWidth := ellipsisWidth
 	windowWidth := maxLen - suffixWidth
 	start := 0
 
-	if firstMatchStart >= windowWidth {
-		prefixWidth = len(ellipsis)
+	if lipgloss.Width(string(runes[:firstMatchStart])) >= windowWidth {
+		prefixWidth = ellipsisWidth
 		windowWidth = maxLen - prefixWidth - suffixWidth
-		start = max(firstMatchStart-(windowWidth/3), 0)
+		start = suffixStartForWidth(runes[:firstMatchStart], windowWidth/3)
 	}
 
-	end := min(start+windowWidth, len(runes))
+	end := start + prefixRuneCountForWidth(runes[start:], windowWidth)
 	if end == len(runes) {
 		suffixWidth = 0
 		windowWidth = maxLen - prefixWidth
-		start = max(end-windowWidth, 0)
+		start = suffixStartForWidth(runes[:end], windowWidth)
 	}
 
 	truncatedRunes := make([]rune, 0, maxLen)
@@ -1763,6 +1760,53 @@ func truncateAroundMatch(runes []rune, info *match.Match, maxLen int) (string, *
 	infoCopy.MatchedRanges = ranges
 
 	return string(truncatedRunes), &infoCopy
+}
+
+func prefixRuneCountForWidth(runes []rune, width int) int {
+	if width <= 0 {
+		return 0
+	}
+
+	for i := range runes {
+		if lipgloss.Width(string(runes[:i+1])) > width {
+			return i
+		}
+	}
+
+	return len(runes)
+}
+
+func suffixStartForWidth(runes []rune, width int) int {
+	if width <= 0 {
+		return len(runes)
+	}
+
+	for i := range slices.Backward(runes) {
+		if lipgloss.Width(string(runes[i:])) > width {
+			return i + 1
+		}
+	}
+
+	return 0
+}
+
+func truncatePrefixRunes(runes []rune, maxWidth int) string {
+	const ellipsis = "..."
+
+	if maxWidth <= 0 {
+		return ""
+	}
+
+	tail := trimToWidth(ellipsis, maxWidth)
+
+	availableWidth := maxWidth - lipgloss.Width(tail)
+	if availableWidth <= 0 {
+		return tail
+	}
+
+	end := prefixRuneCountForWidth(runes, availableWidth)
+
+	return string(runes[:end]) + tail
 }
 
 func collapseRunes(textRunes []rune, symbolRunes []rune) ([]rune, []int) {
