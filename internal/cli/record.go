@@ -1,9 +1,15 @@
 package cli
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -27,7 +33,25 @@ const (
 	recordUnixMillisCutoffValue int64 = 1_000_000_000_000
 	recordBusyRetryAttempts           = 5
 	recordBusyRetryBackoff            = 250 * time.Millisecond
+	recordPendingNameAttempts         = 100
+	recordPendingFileExtension        = ".json"
+	recordPendingTempPrefix           = ".tmp-"
 )
+
+var (
+	errPendingRecordNameExhausted = errors.New("exhausted pending history record file names")
+	recordWriteLockTimeout        = 30 * time.Second
+)
+
+type pendingHistoryRecord struct {
+	TSMs      int64  `json:"tsMs"`
+	Duration  int64  `json:"duration"`
+	ExitCode  int    `json:"exitCode"`
+	Command   string `json:"command"`
+	Directory string `json:"directory"`
+	SessionID string `json:"sessionId"`
+	Hostname  string `json:"hostname"`
+}
 
 func registerRecordCommand() {
 	recordCmd.Flags().String("ts", "", "start timestamp: milliseconds, seconds (with 's' suffix), or 'now'")
@@ -95,6 +119,36 @@ func runRecord(cmd *cobra.Command, args []string) error {
 }
 
 func insertRecordWithRetry(dbPath string, entry db.HistoryEntry) error {
+	ctx, cancel := context.WithTimeout(context.Background(), recordWriteLockTimeout)
+	defer cancel()
+
+	err := db.WithDatabaseWriteLock(ctx, dbPath, func() error {
+		if drainErr := drainPendingRecordsLocked(dbPath); drainErr != nil {
+			return drainErr
+		}
+
+		return insertRecordWithRetryLocked(dbPath, entry)
+	})
+	if isRecordWriterContention(err) {
+		if queueErr := queuePendingRecord(dbPath, entry); queueErr != nil {
+			return fmt.Errorf("queueing history record after writer contention: %w", queueErr)
+		}
+
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("locking database and writing history record: %w", err)
+	}
+
+	return nil
+}
+
+func isRecordWriterContention(err error) bool {
+	return db.IsBusyError(err) || errors.Is(err, db.ErrDatabaseWriteLockTimeout)
+}
+
+func insertRecordWithRetryLocked(dbPath string, entry db.HistoryEntry) error {
 	var lastBusyErr error
 
 	for attempt := 0; attempt <= recordBusyRetryAttempts; attempt++ {
@@ -133,6 +187,159 @@ func insertRecordWithRetry(dbPath string, entry db.HistoryEntry) error {
 	}
 
 	return lastBusyErr
+}
+
+func pendingRecordsDir(dbPath string) string {
+	return dbPath + ".pending"
+}
+
+func queuePendingRecord(dbPath string, entry db.HistoryEntry) error {
+	dir := pendingRecordsDir(dbPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("creating pending history directory %q: %w", dir, err)
+	}
+
+	data, err := json.Marshal(newPendingHistoryRecord(entry))
+	if err != nil {
+		return fmt.Errorf("encoding pending history record: %w", err)
+	}
+
+	data = append(data, '\n')
+
+	for attempt := range recordPendingNameAttempts {
+		name := pendingRecordFileName(entry, attempt)
+		tmpPath := filepath.Join(dir, recordPendingTempPrefix+name)
+		finalPath := filepath.Join(dir, name)
+
+		if err = writePendingRecordFile(tmpPath, data); errors.Is(err, os.ErrExist) {
+			continue
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if err = os.Rename(tmpPath, finalPath); err != nil {
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("publishing pending history record %q: %w", finalPath, err)
+		}
+
+		return nil
+	}
+
+	return errPendingRecordNameExhausted
+}
+
+func pendingRecordFileName(entry db.HistoryEntry, attempt int) string {
+	return fmt.Sprintf(
+		"%020d-%d-%d-%02d%s",
+		entry.TSMs,
+		os.Getpid(),
+		time.Now().UnixNano(),
+		attempt,
+		recordPendingFileExtension,
+	)
+}
+
+func writePendingRecordFile(path string, data []byte) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("creating pending history record %q: %w", path, err)
+	}
+
+	if _, err = file.Write(data); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+
+		return fmt.Errorf("writing pending history record %q: %w", path, err)
+	}
+
+	if err = file.Close(); err != nil {
+		_ = os.Remove(path)
+
+		return fmt.Errorf("closing pending history record %q: %w", path, err)
+	}
+
+	return nil
+}
+
+func drainPendingRecordsLocked(dbPath string) error {
+	dir := pendingRecordsDir(dbPath)
+
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("reading pending history directory %q: %w", dir, err)
+	}
+
+	sort.Slice(entries, func(i int, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() ||
+			strings.HasPrefix(name, recordPendingTempPrefix) ||
+			!strings.HasSuffix(name, recordPendingFileExtension) {
+			continue
+		}
+
+		if err = flushPendingRecordLocked(dbPath, filepath.Join(dir, name)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func flushPendingRecordLocked(dbPath string, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading pending history record %q: %w", path, err)
+	}
+
+	var pending pendingHistoryRecord
+	if err = json.Unmarshal(data, &pending); err != nil {
+		return fmt.Errorf("decoding pending history record %q: %w", path, err)
+	}
+
+	if err = insertRecordWithRetryLocked(dbPath, pending.historyEntry()); err != nil {
+		return fmt.Errorf("writing pending history record %q: %w", path, err)
+	}
+
+	if err = os.Remove(path); err != nil {
+		return fmt.Errorf("removing pending history record %q: %w", path, err)
+	}
+
+	return nil
+}
+
+func newPendingHistoryRecord(entry db.HistoryEntry) pendingHistoryRecord {
+	return pendingHistoryRecord{
+		TSMs:      entry.TSMs,
+		Duration:  entry.Duration,
+		ExitCode:  entry.ExitCode,
+		Command:   entry.Command,
+		Directory: entry.Directory,
+		SessionID: entry.SessionID,
+		Hostname:  entry.Hostname,
+	}
+}
+
+func (r pendingHistoryRecord) historyEntry() db.HistoryEntry {
+	return db.HistoryEntry{
+		ID:        0,
+		TSMs:      r.TSMs,
+		Duration:  r.Duration,
+		ExitCode:  r.ExitCode,
+		Command:   r.Command,
+		Directory: r.Directory,
+		SessionID: r.SessionID,
+		Hostname:  r.Hostname,
+	}
 }
 
 func sleepBeforeRecordRetry(attempt int) {

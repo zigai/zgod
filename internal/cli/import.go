@@ -125,16 +125,31 @@ func runImport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	targetDB, sourceDB, err := openImportDatabases(targetPath, sourcePath)
+	sourceDB, err := openImportSourceDatabase(sourcePath)
 	if err != nil {
 		return err
 	}
 
-	defer closeImportDatabases(targetDB, sourceDB)
+	defer func() { _ = sourceDB.Close() }()
 
-	summary, err := importSourceHistoryEntries(targetDB, sourceDB, opts)
+	var summary importSummary
+
+	err = db.WithDatabaseWriteLock(context.Background(), targetPath, func() error {
+		targetDB, openErr := openImportTargetDatabase(targetPath)
+		if openErr != nil {
+			return openErr
+		}
+
+		defer func() { _ = targetDB.Close() }()
+
+		var importErr error
+
+		summary, importErr = importSourceHistoryEntries(targetDB, sourceDB, opts)
+
+		return importErr
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("locking target database for import: %w", err)
 	}
 
 	printImportSummary(cmd, summary)
@@ -185,31 +200,47 @@ func resolveTargetImportPath() (string, error) {
 }
 
 func openImportDatabases(targetPath string, sourcePath string) (*sql.DB, *sql.DB, error) {
+	sourceDB, err := openImportSourceDatabase(sourcePath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	targetDB, err := openImportTargetDatabase(targetPath)
+	if err != nil {
+		_ = sourceDB.Close()
+
+		return nil, nil, err
+	}
+
+	return targetDB, sourceDB, nil
+}
+
+func openImportSourceDatabase(sourcePath string) (*sql.DB, error) {
 	sourceDB, err := db.OpenReadOnly(sourcePath)
 	if err != nil {
-		return nil, nil, wrapImportSourceAccessError("opening", sourcePath, err)
+		return nil, wrapImportSourceAccessError("opening", sourcePath, err)
 	}
 
 	if err = db.ValidateHistorySchema(sourceDB); err != nil {
 		_ = sourceDB.Close()
 
-		return nil, nil, fmt.Errorf("validating source database schema: %w", err)
+		return nil, fmt.Errorf("validating source database schema: %w", err)
 	}
 
-	if err = paths.EnsureDirs(); err != nil {
-		_ = sourceDB.Close()
+	return sourceDB, nil
+}
 
-		return nil, nil, fmt.Errorf("ensuring directories: %w", err)
+func openImportTargetDatabase(targetPath string) (*sql.DB, error) {
+	if err := paths.EnsureDirs(); err != nil {
+		return nil, fmt.Errorf("ensuring directories: %w", err)
 	}
 
 	targetDB, err := db.Open(targetPath)
 	if err != nil {
-		_ = sourceDB.Close()
-
-		return nil, nil, fmt.Errorf("opening target database: %w", err)
+		return nil, fmt.Errorf("opening target database: %w", err)
 	}
 
-	return targetDB, sourceDB, nil
+	return targetDB, nil
 }
 
 func closeImportDatabases(targetDB *sql.DB, sourceDB *sql.DB) {
