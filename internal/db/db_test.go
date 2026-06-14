@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -556,6 +557,62 @@ func TestValidateHistorySchema(t *testing.T) {
 
 	if err = ValidateHistorySchema(database); err != nil {
 		t.Fatalf("ValidateHistorySchema() error: %v", err)
+	}
+}
+
+func TestOpenRejectsUnsupportedSchemaWithoutDowngrading(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "future-schema.db")
+	ctx := context.Background()
+	futureVersion := currentSchemaVersion + 1
+
+	seedDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(seed) error: %v", err)
+	}
+
+	if _, err = seedDB.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", futureVersion)); err != nil {
+		t.Fatalf("setting future user_version: %v", err)
+	}
+
+	if err = seedDB.Close(); err != nil {
+		t.Fatalf("Close(seed) error: %v", err)
+	}
+
+	opened, err := Open(dbPath)
+	if err == nil {
+		_ = opened.Close()
+
+		t.Fatal("Open() should reject unsupported future schema")
+	}
+
+	if !errors.Is(err, errUnsupportedSchema) {
+		t.Fatalf("Open() error = %v, want errUnsupportedSchema", err)
+	}
+
+	verifyDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open(verify) error: %v", err)
+	}
+
+	defer func() { _ = verifyDB.Close() }()
+
+	version, err := readSQLiteUserVersion(verifyDB)
+	if err != nil {
+		t.Fatalf("readSQLiteUserVersion() error: %v", err)
+	}
+
+	if version != futureVersion {
+		t.Fatalf("user_version = %d, want %d", version, futureVersion)
+	}
+
+	var tableName string
+
+	err = verifyDB.QueryRowContext(
+		ctx,
+		`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'history'`,
+	).Scan(&tableName)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("history table lookup error = %v, want sql.ErrNoRows", err)
 	}
 }
 
