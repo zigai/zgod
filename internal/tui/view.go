@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1084,7 +1085,7 @@ func (m *Model) fitIndicators(indicators []string, width int) string {
 		return best
 	}
 
-	for i := len(indicators) - 1; i >= 0; i-- {
+	for i := range slices.Backward(indicators) {
 		candidate := strings.Join(indicators[:i], " ")
 		if lipgloss.Width(candidate) <= width {
 			return candidate
