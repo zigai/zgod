@@ -116,10 +116,12 @@ func (m *Model) renderIndicators() string {
 		enabled bool
 	}
 
+	const searchModeIndicatorBg = "39"
+
 	modes := []modeIndicator{
-		{match.ModeFuzzy, "fuzzy", "39", m.cfg.Display.EnableFuzzy},
-		{match.ModeGlob, "glob", "207", m.cfg.Display.EnableGlob},
-		{match.ModeRegex, "regex", "208", m.cfg.Display.EnableRegex},
+		{match.ModeFuzzy, "fuzzy", searchModeIndicatorBg, m.cfg.Display.EnableFuzzy},
+		{match.ModeGlob, "glob", searchModeIndicatorBg, m.cfg.Display.EnableGlob},
+		{match.ModeRegex, "regex", searchModeIndicatorBg, m.cfg.Display.EnableRegex},
 	}
 	for _, mi := range modes {
 		if !mi.enabled {
