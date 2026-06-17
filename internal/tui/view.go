@@ -795,29 +795,11 @@ func (m *Model) renderFooterLeft() string {
 		return m.footerCache.left
 	}
 
-	keys := []struct {
-		key  string
-		desc string
-	}{
-		{m.cfg.Keys.Up + "/" + m.cfg.Keys.Down, "nav"},
-		{m.cfg.Keys.Accept, "select"},
-		{m.cfg.Keys.Cancel, "cancel"},
-		{m.cfg.Keys.ModeNext, "mode"},
-		{m.cfg.Keys.ToggleCWD, "cwd"},
-		{m.cfg.Keys.ToggleDedupe, "dedup"},
-		{m.cfg.Keys.Help, "help"},
-	}
-
-	parts := make([]string, 0, len(keys)+1)
-	for _, k := range keys {
-		key := m.styles.HelpKey.Render(k.key)
-		desc := m.styles.HelpDesc.Render(k.desc)
-		parts = append(parts, key+" "+desc)
-	}
-
-	if showPreviewHint {
-		key := m.styles.HelpKey.Render(m.cfg.Keys.PreviewCommand)
-		desc := m.styles.HelpDesc.Render("preview")
+	shortcuts := m.footerShortcuts()
+	parts := make([]string, 0, len(shortcuts))
+	for _, shortcut := range shortcuts {
+		key := m.styles.HelpKey.Render(shortcut.key)
+		desc := m.styles.HelpDesc.Render(shortcut.desc)
 		parts = append(parts, key+" "+desc)
 	}
 

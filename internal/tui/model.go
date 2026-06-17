@@ -35,6 +35,7 @@ type Model struct {
 	width           int
 	height          int
 	maxHeight       int
+	terminalHeight  int
 	selected        string
 	mode            match.Mode
 	enabledModes    []match.Mode
@@ -224,7 +225,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.WindowSizeMsg:
+		m.terminalHeight = msg.Height
+
 		innerWidth := max(msg.Width-panelBorderW-(panelPaddingX*2), 1)
 		m.width = innerWidth
 
@@ -746,17 +751,7 @@ func (m *Model) handlePreview(msg tea.KeyMsg) bool {
 		return false
 	}
 
-	if m.cfg.Display.MultilinePreview != "popup" {
-		return true
-	}
-
-	cmd, ok := m.currentResultCommand()
-	if !ok || !strings.Contains(cmd, "\n") {
-		return true
-	}
-
-	m.showPreview = true
-	m.previewCommand = cmd
+	m.showCurrentPreview()
 
 	return true
 }
