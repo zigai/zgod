@@ -238,6 +238,40 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 	}
 }
 
+func TestZshInitScriptHardensHooks(t *testing.T) {
+	script, err := InitScript(Zsh, InitOptions{})
+	if err != nil {
+		t.Fatalf("InitScript(Zsh) error: %v", err)
+	}
+
+	for _, needle := range []string{
+		"zmodload zsh/datetime 2>/dev/null || true",
+		"__zgod_command=\"\"",
+		"__zgod_start_ms=\"\"",
+		"emulate -L zsh",
+		"if [[ -n \"$1\" ]]; then",
+		"__zgod_command=\"$3\"",
+		"printf '%s000' \"$(date +%s)\"",
+		"return 0",
+		"return \"$exit_code\"",
+		"typeset -ga preexec_functions precmd_functions",
+		"preexec_functions=(${preexec_functions:#__zgod_preexec})",
+		"precmd_functions=(${precmd_functions:#__zgod_precmd})",
+		"functions -c preexec __zgod_user_preexec",
+		"functions -c precmd __zgod_user_precmd",
+		"preexec() {",
+		"__zgod_preexec \"$@\"",
+		"__zgod_user_preexec \"$@\"",
+		"precmd() {",
+		"__zgod_precmd \"$@\"",
+		"__zgod_user_precmd \"$@\"",
+	} {
+		if !strings.Contains(script, needle) {
+			t.Fatalf("InitScript(Zsh) output doesn't contain %q", needle)
+		}
+	}
+}
+
 func TestFishInitScriptDisownsRecordedProcessByPID(t *testing.T) {
 	script, err := InitScript(Fish, InitOptions{})
 	if err != nil {

@@ -4,14 +4,20 @@
 export ZGOD_CONFIG={{zshQuote .ConfigPath}}
 {{end}}
 
+zmodload zsh/datetime 2>/dev/null || true
+
 __zgod_session_id=""
+__zgod_command=""
+__zgod_start_ms=""
 __zgod_start_dir=""
 
 __zgod_has_command() {
+    emulate -L zsh
     command -v zgod &>/dev/null
 }
 
 __zgod_init() {
+    emulate -L zsh
     if [[ -z "$__zgod_session_id" ]]; then
         if [[ -r /proc/sys/kernel/random/uuid ]]; then
             __zgod_session_id=$(cat /proc/sys/kernel/random/uuid)
@@ -24,27 +30,42 @@ __zgod_init() {
 }
 
 __zgod_get_time_ms() {
-    local sec=${EPOCHREALTIME%.*}
-    local frac=${EPOCHREALTIME#*.}
-    printf '%s%s' "$sec" "${frac:0:3}"
+    emulate -L zsh
+    if [[ -n "${EPOCHREALTIME-}" ]]; then
+        local sec=${EPOCHREALTIME%.*}
+        local frac=${EPOCHREALTIME#*.}
+        frac="${frac}000"
+        printf '%s%s' "$sec" "${frac:0:3}"
+    else
+        printf '%s000' "$(date +%s)"
+    fi
 }
 
 __zgod_preexec() {
+    emulate -L zsh
     __zgod_init
-    __zgod_command="$1"
+    if [[ -n "$1" ]]; then
+        __zgod_command="$1"
+    elif [[ -n "$3" ]]; then
+        __zgod_command="$3"
+    else
+        __zgod_command="$2"
+    fi
     __zgod_start_ms=$(__zgod_get_time_ms)
     __zgod_start_dir="$PWD"
+    return 0
 }
 
 __zgod_precmd() {
     local exit_code=$?
+    emulate -L zsh
     if [[ -z "$__zgod_command" ]]; then
-        return
+        return "$exit_code"
     fi
 
     if ! __zgod_has_command; then
         __zgod_command=""
-        return
+        return "$exit_code"
     fi
 
     zgod record \
@@ -55,13 +76,16 @@ __zgod_precmd() {
         --session "$__zgod_session_id" &!
 
     __zgod_command=""
+    __zgod_start_ms=""
     __zgod_start_dir=""
+    return "$exit_code"
 }
 
 __zgod_search_widget() {
+    emulate -L zsh
     if ! __zgod_has_command; then
         zle reset-prompt
-        return
+        return 0
     fi
     local selected
     selected=$(zgod search --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
@@ -75,12 +99,42 @@ __zgod_search_widget() {
         RBUFFER=""
     fi
     zle reset-prompt
+    return 0
 }
 
 zle -N __zgod_search_widget
 
-autoload -Uz add-zsh-hook
-add-zsh-hook preexec __zgod_preexec
-add-zsh-hook precmd __zgod_precmd
+# Keep zgod before old-style preexec/precmd functions and hook arrays.
+typeset -ga preexec_functions precmd_functions
+preexec_functions=(${preexec_functions:#__zgod_preexec})
+precmd_functions=(${precmd_functions:#__zgod_precmd})
+
+if (( $+functions[preexec] )) && [[ "${functions[preexec]}" != *__zgod_preexec* ]]; then
+    functions -c preexec __zgod_user_preexec
+elif (( ! $+functions[__zgod_user_preexec] )); then
+    __zgod_user_preexec() {
+        return 0
+    }
+fi
+
+if (( $+functions[precmd] )) && [[ "${functions[precmd]}" != *__zgod_precmd* ]]; then
+    functions -c precmd __zgod_user_precmd
+elif (( ! $+functions[__zgod_user_precmd] )); then
+    __zgod_user_precmd() {
+        return $?
+    }
+fi
+
+preexec() {
+    __zgod_preexec "$@"
+    __zgod_user_preexec "$@"
+    return 0
+}
+
+precmd() {
+    __zgod_precmd "$@"
+    __zgod_user_precmd "$@"
+    return 0
+}
 
 bindkey '^R' __zgod_search_widget

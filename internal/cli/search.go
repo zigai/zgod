@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -29,6 +31,7 @@ const (
 	searchDefaultHeight       = 15
 	searchExitCodeCanceled    = 1
 	searchExitCodeInstantExec = 2
+	searchPendingDrainTimeout = 250 * time.Millisecond
 )
 
 type searchContext struct {
@@ -95,6 +98,10 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 		return searchContext{}, fmt.Errorf("resolving database path: %w", err)
 	}
 
+	if err = drainPendingRecordsForSearch(dbPath); err != nil {
+		return searchContext{}, fmt.Errorf("draining pending history records: %w", err)
+	}
+
 	database, err := openSearchDatabase(dbPath)
 	if err != nil {
 		return searchContext{}, fmt.Errorf("opening database: %w", err)
@@ -151,6 +158,32 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 		ttyOut:  ttyOut,
 		cleanup: cleanup,
 	}, nil
+}
+
+func drainPendingRecordsForSearch(dbPath string) error {
+	if _, err := os.Stat(pendingRecordsDir(dbPath)); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+
+		return fmt.Errorf("stating pending history directory: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), searchPendingDrainTimeout)
+	defer cancel()
+
+	err := db.WithDatabaseWriteLock(ctx, dbPath, func() error {
+		return drainPendingRecordsLocked(dbPath)
+	})
+	if errors.Is(err, db.ErrDatabaseWriteLockTimeout) || db.IsBusyError(err) {
+		return nil
+	}
+
+	if err == nil {
+		return nil
+	}
+
+	return fmt.Errorf("draining pending history records under database write lock: %w", err)
 }
 
 func openSearchDatabase(dbPath string) (*sql.DB, error) {

@@ -112,3 +112,51 @@ func TestOpenSearchDatabaseRejectsExistingWrongSchema(t *testing.T) {
 		t.Fatalf("openSearchDatabase() error = %v, want history schema validation error", err)
 	}
 }
+
+func TestDrainPendingRecordsForSearchFlushesQueuedRecords(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+
+	queued := db.HistoryEntry{
+		TSMs:      1234,
+		Duration:  56,
+		ExitCode:  7,
+		Command:   "queued for search",
+		Directory: "/tmp",
+		SessionID: "session-1",
+		Hostname:  "host-1",
+	}
+	if err := queuePendingRecord(dbPath, queued); err != nil {
+		t.Fatalf("queuePendingRecord() error: %v", err)
+	}
+
+	assertPendingRecordCount(t, dbPath, 1)
+
+	if err := drainPendingRecordsForSearch(dbPath); err != nil {
+		t.Fatalf("drainPendingRecordsForSearch() error: %v", err)
+	}
+
+	assertPendingRecordCount(t, dbPath, 0)
+
+	database, err := openSearchDatabase(dbPath)
+	if err != nil {
+		t.Fatalf("openSearchDatabase() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	entries, err := db.NewHistoryRepo(database).ListAll()
+	if err != nil {
+		t.Fatalf("ListAll() error: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("ListAll() returned %d entries, want 1", len(entries))
+	}
+
+	got := entries[0]
+	got.ID = 0
+
+	if got != queued {
+		t.Fatalf("flushed entry = %+v, want %+v", got, queued)
+	}
+}
