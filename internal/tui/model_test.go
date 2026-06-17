@@ -47,8 +47,9 @@ func TestHandleKeyAcceptFallsBackToTypedCommandWhenNoMatches(t *testing.T) {
 
 	cfg := config.Default()
 	m := &Model{
-		input: ti,
-		cfg:   cfg,
+		input:           ti,
+		cfg:             cfg,
+		historyComplete: true,
 	}
 
 	_, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
@@ -381,6 +382,10 @@ func TestHistoryLoadsInLimitedBatchThenFullSet(t *testing.T) {
 		t.Fatal("historyComplete after first batch = true, want false")
 	}
 
+	if !m.loadingHistory {
+		t.Fatal("loadingHistory after first batch = false, want true while full load is pending")
+	}
+
 	runHistoryLoadCmd(t, m, next)
 
 	if got, want := len(m.allEntries), 3; got != want {
@@ -389,6 +394,159 @@ func TestHistoryLoadsInLimitedBatchThenFullSet(t *testing.T) {
 
 	if !m.historyComplete {
 		t.Fatal("historyComplete after full load = false, want true")
+	}
+}
+
+func TestInitialQueryDefersFallbackUntilFullHistoryLoads(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("db.Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := db.NewHistoryRepo(database)
+	for i, command := range []string{"old unique target", "new filler", "newer filler"} {
+		if _, err = repo.Insert(db.HistoryEntry{TSMs: int64(i + 1), Command: command}); err != nil {
+			t.Fatalf("repo.Insert(%q) error: %v", command, err)
+		}
+	}
+
+	cfg := config.Default()
+	cfg.Display.StartupLimit = 2
+
+	m := NewModel(cfg, repo, "", "", 10, false, "target")
+	if got, want := m.startupLimit(), 2; got != want {
+		t.Fatalf("startupLimit() = %d, want %d", got, want)
+	}
+
+	cmd := m.loadEntriesCmd(m.startupLimit(), false, m.historyLoadGen)
+	next := runHistoryLoadCmd(t, m, cmd)
+
+	if len(m.displayEntries) != 0 {
+		t.Fatalf("len(displayEntries) after limited batch = %d, want 0", len(m.displayEntries))
+	}
+
+	if !m.loadingHistory || m.historyComplete {
+		t.Fatalf("load state after limited batch = loadingHistory:%v historyComplete:%v, want true/false", m.loadingHistory, m.historyComplete)
+	}
+
+	acceptCmd, handled := m.handleControlKeys(tea.KeyMsg{Type: tea.KeyEnter})
+	if !handled {
+		t.Fatal("handleControlKeys(enter) = false, want true")
+	}
+
+	if acceptCmd != nil || m.quitting || m.Selected() != "" {
+		t.Fatalf("accept while full load pending returned cmd:%v quitting:%v selected:%q, want no selection", acceptCmd, m.quitting, m.Selected())
+	}
+
+	runHistoryLoadCmd(t, m, next)
+
+	if len(m.displayEntries) != 1 {
+		t.Fatalf("len(displayEntries) after full load = %d, want 1", len(m.displayEntries))
+	}
+
+	if got, want := m.displayEntries[0].Entry.Command, "old unique target"; got != want {
+		t.Fatalf("displayEntries[0].Command = %q, want %q", got, want)
+	}
+}
+
+func TestLimitedBatchCompletesWhenFewerThanLimitLoaded(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("db.Open() error: %v", err)
+	}
+
+	defer func() { _ = database.Close() }()
+
+	repo := db.NewHistoryRepo(database)
+	for i, command := range []string{"one", "two", "three"} {
+		if _, err = repo.Insert(db.HistoryEntry{TSMs: int64(i + 1), Command: command}); err != nil {
+			t.Fatalf("repo.Insert(%q) error: %v", command, err)
+		}
+	}
+
+	cfg := config.Default()
+	cfg.Display.StartupLimit = 10
+
+	m := NewModel(cfg, repo, "", "", 10, false, "")
+	cmd := m.loadEntriesCmd(m.startupLimit(), false, m.historyLoadGen)
+	next := runHistoryLoadCmd(t, m, cmd)
+
+	if next != nil {
+		t.Fatal("next history load command is non-nil, want no full reload when limited batch is complete")
+	}
+
+	if m.loadingHistory {
+		t.Fatal("loadingHistory after complete limited batch = true, want false")
+	}
+
+	if !m.historyComplete {
+		t.Fatal("historyComplete after complete limited batch = false, want true")
+	}
+}
+
+func TestApplyLoadedEntriesSearchesCollapsedMultilineCommands(t *testing.T) {
+	t.Parallel()
+
+	ti := textinput.New()
+	ti.SetValue("foo bar")
+
+	m := &Model{
+		input: ti,
+		cfg:   config.Default(),
+		mode:  match.ModeFuzzy,
+	}
+
+	m.applyLoadedEntries([]db.HistoryEntry{
+		{ID: 1, TSMs: 1000, Command: "echo foo\nbar"},
+	}, nil, true)
+
+	if len(m.displayEntries) != 1 {
+		t.Fatalf("len(displayEntries) = %d, want 1", len(m.displayEntries))
+	}
+
+	if got, want := m.displayEntries[0].Entry.Command, "echo foo\nbar"; got != want {
+		t.Fatalf("displayEntries[0].Command = %q, want %q", got, want)
+	}
+}
+
+func TestAcceptDefersWhenQueryHasNoMatchesAndFullHistoryStillLoading(t *testing.T) {
+	t.Parallel()
+
+	ti := textinput.New()
+	ti.SetValue("old-target")
+
+	m := &Model{
+		input:           ti,
+		cfg:             config.Default(),
+		loadingHistory:  true,
+		historyComplete: false,
+	}
+
+	cmd, handled := m.handleControlKeys(tea.KeyMsg{Type: tea.KeyEnter})
+	if !handled {
+		t.Fatal("handleControlKeys(enter) = false, want true")
+	}
+
+	if cmd != nil {
+		t.Fatalf("handleControlKeys(enter) returned command while load pending: %v", cmd)
+	}
+
+	if m.quitting {
+		t.Fatal("quitting = true while full history still loading and no match is selected")
+	}
+
+	if got := m.Selected(); got != "" {
+		t.Fatalf("Selected() = %q, want empty", got)
 	}
 }
 

@@ -453,3 +453,18 @@ func TestTruncateWithRangesUsesCellWidth(t *testing.T) {
 		t.Fatalf("truncateWithRanges() width = %d, want <= 5", width)
 	}
 }
+
+func TestMatchCountLabelShowsPartialZeroMatchesWhenFullHistoryPending(t *testing.T) {
+	t.Parallel()
+
+	m := &Model{
+		allEntries: []db.HistoryEntry{
+			{Command: "recent command"},
+		},
+		historyComplete: false,
+	}
+
+	if got, want := m.matchCountLabel(), "matches: 0+"; got != want {
+		t.Fatalf("matchCountLabel() = %q, want %q", got, want)
+	}
+}

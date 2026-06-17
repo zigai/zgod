@@ -275,11 +275,12 @@ func (m *Model) loadEntriesCmd(limit int, done bool, generation uint64) tea.Cmd 
 
 	return func() tea.Msg {
 		entries, err := history.FetchCandidates(m.repo, opts)
+		batchDone := done || limit <= 0 || (err == nil && limit > 0 && len(entries) < limit)
 
 		return historyBatchLoadedMsg{
 			generation: generation,
 			entries:    entries,
-			done:       done || limit <= 0,
+			done:       batchDone,
 			err:        err,
 		}
 	}
@@ -314,11 +315,11 @@ func (m *Model) handleHistoryBatchLoaded(msg historyBatchLoadedMsg) (tea.Model, 
 }
 
 func (m *Model) applyLoadedEntries(entries []db.HistoryEntry, err error, done bool) {
-	m.loadingHistory = false
 	m.historyComplete = done
 
 	m.dbError = err
 	if err != nil {
+		m.loadingHistory = false
 		m.allEntries = nil
 		m.candidates = nil
 		m.displayEntries = nil
@@ -327,12 +328,14 @@ func (m *Model) applyLoadedEntries(entries []db.HistoryEntry, err error, done bo
 		return
 	}
 
+	m.loadingHistory = !done
+
 	entries = m.prepareEntries(entries)
 	m.allEntries = entries
 
 	m.candidates = make([]string, len(entries))
 	for i, e := range entries {
-		m.candidates[i] = e.Command
+		m.candidates[i] = m.searchCandidate(e.Command)
 	}
 
 	m.lastQuery = ""
@@ -353,6 +356,16 @@ func (m *Model) loadEntries() {
 	})
 
 	m.applyLoadedEntries(entries, err, true)
+}
+
+func (m *Model) searchCandidate(command string) string {
+	if !strings.ContainsAny(command, "\n\r\t") {
+		return command
+	}
+
+	collapsed, _ := collapseMultiline(command, nil, m.cfg.Display.MultilineCollapse)
+
+	return collapsed
 }
 
 func (m *Model) prepareEntries(entries []db.HistoryEntry) []db.HistoryEntry {
@@ -694,7 +707,10 @@ func (m *Model) handleControlKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 		return tea.Quit, true
 	case matchKey(msg, m.cfg.Keys.Accept):
-		m.acceptCurrentSelection()
+		if !m.acceptCurrentSelection() {
+			return nil, true
+		}
+
 		m.quitting = true
 
 		return tea.Quit, true
@@ -709,14 +725,20 @@ func (m *Model) handleControlKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 	}
 }
 
-func (m *Model) acceptCurrentSelection() {
+func (m *Model) acceptCurrentSelection() bool {
 	if cmd, ok := m.currentResultCommand(); ok {
 		m.selected = cmd
-		return
+		return true
+	}
+
+	if m.loadingHistory || !m.historyComplete {
+		return false
 	}
 
 	// If nothing is selected from history, accept the currently typed command.
 	m.selected = m.input.Value()
+
+	return true
 }
 
 func (m *Model) handlePreview(msg tea.KeyMsg) bool {

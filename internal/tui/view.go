@@ -778,7 +778,7 @@ func (m *Model) renderFooter() string {
 
 func (m *Model) matchCountLabel() string {
 	label := formatMatchCountLabel(len(m.displayEntries))
-	if !m.historyComplete && len(m.displayEntries) > 0 && len(m.allEntries) > 0 {
+	if !m.historyComplete && len(m.allEntries) > 0 {
 		return label + "+"
 	}
 
