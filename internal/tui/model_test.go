@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -154,6 +155,78 @@ func TestHandleNavigationCtrlRMovesToNextEntry(t *testing.T) {
 
 	if got, want := m.cursor, 1; got != want {
 		t.Fatalf("cursor after ctrl+r = %d, want %d", got, want)
+	}
+}
+
+func TestHandleVisibleResultShortcutAcceptsVisibleSlot(t *testing.T) {
+	t.Parallel()
+
+	m := testNavModel(20, 6)
+	m.cfg.Keys.Select2 = "x"
+	m.cursor = 7
+
+	_, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+
+	if cmd == nil {
+		t.Fatal("visible result shortcut returned nil command, want tea.Quit")
+	}
+
+	if got, want := m.cursor, 4; got != want {
+		t.Fatalf("cursor after visible result shortcut = %d, want %d", got, want)
+	}
+
+	if got, want := m.Selected(), "command 4"; got != want {
+		t.Fatalf("Selected() after visible result shortcut = %q, want %q", got, want)
+	}
+
+	if !m.quitting {
+		t.Fatal("quitting after visible result shortcut = false, want true")
+	}
+
+	msg := cmd()
+	if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("visible result shortcut command = %T, want tea.QuitMsg", msg)
+	}
+}
+
+func TestHandleVisibleResultShortcutZeroAcceptsTenthVisibleSlot(t *testing.T) {
+	t.Parallel()
+
+	m := testNavModel(20, 12)
+	m.cfg.Keys.Select0 = "x"
+
+	_, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+
+	if got, want := m.cursor, 9; got != want {
+		t.Fatalf("cursor after select_0 shortcut = %d, want %d", got, want)
+	}
+
+	if got, want := m.Selected(), "command 9"; got != want {
+		t.Fatalf("Selected() after select_0 shortcut = %q, want %q", got, want)
+	}
+}
+
+func TestHandleVisibleResultShortcutNoopsWhenSlotMissing(t *testing.T) {
+	t.Parallel()
+
+	m := testNavModel(3, 4)
+	m.cfg.Keys.Select9 = "x"
+
+	cmd, handled := m.handleControlKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	if !handled {
+		t.Fatal("handleControlKeys(select_9) = false, want true")
+	}
+
+	if cmd != nil {
+		t.Fatalf("missing visible slot command = %T, want nil", cmd)
+	}
+
+	if got := m.Selected(); got != "" {
+		t.Fatalf("Selected() after missing visible slot = %q, want empty", got)
+	}
+
+	if m.quitting {
+		t.Fatal("quitting after missing visible slot = true, want false")
 	}
 }
 
@@ -615,9 +688,16 @@ func runHistoryLoadCmd(t *testing.T, m *Model, cmd tea.Cmd) tea.Cmd {
 }
 
 func testNavModel(entryCount int, height int) *Model {
+	entries := make([]history.ScoredEntry, entryCount)
+	for i := range entryCount {
+		entries[i] = history.ScoredEntry{
+			Entry: db.HistoryEntry{Command: fmt.Sprintf("command %d", i)},
+		}
+	}
+
 	return &Model{
 		cfg:            config.Default(),
 		height:         height,
-		displayEntries: make([]history.ScoredEntry, entryCount),
+		displayEntries: entries,
 	}
 }

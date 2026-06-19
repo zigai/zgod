@@ -107,11 +107,12 @@ if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod 
 | `alt+r` | Regex mode |
 | `alt+g` | Glob mode |
 | `alt+p` | Preview multiline command (popup mode only) |
+| `ctrl+1` … `ctrl+9`, `ctrl+0` | Accept visible result 1-10 |
 | `?` | Help overlay |
 
 Mouse is also supported in compatible terminals: wheel scrolls the result list,
 hovering a result highlights it, left-clicking a result accepts it, footer
-shortcuts can be clicked, and clicking in the input moves the cursor.
+shortcuts and top-right pills can be clicked, and clicking in the input moves the cursor.
 
 ## Configuration
 
@@ -189,6 +190,16 @@ page_up = "pgup"
 page_down = "pgdown"
 top = "home"
 bottom = "end"
+select_1 = "ctrl+1" # accept 1st visible result
+select_2 = "ctrl+2"
+select_3 = "ctrl+3"
+select_4 = "ctrl+4"
+select_5 = "ctrl+5"
+select_6 = "ctrl+6"
+select_7 = "ctrl+7"
+select_8 = "ctrl+8"
+select_9 = "ctrl+9"
+select_0 = "ctrl+0" # accept 10th visible result
 help = "?"
 preview_command = "alt+p"
 ```

@@ -29,6 +29,14 @@ func TestDefault(t *testing.T) {
 		t.Errorf("default ModeNext = %q, want 'ctrl+s'", cfg.Keys.ModeNext)
 	}
 
+	if cfg.Keys.Select1 != "ctrl+1" {
+		t.Errorf("default Select1 = %q, want 'ctrl+1'", cfg.Keys.Select1)
+	}
+
+	if cfg.Keys.Select0 != "ctrl+0" {
+		t.Errorf("default Select0 = %q, want 'ctrl+0'", cfg.Keys.Select0)
+	}
+
 	if cfg.Display.DefaultFailFilter != "include" {
 		t.Errorf("default DefaultFailFilter = %q, want 'include'", cfg.Display.DefaultFailFilter)
 	}

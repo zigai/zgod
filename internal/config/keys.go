@@ -16,6 +16,16 @@ type KeyConfig struct {
 	PageDown       string `toml:"page_down"`
 	Top            string `toml:"top"`
 	Bottom         string `toml:"bottom"`
+	Select1        string `toml:"select_1"`
+	Select2        string `toml:"select_2"`
+	Select3        string `toml:"select_3"`
+	Select4        string `toml:"select_4"`
+	Select5        string `toml:"select_5"`
+	Select6        string `toml:"select_6"`
+	Select7        string `toml:"select_7"`
+	Select8        string `toml:"select_8"`
+	Select9        string `toml:"select_9"`
+	Select0        string `toml:"select_0"`
 	Help           string `toml:"help"`
 	PreviewCommand string `toml:"preview_command"`
 }
@@ -37,6 +47,16 @@ func DefaultKeys() KeyConfig {
 		PageDown:       "pgdown",
 		Top:            "home",
 		Bottom:         "end",
+		Select1:        "ctrl+1",
+		Select2:        "ctrl+2",
+		Select3:        "ctrl+3",
+		Select4:        "ctrl+4",
+		Select5:        "ctrl+5",
+		Select6:        "ctrl+6",
+		Select7:        "ctrl+7",
+		Select8:        "ctrl+8",
+		Select9:        "ctrl+9",
+		Select0:        "ctrl+0",
 		Help:           "?",
 		PreviewCommand: "alt+p",
 	}

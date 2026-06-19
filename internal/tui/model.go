@@ -725,6 +725,13 @@ func (m *Model) handleControlKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 		m.quitting = true
 
 		return tea.Quit, true
+	}
+
+	if cmd, handled := m.handleVisibleResultShortcut(msg); handled {
+		return cmd, true
+	}
+
+	switch {
 	case m.handleNavigation(msg):
 		return nil, true
 	case m.handleModeSwitch(msg):
@@ -733,6 +740,54 @@ func (m *Model) handleControlKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return nil, true
 	default:
 		return m.handleToggle(msg)
+	}
+}
+
+func (m *Model) handleVisibleResultShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
+	slot, ok := m.visibleResultShortcutSlot(msg)
+	if !ok {
+		return nil, false
+	}
+
+	start, end := m.visibleResultRange()
+	target := start + slot
+
+	if target >= end {
+		return nil, true
+	}
+
+	m.cursor = target
+	if !m.acceptCurrentSelection() {
+		return nil, true
+	}
+
+	m.quitting = true
+
+	return tea.Quit, true
+}
+
+func (m *Model) visibleResultShortcutSlot(msg tea.KeyMsg) (int, bool) {
+	for slot, key := range m.visibleResultShortcutKeys() {
+		if key != "" && matchKey(msg, key) {
+			return slot, true
+		}
+	}
+
+	return 0, false
+}
+
+func (m *Model) visibleResultShortcutKeys() []string {
+	return []string{
+		m.cfg.Keys.Select1,
+		m.cfg.Keys.Select2,
+		m.cfg.Keys.Select3,
+		m.cfg.Keys.Select4,
+		m.cfg.Keys.Select5,
+		m.cfg.Keys.Select6,
+		m.cfg.Keys.Select7,
+		m.cfg.Keys.Select8,
+		m.cfg.Keys.Select9,
+		m.cfg.Keys.Select0,
 	}
 }
 

@@ -969,6 +969,7 @@ func (m *Model) renderHelp() string {
 		{m.cfg.Keys.PageUp + "/" + m.cfg.Keys.PageDown, "Page up/down"},
 		{m.cfg.Keys.Top + "/" + m.cfg.Keys.Bottom, "Jump to top/bottom"},
 		{m.cfg.Keys.Accept, "Accept selection"},
+		{m.visibleResultShortcutLabel(), "Accept visible result by slot"},
 		{m.cfg.Keys.Cancel, "Cancel / quit"},
 		{m.cfg.Keys.ModeNext, "Cycle match mode (fuzzy/glob/regex)"},
 		{m.cfg.Keys.ModeFuzzy, "Fuzzy match mode"},
@@ -983,6 +984,10 @@ func (m *Model) renderHelp() string {
 
 	lines := make([]string, 0, len(bindings))
 	for _, bind := range bindings {
+		if bind.key == "" {
+			continue
+		}
+
 		key := m.styles.HelpKey.Render(fmt.Sprintf("%-16s", bind.key))
 		desc := m.styles.HelpDesc.Render(bind.desc)
 		lines = append(lines, "  "+key+"  "+desc)
@@ -1044,6 +1049,17 @@ func (m *Model) renderPreviewPopup() string {
 		Render(boxContent)
 
 	return box
+}
+
+func (m *Model) visibleResultShortcutLabel() string {
+	keys := make([]string, 0, len(m.visibleResultShortcutKeys()))
+	for _, key := range m.visibleResultShortcutKeys() {
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+
+	return strings.Join(keys, "/")
 }
 
 func (m *Model) getWidth() int {
