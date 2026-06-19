@@ -218,7 +218,11 @@ func (m *Model) Canceled() bool {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, m.loadEntriesCmd(m.startupLimit(), false, m.historyLoadGen))
+	return tea.Batch(
+		textinput.Blink,
+		tea.EnableMouseAllMotion,
+		m.loadEntriesCmd(m.startupLimit(), false, m.historyLoadGen),
+	)
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

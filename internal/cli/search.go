@@ -73,7 +73,7 @@ func doSearch(cmd *cobra.Command) (int, error) {
 		ctx.model,
 		tea.WithInput(ctx.ttyIn),
 		tea.WithOutput(ctx.ttyOut),
-		tea.WithMouseAllMotion(),
+		tea.WithMouseCellMotion(),
 	)
 
 	finalModel, err := p.Run()
