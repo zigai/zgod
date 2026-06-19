@@ -109,6 +109,10 @@ if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod 
 | `alt+p` | Preview multiline command (popup mode only) |
 | `?` | Help overlay |
 
+Mouse is also supported in compatible terminals: wheel scrolls the result list,
+hovering a result highlights it, left-clicking a result accepts it, footer
+shortcuts can be clicked, and clicking in the input moves the cursor.
+
 ## Configuration
 
 Default paths:
