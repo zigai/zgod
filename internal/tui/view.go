@@ -32,14 +32,27 @@ const (
 	failIncludeIndicator = "214"
 )
 
-type toggleIndicator struct {
+type indicatorAction int
+
+const (
+	indicatorNone indicatorAction = iota
+	indicatorModeFuzzy
+	indicatorModeGlob
+	indicatorModeRegex
+	indicatorToggleCWD
+	indicatorToggleFails
+	indicatorToggleDedupe
+)
+
+type indicatorPill struct {
 	label  string
 	bg     string
 	active bool
+	action indicatorAction
 }
 
-func failToggleIndicator(mode db.FailFilterMode) toggleIndicator {
-	indicator := toggleIndicator{label: "fails"}
+func failToggleIndicator(mode db.FailFilterMode) indicatorPill {
+	indicator := indicatorPill{label: "fails", action: indicatorToggleFails}
 
 	switch mode {
 	case db.FailFilterInclude:
@@ -92,73 +105,25 @@ func (m *Model) renderIndicators() string {
 	width := m.getWidth()
 
 	key := indicatorCacheKey{
-		width:      width,
-		mode:       m.mode,
-		cwdMode:    m.cwdMode,
-		dedupe:     m.dedupe,
-		failFilter: m.failFilter,
+		width:         width,
+		mode:          m.mode,
+		cwdMode:       m.cwdMode,
+		dedupe:        m.dedupe,
+		failFilter:    m.failFilter,
+		hoveredAction: m.hoverIndicatorAction,
 	}
 	if m.indicatorCache.valid && m.indicatorCache.key == key {
 		return m.indicatorCache.value
 	}
 
-	inactive := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
-		Background(lipgloss.Color("237")).
-		Padding(0, 1)
+	pills := m.visibleIndicatorPills(width)
+	indicators := make([]string, 0, len(pills))
 
-	var indicators []string
-
-	type modeIndicator struct {
-		mode    match.Mode
-		label   string
-		bg      string
-		enabled bool
+	for _, pill := range pills {
+		indicators = append(indicators, m.renderIndicatorPill(pill))
 	}
 
-	const searchModeIndicatorBg = "39"
-
-	modes := []modeIndicator{
-		{match.ModeFuzzy, "fuzzy", searchModeIndicatorBg, m.cfg.Display.EnableFuzzy},
-		{match.ModeGlob, "glob", searchModeIndicatorBg, m.cfg.Display.EnableGlob},
-		{match.ModeRegex, "regex", searchModeIndicatorBg, m.cfg.Display.EnableRegex},
-	}
-	for _, mi := range modes {
-		if !mi.enabled {
-			continue
-		}
-
-		if m.mode == mi.mode {
-			indicators = append(indicators, lipgloss.NewStyle().
-				Foreground(lipgloss.Color("0")).
-				Background(lipgloss.Color(mi.bg)).
-				Bold(true).
-				Padding(0, 1).
-				Render(mi.label))
-		} else {
-			indicators = append(indicators, inactive.Render(mi.label))
-		}
-	}
-
-	toggles := []toggleIndicator{
-		{"cwd", "10", m.cwdMode},
-		failToggleIndicator(m.failFilter),
-		{"dedup", "11", m.dedupe},
-	}
-	for _, ti := range toggles {
-		if ti.active {
-			indicators = append(indicators, lipgloss.NewStyle().
-				Foreground(lipgloss.Color("0")).
-				Background(lipgloss.Color(ti.bg)).
-				Bold(true).
-				Padding(0, 1).
-				Render(ti.label))
-		} else {
-			indicators = append(indicators, inactive.Render(ti.label))
-		}
-	}
-
-	value := m.fitIndicators(indicators, width)
+	value := strings.Join(indicators, " ")
 	m.indicatorCache = indicatorCache{
 		key:   key,
 		value: value,
@@ -166,6 +131,100 @@ func (m *Model) renderIndicators() string {
 	}
 
 	return value
+}
+
+func (m *Model) indicatorPills() []indicatorPill {
+	const searchModeIndicatorBg = "39"
+
+	pills := make([]indicatorPill, 0, 6)
+	modes := []struct {
+		mode    match.Mode
+		label   string
+		action  indicatorAction
+		enabled bool
+	}{
+		{match.ModeFuzzy, "fuzzy", indicatorModeFuzzy, m.cfg.Display.EnableFuzzy},
+		{match.ModeGlob, "glob", indicatorModeGlob, m.cfg.Display.EnableGlob},
+		{match.ModeRegex, "regex", indicatorModeRegex, m.cfg.Display.EnableRegex},
+	}
+
+	for _, mode := range modes {
+		if !mode.enabled {
+			continue
+		}
+
+		pills = append(pills, indicatorPill{
+			label:  mode.label,
+			bg:     searchModeIndicatorBg,
+			active: m.mode == mode.mode,
+			action: mode.action,
+		})
+	}
+
+	pills = append(pills,
+		indicatorPill{label: "cwd", bg: "10", active: m.cwdMode, action: indicatorToggleCWD},
+		failToggleIndicator(m.failFilter),
+		indicatorPill{label: "dedup", bg: "11", active: m.dedupe, action: indicatorToggleDedupe},
+	)
+
+	return pills
+}
+
+func (m *Model) visibleIndicatorPills(width int) []indicatorPill {
+	pills := m.indicatorPills()
+	if len(pills) == 0 {
+		return nil
+	}
+
+	for len(pills) > 0 && m.indicatorPillsWidth(pills) > width {
+		pills = pills[:len(pills)-1]
+	}
+
+	return pills
+}
+
+func (m *Model) indicatorPillsWidth(pills []indicatorPill) int {
+	if len(pills) == 0 {
+		return 0
+	}
+
+	width := 0
+
+	for i, pill := range pills {
+		if i > 0 {
+			width++
+		}
+
+		width += lipgloss.Width(m.renderIndicatorPill(pill))
+	}
+
+	return width
+}
+
+func (m *Model) renderIndicatorPill(pill indicatorPill) string {
+	if pill.action == m.hoverIndicatorAction && pill.action != indicatorNone {
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
+			Background(lipgloss.Color("240")).
+			Bold(pill.active).
+			Padding(0, 1).
+			Render(pill.label)
+	}
+
+	if pill.active {
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color("0")).
+			Background(lipgloss.Color(pill.bg)).
+			Bold(true).
+			Padding(0, 1).
+			Render(pill.label)
+	}
+
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Background(lipgloss.Color("237")).
+		Padding(0, 1).
+		Render(pill.label)
 }
 
 func (m *Model) renderHeader() string {
@@ -791,7 +850,9 @@ func (m *Model) matchCountLabel() string {
 
 func (m *Model) renderFooterLeft() string {
 	showPreviewHint := m.cfg.Display.MultilinePreview == "popup" && m.selectedIsMultiline()
-	if m.footerCache.valid && m.footerCache.showPreviewHint == showPreviewHint {
+	if m.footerCache.valid &&
+		m.footerCache.showPreviewHint == showPreviewHint &&
+		m.footerCache.hoveredAction == m.hoverFooterAction {
 		return m.footerCache.left
 	}
 
@@ -799,19 +860,33 @@ func (m *Model) renderFooterLeft() string {
 	parts := make([]string, 0, len(shortcuts))
 
 	for _, shortcut := range shortcuts {
-		key := m.styles.HelpKey.Render(shortcut.key)
-		desc := m.styles.HelpDesc.Render(shortcut.desc)
-		parts = append(parts, key+" "+desc)
+		parts = append(parts, m.renderFooterShortcut(shortcut))
 	}
 
 	left := strings.Join(parts, "  ")
 	m.footerCache = footerCache{
 		showPreviewHint: showPreviewHint,
+		hoveredAction:   m.hoverFooterAction,
 		left:            left,
 		valid:           true,
 	}
 
 	return left
+}
+
+func (m *Model) renderFooterShortcut(shortcut footerShortcut) string {
+	if shortcut.action != footerShortcutNone && shortcut.action == m.hoverFooterAction {
+		hover := lipgloss.NewStyle().Background(lipgloss.Color("240"))
+		key := m.styles.HelpKey.Background(lipgloss.Color("240")).Render(shortcut.key)
+		desc := m.styles.HelpDesc.Background(lipgloss.Color("240")).Render(shortcut.desc)
+
+		return key + hover.Render(" ") + desc
+	}
+
+	key := m.styles.HelpKey.Render(shortcut.key)
+	desc := m.styles.HelpDesc.Render(shortcut.desc)
+
+	return key + " " + desc
 }
 
 func formatMatchCountLabel(count int) string {
@@ -1058,26 +1133,6 @@ func (m *Model) renderResultsHeaderWithLayout(layout resultLayout) string {
 	}
 
 	return value
-}
-
-func (m *Model) fitIndicators(indicators []string, width int) string {
-	if len(indicators) == 0 {
-		return ""
-	}
-
-	best := strings.Join(indicators, " ")
-	if lipgloss.Width(best) <= width {
-		return best
-	}
-
-	for i := range slices.Backward(indicators) {
-		candidate := strings.Join(indicators[:i], " ")
-		if lipgloss.Width(candidate) <= width {
-			return candidate
-		}
-	}
-
-	return ""
 }
 
 func (m *Model) highlightMatches(text string, ranges []match.Range, baseStyle lipgloss.Style, matchStyle lipgloss.Style) string {

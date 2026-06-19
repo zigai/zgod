@@ -5,6 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/zigai/zgod/internal/match"
 )
 
 type mouseInputBounds struct {
@@ -77,13 +79,28 @@ func (m *Model) handleMouseWheel(ev tea.MouseEvent) {
 }
 
 func (m *Model) handleMouseHover(ev tea.MouseEvent) {
-	_, bodyY, ok := m.mouseBodyPosition(ev)
+	bodyX, bodyY, ok := m.mouseBodyPosition(ev)
 	if !ok {
+		m.setHoveredFooterAction(footerShortcutNone)
+		m.setHoveredIndicatorAction(indicatorNone)
+
 		return
 	}
 
 	if resultIdx, resultOK := m.resultIndexAtBodyY(bodyY); resultOK {
 		m.cursor = resultIdx
+	}
+
+	if action, actionOK := m.footerShortcutAt(bodyX, bodyY); actionOK {
+		m.setHoveredFooterAction(action)
+	} else {
+		m.setHoveredFooterAction(footerShortcutNone)
+	}
+
+	if action, actionOK := m.indicatorAt(bodyX, bodyY); actionOK {
+		m.setHoveredIndicatorAction(action)
+	} else {
+		m.setHoveredIndicatorAction(indicatorNone)
 	}
 }
 
@@ -95,6 +112,10 @@ func (m *Model) handleMouseLeftPress(ev tea.MouseEvent) (tea.Model, tea.Cmd) {
 
 	if m.handleMouseInputClick(bodyX, bodyY) {
 		return m, nil
+	}
+
+	if action, actionOK := m.indicatorAt(bodyX, bodyY); actionOK {
+		return m, m.triggerIndicatorAction(action)
 	}
 
 	if resultIdx, resultOK := m.resultIndexAtBodyY(bodyY); resultOK {
@@ -364,6 +385,53 @@ func (m *Model) footerShortcutAt(bodyX int, bodyY int) (footerShortcutAction, bo
 	return footerShortcutNone, false
 }
 
+func (m *Model) indicatorAt(bodyX int, bodyY int) (indicatorAction, bool) {
+	if bodyY != 0 {
+		return indicatorNone, false
+	}
+
+	pills := m.visibleIndicatorPills(m.width)
+	if len(pills) == 0 {
+		return indicatorNone, false
+	}
+
+	indicatorWidth := m.indicatorPillsWidth(pills)
+	indicatorX := m.indicatorStartX(indicatorWidth)
+
+	if bodyX < indicatorX || bodyX >= indicatorX+indicatorWidth {
+		return indicatorNone, false
+	}
+
+	x := indicatorX
+
+	for _, pill := range pills {
+		pillWidth := lipgloss.Width(m.renderIndicatorPill(pill))
+		if bodyX >= x && bodyX < x+pillWidth {
+			return pill.action, pill.action != indicatorNone
+		}
+
+		x += pillWidth + 1
+	}
+
+	return indicatorNone, false
+}
+
+func (m *Model) indicatorStartX(indicatorWidth int) int {
+	if m.isMerged() {
+		return max(m.width-indicatorWidth, 0)
+	}
+
+	return 1
+}
+
+func (m *Model) setHoveredFooterAction(action footerShortcutAction) {
+	m.hoverFooterAction = action
+}
+
+func (m *Model) setHoveredIndicatorAction(action indicatorAction) {
+	m.hoverIndicatorAction = action
+}
+
 func (m *Model) footerBodyY() int {
 	if !m.cfg.Display.ShowHints {
 		return -1
@@ -395,6 +463,44 @@ func (m *Model) footerShortcutWidth(shortcut footerShortcut) int {
 	return lipgloss.Width(m.styles.HelpKey.Render(shortcut.key)) +
 		1 +
 		lipgloss.Width(m.styles.HelpDesc.Render(shortcut.desc))
+}
+
+func (m *Model) triggerIndicatorAction(action indicatorAction) tea.Cmd {
+	switch action {
+	case indicatorNone:
+		return nil
+	case indicatorModeFuzzy:
+		return m.setMouseMode(match.ModeFuzzy, m.cfg.Display.EnableFuzzy)
+	case indicatorModeGlob:
+		return m.setMouseMode(match.ModeGlob, m.cfg.Display.EnableGlob)
+	case indicatorModeRegex:
+		return m.setMouseMode(match.ModeRegex, m.cfg.Display.EnableRegex)
+	case indicatorToggleCWD:
+		m.cwdMode = !m.cwdMode
+
+		return m.startLoadingEntries()
+	case indicatorToggleFails:
+		m.failFilter = m.failFilter.Next()
+
+		return m.startLoadingEntries()
+	case indicatorToggleDedupe:
+		m.dedupe = !m.dedupe
+
+		return m.startLoadingEntries()
+	default:
+		return nil
+	}
+}
+
+func (m *Model) setMouseMode(mode match.Mode, enabled bool) tea.Cmd {
+	if !enabled || m.mode == mode {
+		return nil
+	}
+
+	m.mode = mode
+	m.updateMatches()
+
+	return nil
 }
 
 func (m *Model) triggerFooterShortcut(action footerShortcutAction) tea.Cmd {

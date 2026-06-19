@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zigai/zgod/internal/config"
 	"github.com/zigai/zgod/internal/db"
@@ -153,6 +154,57 @@ func TestHandleMouseInputClickMovesCursor(t *testing.T) {
 	}
 }
 
+func TestHandleMouseHoverHighlightsFooterShortcut(t *testing.T) {
+	t.Parallel()
+
+	m := testMouseModel(2, 4)
+	m.width = 200
+	m.input.Width = max(m.width-4, 1)
+	m.terminalHeight = m.viewHeight() + 3
+	x, y := testMouseBodyCell(m, testMouseFooterShortcutBodyX(t, m, footerShortcutModeNext), m.footerBodyY())
+
+	_, _ = m.handleMouse(tea.MouseMsg{
+		X:      x,
+		Y:      y,
+		Button: tea.MouseButtonNone,
+		Action: tea.MouseActionMotion,
+	})
+
+	if got, want := m.hoverFooterAction, footerShortcutModeNext; got != want {
+		t.Fatalf("hoverFooterAction = %v, want %v", got, want)
+	}
+
+	_ = m.renderFooterLeft()
+	if got, want := m.footerCache.hoveredAction, footerShortcutModeNext; got != want {
+		t.Fatalf("footerCache.hoveredAction = %v, want %v", got, want)
+	}
+}
+
+func TestHandleMouseClickIndicatorSetsMode(t *testing.T) {
+	t.Parallel()
+
+	m := testMouseModel(2, 4)
+	m.width = 200
+	m.input.Width = max(m.width-4, 1)
+	m.terminalHeight = m.viewHeight() + 3
+	x, y := testMouseBodyCell(m, testMouseIndicatorBodyX(t, m, indicatorModeGlob), 0)
+
+	_, cmd := m.handleMouse(tea.MouseMsg{
+		X:      x,
+		Y:      y,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+
+	if cmd != nil {
+		t.Fatalf("indicator click returned command %T, want nil", cmd)
+	}
+
+	if got, want := m.mode, match.ModeGlob; got != want {
+		t.Fatalf("mode after indicator click = %v, want %v", got, want)
+	}
+}
+
 func testMouseModel(entryCount int, height int) *Model {
 	cfg := config.Default()
 	m := NewModel(cfg, nil, "", "", height, false, "")
@@ -200,6 +252,25 @@ func testMouseFooterShortcutBodyX(t *testing.T, m *Model, action footerShortcutA
 	}
 
 	t.Fatalf("footer shortcut action %v not found", action)
+
+	return 0
+}
+
+func testMouseIndicatorBodyX(t *testing.T, m *Model, action indicatorAction) int {
+	t.Helper()
+
+	pills := m.visibleIndicatorPills(m.width)
+	x := m.indicatorStartX(m.indicatorPillsWidth(pills))
+
+	for _, pill := range pills {
+		if pill.action == action {
+			return x
+		}
+
+		x += lipgloss.Width(m.renderIndicatorPill(pill)) + 1
+	}
+
+	t.Fatalf("indicator action %v not found", action)
 
 	return 0
 }
