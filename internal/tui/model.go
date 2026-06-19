@@ -25,49 +25,48 @@ type historyBatchLoadedMsg struct {
 }
 
 type Model struct {
-	input                textinput.Model
-	cfg                  config.Config
-	styles               Styles
-	allEntries           []db.HistoryEntry
-	candidates           []string
-	displayEntries       []history.ScoredEntry
-	cursor               int
-	width                int
-	height               int
-	maxHeight            int
-	terminalHeight       int
-	selected             string
-	mode                 match.Mode
-	enabledModes         []match.Mode
-	cwdMode              bool
-	dedupe               bool
-	failFilter           db.FailFilterMode
-	cwd                  string
-	homeDir              string
-	quitting             bool
-	canceled             bool
-	showHelp             bool
-	showPreview          bool
-	previewCommand       string
-	hoverFooterAction    footerShortcutAction
-	hoverIndicatorAction indicatorAction
-	repo                 *db.HistoryRepo
-	dbError              error
-	loadingHistory       bool
-	historyComplete      bool
-	historyLoadGen       uint64
-	indicatorCache       indicatorCache
-	footerCache          footerCache
-	lastQuery            string
-	lastMode             match.Mode
-	lastEntryCount       int
-	matchBuf             []match.Match
-	indexBuf             []int
-	lineCache            map[int]cachedResultLine
-	resultsCache         cachedResultsBlock
-	headerCache          cachedResultsHeader
-	regexCache           regexRenderCache
-	searchRegex          regexRenderCache
+	input             textinput.Model
+	cfg               config.Config
+	styles            Styles
+	allEntries        []db.HistoryEntry
+	candidates        []string
+	displayEntries    []history.ScoredEntry
+	cursor            int
+	width             int
+	height            int
+	maxHeight         int
+	terminalHeight    int
+	selected          string
+	mode              match.Mode
+	enabledModes      []match.Mode
+	cwdMode           bool
+	dedupe            bool
+	failFilter        db.FailFilterMode
+	cwd               string
+	homeDir           string
+	quitting          bool
+	canceled          bool
+	showHelp          bool
+	showPreview       bool
+	previewCommand    string
+	hoverFooterAction footerShortcutAction
+	repo              *db.HistoryRepo
+	dbError           error
+	loadingHistory    bool
+	historyComplete   bool
+	historyLoadGen    uint64
+	indicatorCache    indicatorCache
+	footerCache       footerCache
+	lastQuery         string
+	lastMode          match.Mode
+	lastEntryCount    int
+	matchBuf          []match.Match
+	indexBuf          []int
+	lineCache         map[int]cachedResultLine
+	resultsCache      cachedResultsBlock
+	headerCache       cachedResultsHeader
+	regexCache        regexRenderCache
+	searchRegex       regexRenderCache
 }
 
 type indicatorCache struct {
@@ -77,12 +76,11 @@ type indicatorCache struct {
 }
 
 type indicatorCacheKey struct {
-	width         int
-	mode          match.Mode
-	cwdMode       bool
-	dedupe        bool
-	failFilter    db.FailFilterMode
-	hoveredAction indicatorAction
+	width      int
+	mode       match.Mode
+	cwdMode    bool
+	dedupe     bool
+	failFilter db.FailFilterMode
 }
 
 type footerCache struct {

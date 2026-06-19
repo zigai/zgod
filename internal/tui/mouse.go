@@ -82,7 +82,6 @@ func (m *Model) handleMouseHover(ev tea.MouseEvent) {
 	bodyX, bodyY, ok := m.mouseBodyPosition(ev)
 	if !ok {
 		m.setHoveredFooterAction(footerShortcutNone)
-		m.setHoveredIndicatorAction(indicatorNone)
 
 		return
 	}
@@ -95,12 +94,6 @@ func (m *Model) handleMouseHover(ev tea.MouseEvent) {
 		m.setHoveredFooterAction(action)
 	} else {
 		m.setHoveredFooterAction(footerShortcutNone)
-	}
-
-	if action, actionOK := m.indicatorAt(bodyX, bodyY); actionOK {
-		m.setHoveredIndicatorAction(action)
-	} else {
-		m.setHoveredIndicatorAction(indicatorNone)
 	}
 }
 
@@ -426,10 +419,6 @@ func (m *Model) indicatorStartX(indicatorWidth int) int {
 
 func (m *Model) setHoveredFooterAction(action footerShortcutAction) {
 	m.hoverFooterAction = action
-}
-
-func (m *Model) setHoveredIndicatorAction(action indicatorAction) {
-	m.hoverIndicatorAction = action
 }
 
 func (m *Model) footerBodyY() int {

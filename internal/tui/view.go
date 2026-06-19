@@ -105,12 +105,11 @@ func (m *Model) renderIndicators() string {
 	width := m.getWidth()
 
 	key := indicatorCacheKey{
-		width:         width,
-		mode:          m.mode,
-		cwdMode:       m.cwdMode,
-		dedupe:        m.dedupe,
-		failFilter:    m.failFilter,
-		hoveredAction: m.hoverIndicatorAction,
+		width:      width,
+		mode:       m.mode,
+		cwdMode:    m.cwdMode,
+		dedupe:     m.dedupe,
+		failFilter: m.failFilter,
 	}
 	if m.indicatorCache.valid && m.indicatorCache.key == key {
 		return m.indicatorCache.value
@@ -202,15 +201,6 @@ func (m *Model) indicatorPillsWidth(pills []indicatorPill) int {
 }
 
 func (m *Model) renderIndicatorPill(pill indicatorPill) string {
-	if pill.action == m.hoverIndicatorAction && pill.action != indicatorNone {
-		return lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
-			Background(lipgloss.Color("240")).
-			Bold(pill.active).
-			Padding(0, 1).
-			Render(pill.label)
-	}
-
 	if pill.active {
 		return lipgloss.NewStyle().
 			Foreground(lipgloss.Color("0")).
