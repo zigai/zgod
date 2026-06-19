@@ -4,6 +4,7 @@
 export ZGOD_CONFIG={{bashQuote .ConfigPath}}
 {{end}}
 
+__zgod_bin={{bashQuote .BinPath}}
 __zgod_session_id=""
 __zgod_command=""
 __zgod_start_ms=""
@@ -20,7 +21,7 @@ __zgod_last_history_line=""
 __zgod_ready=""
 
 __zgod_has_command() {
-    command -v zgod &>/dev/null
+    [[ -x "$__zgod_bin" ]] || command -v "$__zgod_bin" &>/dev/null
 }
 
 __zgod_init() {
@@ -184,7 +185,7 @@ __zgod_record_command_async() {
         return
     fi
 
-    zgod record \
+    "$__zgod_bin" record \
         --ts "$ts" \
         --exit-code "$exit_code" \
         --command "$command" \
@@ -210,6 +211,9 @@ __zgod_preexec() {
         return
     fi
     if [[ "$BASH_COMMAND" == "__zgod_prompt_command" ]]; then
+        return
+    fi
+    if [[ "$BASH_COMMAND" == "$__zgod_bin" || "$BASH_COMMAND" == "$__zgod_bin "* ]]; then
         return
     fi
     if [[ "$BASH_COMMAND" == "zgod" || "$BASH_COMMAND" == zgod\ * ]]; then
@@ -290,7 +294,7 @@ __zgod_search() {
         return
     fi
     local selected
-    selected=$(zgod search --height 15 --query "$READLINE_LINE" </dev/tty)
+    selected=$("$__zgod_bin" search --height 15 --query "$READLINE_LINE" </dev/tty)
     local rc=$?
     if [[ $rc -eq 2 ]] && [[ -n "$selected" ]]; then
         __zgod_init

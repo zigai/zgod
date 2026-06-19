@@ -183,8 +183,8 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 				"__zgod_has_command()",
 				"if ! __zgod_has_command; then",
 				"__zgod_start_dir",
-				"zgod record",
-				"selected=$(zgod search",
+				"\"$__zgod_bin\" record",
+				"selected=$(\"$__zgod_bin\" search",
 			},
 		},
 		{
@@ -194,8 +194,8 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 				"__zgod_has_command()",
 				"if ! __zgod_has_command; then",
 				"__zgod_start_dir",
-				"zgod record",
-				"selected=$(zgod search",
+				"\"$__zgod_bin\" record",
+				"selected=$(\"$__zgod_bin\" search",
 			},
 		},
 		{
@@ -205,8 +205,8 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 				"function __zgod_has_command",
 				"if not __zgod_has_command",
 				"__zgod_start_dir",
-				"zgod record",
-				"set -l selected (zgod search",
+				"command \"$__zgod_bin\" record",
+				"set -l selected (command \"$__zgod_bin\" search",
 			},
 		},
 		{
@@ -216,8 +216,8 @@ func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
 				"function __zgod_has_command",
 				"if (-not (__zgod_has_command)) {",
 				"$script:__zgod_start_dir",
-				"$psi.FileName = \"zgod\"",
-				"$selected = zgod search",
+				"$psi.FileName = $script:__zgod_bin",
+				"$selected = & $script:__zgod_bin search",
 			},
 		},
 	}
@@ -506,6 +506,8 @@ func TestPowerShellProfilePathDistinguishesWindowsShells(t *testing.T) {
 func TestInstallFishWritesToConfD(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
+	binPath := filepath.Join(home, "bin", "zgod")
+	t.Setenv("ZGOD_BIN", binPath)
 
 	if err := Install(Fish, ""); err != nil {
 		t.Fatalf("Install(Fish) error: %v", err)
@@ -518,7 +520,7 @@ func TestInstallFishWritesToConfD(t *testing.T) {
 		t.Fatalf("ReadFile(%q) error: %v", configPath, err)
 	}
 
-	want := "# zgod shell integration\n" + setupLine(Fish, "") + "\n"
+	want := "# zgod shell integration\n" + setupLineWithBin(Fish, "", binPath) + "\n"
 	if string(content) != want {
 		t.Fatalf("installed config = %q, want %q", string(content), want)
 	}

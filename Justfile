@@ -32,7 +32,28 @@ build:
 
 # Install the binary
 install:
-    go install .
+    #!/usr/bin/env sh
+    set -e
+    target=$(command -v zgod 2>/dev/null || true)
+    gobin=$(go env GOBIN)
+    if [ -z "$gobin" ]; then
+        gobin="$(go env GOPATH)/bin"
+    fi
+    go_target="$gobin/zgod"
+
+    if [ -n "$target" ] && [ -w "$target" ]; then
+        tmp=$(mktemp)
+        trap 'rm -f "$tmp"' EXIT
+        go build -o "$tmp" .
+        install -m 0755 "$tmp" "$target"
+        echo "Installed $target"
+    else
+        go install .
+        echo "Installed $go_target"
+        if [ -n "$target" ] && [ "$target" != "$go_target" ]; then
+            echo "Warning: shell resolves zgod to $target before $go_target" >&2
+        fi
+    fi
 
 # Remove build artifacts
 clean:

@@ -6,6 +6,7 @@ export ZGOD_CONFIG={{zshQuote .ConfigPath}}
 
 zmodload zsh/datetime 2>/dev/null || true
 
+__zgod_bin={{zshQuote .BinPath}}
 __zgod_session_id=""
 __zgod_command=""
 __zgod_start_ms=""
@@ -13,7 +14,7 @@ __zgod_start_dir=""
 
 __zgod_has_command() {
     emulate -L zsh
-    command -v zgod &>/dev/null
+    [[ -x "$__zgod_bin" ]] || command -v "$__zgod_bin" &>/dev/null
 }
 
 __zgod_init() {
@@ -68,7 +69,7 @@ __zgod_precmd() {
         return "$exit_code"
     fi
 
-    zgod record \
+    "$__zgod_bin" record \
         --ts "$__zgod_start_ms" \
         --exit-code "$exit_code" \
         --command "$__zgod_command" \
@@ -88,7 +89,7 @@ __zgod_search_widget() {
         return 0
     fi
     local selected
-    selected=$(zgod search --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
+    selected=$("$__zgod_bin" search --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
     local rc=$?
     if [[ $rc -eq 2 ]] && [[ -n "$selected" ]]; then
         LBUFFER="$selected"

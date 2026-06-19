@@ -26,7 +26,10 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("parsing shell %q: %w", args[0], err)
 		}
 
-		opts := shell.InitOptions{ConfigPath: initConfigPath}
+		opts := shell.InitOptions{
+			ConfigPath: initConfigPath,
+			BinPath:    shell.CurrentExecutablePath(),
+		}
 
 		script, err := shell.InitScript(s, opts)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -19,6 +20,7 @@ var errAlreadyInstalled = errors.New("zgod is already installed")
 
 type InitOptions struct {
 	ConfigPath string
+	BinPath    string
 }
 
 func InitScript(s Shell, opts InitOptions) (string, error) {
@@ -37,6 +39,10 @@ func InitScript(s Shell, opts InitOptions) (string, error) {
 	}).Parse(string(data))
 	if err != nil {
 		return "", fmt.Errorf("parsing template for %s: %w", s, err)
+	}
+
+	if opts.BinPath == "" {
+		opts.BinPath = "zgod"
 	}
 
 	var buf bytes.Buffer
@@ -100,6 +106,52 @@ func configFilePathForHome(home string, s Shell) (string, error) {
 	}
 }
 
+// CurrentExecutablePath returns the executable path shell integrations should run.
+func CurrentExecutablePath() string {
+	const fallback = "zgod"
+
+	if override := os.Getenv("ZGOD_BIN"); override != "" {
+		return absolutePathOrOriginal(override)
+	}
+
+	arg0 := os.Args[0]
+	if arg0 == "" {
+		return fallback
+	}
+
+	if !strings.ContainsRune(arg0, os.PathSeparator) {
+		path, err := exec.LookPath(arg0)
+		if err != nil {
+			return arg0
+		}
+
+		return absolutePathOrOriginal(path)
+	}
+
+	path := absolutePathOrOriginal(arg0)
+	if isGoRunExecutable(path) {
+		return fallback
+	}
+
+	return path
+}
+
+func absolutePathOrOriginal(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+
+	return abs
+}
+
+func isGoRunExecutable(path string) bool {
+	goBuildDir := string(os.PathSeparator) + "go-build"
+	exeDir := string(os.PathSeparator) + "exe" + string(os.PathSeparator)
+
+	return strings.Contains(path, goBuildDir) && strings.Contains(path, exeDir)
+}
+
 func setupLine(s Shell, customConfigPath string) string {
 	shellName := s.String()
 	switch s {
@@ -121,6 +173,50 @@ func setupLine(s Shell, customConfigPath string) string {
 		}
 
 		return fmt.Sprintf(`if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init %s) }`, shellName)
+	}
+
+	return ""
+}
+
+func setupLineWithBin(s Shell, customConfigPath string, binPath string) string {
+	shellName := s.String()
+	switch s {
+	case Bash, Zsh:
+		bin := binPath
+
+		if binPath != "zgod" {
+			bin = bashQuote(binPath)
+		}
+
+		if customConfigPath != "" {
+			return fmt.Sprintf(`if command -v %s >/dev/null 2>&1; then eval "$(%s init %s --config %s)"; fi`, bin, bin, shellName, bashQuote(customConfigPath))
+		}
+
+		return fmt.Sprintf(`if command -v %s >/dev/null 2>&1; then eval "$(%s init %s)"; fi`, bin, bin, shellName)
+	case Fish:
+		bin := binPath
+
+		if binPath != "zgod" {
+			bin = fishQuote(binPath)
+		}
+
+		if customConfigPath != "" {
+			return fmt.Sprintf(`if test -x %s; or type -q %s; %s init %s --config %s | source; end`, bin, bin, bin, shellName, fishQuote(customConfigPath))
+		}
+
+		return fmt.Sprintf(`if test -x %s; or type -q %s; %s init %s | source; end`, bin, bin, bin, shellName)
+	case PowerShell, Pwsh:
+		bin := binPath
+
+		if binPath != "zgod" {
+			bin = powerShellQuote(binPath)
+		}
+
+		if customConfigPath != "" {
+			return fmt.Sprintf(`if ((Test-Path -LiteralPath %s -PathType Leaf) -or (Get-Command %s -ErrorAction SilentlyContinue)) { Invoke-Expression (& %s init %s --config %s) }`, bin, bin, bin, shellName, powerShellQuote(customConfigPath))
+		}
+
+		return fmt.Sprintf(`if ((Test-Path -LiteralPath %s -PathType Leaf) -or (Get-Command %s -ErrorAction SilentlyContinue)) { Invoke-Expression (& %s init %s) }`, bin, bin, bin, shellName)
 	}
 
 	return ""
@@ -207,10 +303,17 @@ func Install(s Shell, customConfigPath string) error {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
-	line := setupLine(s, customConfigPath)
+	line := setupLineWithBin(s, customConfigPath, CurrentExecutablePath())
+	legacyLine := setupLine(s, customConfigPath)
 
 	if err = ensureNoLegacyFishInstall(s, configPath, line); err != nil {
 		return err
+	}
+
+	if legacyLine != line {
+		if err = ensureNoLegacyFishInstall(s, configPath, legacyLine); err != nil {
+			return err
+		}
 	}
 
 	// #nosec G304 -- configPath is derived from known shell config locations
@@ -219,8 +322,21 @@ func Install(s Shell, customConfigPath string) error {
 		return fmt.Errorf("reading config file: %w", err)
 	}
 
-	if strings.Contains(string(content), line) {
+	contentText := string(content)
+	if strings.Contains(contentText, line) {
 		return fmt.Errorf("%w in %s", errAlreadyInstalled, configPath)
+	}
+
+	updated, err := updateSetupLine(configPath, contentText, legacyLine, line)
+	if err != nil {
+		return err
+	}
+
+	if updated {
+		fmt.Printf("Updated zgod in %s\n", configPath)
+		printRestartHint(s, configPath)
+
+		return nil
 	}
 
 	if err = writeSetupLine(configPath, content, line); err != nil {
@@ -228,12 +344,29 @@ func Install(s Shell, customConfigPath string) error {
 	}
 
 	fmt.Printf("Added zgod to %s\n", configPath)
+	printRestartHint(s, configPath)
 
+	return nil
+}
+
+func updateSetupLine(configPath string, contentText string, oldLine string, newLine string) (bool, error) {
+	if oldLine == newLine || !strings.Contains(contentText, oldLine) {
+		return false, nil
+	}
+
+	updated := strings.Replace(contentText, oldLine, newLine, 1)
+	// #nosec G306,G703 -- configPath is derived from known shell config locations
+	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+		return false, fmt.Errorf("updating config file: %w", err)
+	}
+
+	return true, nil
+}
+
+func printRestartHint(s Shell, configPath string) {
 	if s == PowerShell || s == Pwsh {
 		fmt.Println("Restart PowerShell or run: . $PROFILE")
 	} else {
 		fmt.Println("Restart your shell or run: source " + configPath)
 	}
-
-	return nil
 }
