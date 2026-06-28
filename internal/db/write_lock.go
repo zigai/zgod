@@ -18,19 +18,30 @@ type databaseWriteLock struct {
 	file *os.File
 }
 
-func WithDatabaseWriteLock(ctx context.Context, dbPath string, fn func() error) (err error) {
+func WithDatabaseWriteLock(ctx context.Context, dbPath string, fn func() error) error {
 	lock, err := acquireDatabaseWriteLock(ctx, dbPath)
 	if err != nil {
 		return err
 	}
 
-	defer func() {
-		if closeErr := lock.Close(); closeErr != nil {
-			err = errors.Join(err, fmt.Errorf("releasing database write lock: %w", closeErr))
-		}
+	var (
+		fnErr    error
+		closeErr error
+	)
+
+	func() {
+		defer func() {
+			closeErr = lock.Close()
+		}()
+
+		fnErr = fn()
 	}()
 
-	return fn()
+	if closeErr != nil {
+		return errors.Join(fnErr, fmt.Errorf("releasing database write lock: %w", closeErr))
+	}
+
+	return fnErr
 }
 
 func DatabaseWriteLockPath(dbPath string) string {
