@@ -190,9 +190,9 @@ func drainPendingRecordsForSearch(dbPath string) error {
 func openSearchDatabase(dbPath string) (*sql.DB, error) {
 	if _, err := os.Stat(dbPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			database, openErr := db.Open(dbPath)
-			if openErr != nil {
-				return nil, fmt.Errorf("opening search database %q: %w", dbPath, openErr)
+			database, err := db.Open(dbPath)
+			if err != nil {
+				return nil, fmt.Errorf("opening search database %q: %w", dbPath, err)
 			}
 
 			return database, nil

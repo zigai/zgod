@@ -118,9 +118,9 @@ func TestExpandTilde(t *testing.T) {
 		{"relative", "relative"},
 	}
 	for _, tt := range tests {
-		got, expandErr := ExpandTilde(tt.input)
-		if expandErr != nil {
-			t.Fatalf("ExpandTilde(%q) error: %v", tt.input, expandErr)
+		got, err := ExpandTilde(tt.input)
+		if err != nil {
+			t.Fatalf("ExpandTilde(%q) error: %v", tt.input, err)
 		}
 
 		if got != tt.want {

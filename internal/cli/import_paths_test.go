@@ -103,8 +103,8 @@ func TestCommandReferencesExistingPathsRelativePath(t *testing.T) {
 	fileName := "existing.txt"
 
 	filePath := filepath.Join(baseDir, fileName)
-	if writeErr := os.WriteFile(filePath, []byte("ok"), 0o600); writeErr != nil {
-		t.Fatalf("WriteFile() error: %v", writeErr)
+	if err := os.WriteFile(filePath, []byte("ok"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
 	}
 
 	ok, err := commandReferencesExistingPaths("./"+fileName, baseDir)
@@ -121,8 +121,8 @@ func TestCommandReferencesExistingPathsFlagValue(t *testing.T) {
 	baseDir := t.TempDir()
 
 	filePath := filepath.Join(baseDir, "input.txt")
-	if writeErr := os.WriteFile(filePath, []byte("ok"), 0o600); writeErr != nil {
-		t.Fatalf("WriteFile() error: %v", writeErr)
+	if err := os.WriteFile(filePath, []byte("ok"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
 	}
 
 	command := "--input=" + filepath.ToSlash(filePath)
@@ -196,8 +196,8 @@ func TestCommandReferencesExistingPathsSedCommandUsesFileArgument(t *testing.T) 
 	baseDir := t.TempDir()
 
 	filePath := filepath.Join(baseDir, "input.txt")
-	if writeErr := os.WriteFile(filePath, []byte("a\n"), 0o600); writeErr != nil {
-		t.Fatalf("WriteFile() error: %v", writeErr)
+	if err := os.WriteFile(filePath, []byte("a\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
 	}
 
 	ok, err := commandReferencesExistingPaths(`sed 's/a/b/' input.txt`, baseDir)
@@ -265,8 +265,8 @@ func TestCommandReferencesExistingPathsCatBareFileArgument(t *testing.T) {
 	baseDir := t.TempDir()
 
 	filePath := filepath.Join(baseDir, "existing.txt")
-	if writeErr := os.WriteFile(filePath, []byte("ok"), 0o600); writeErr != nil {
-		t.Fatalf("WriteFile() error: %v", writeErr)
+	if err := os.WriteFile(filePath, []byte("ok"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
 	}
 
 	ok, err := commandReferencesExistingPaths("cat existing.txt", baseDir)
@@ -343,8 +343,8 @@ func TestCommandReferencesExistingPathsGlob(t *testing.T) {
 	baseDir := t.TempDir()
 
 	filePath := filepath.Join(baseDir, "sample.log")
-	if writeErr := os.WriteFile(filePath, []byte("ok"), 0o600); writeErr != nil {
-		t.Fatalf("WriteFile() error: %v", writeErr)
+	if err := os.WriteFile(filePath, []byte("ok"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
 	}
 
 	pattern := filepath.Join(baseDir, "*.log")

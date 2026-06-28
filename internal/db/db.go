@@ -152,9 +152,9 @@ func ensureFilePermissions(path string, mode os.FileMode) error {
 			return fmt.Errorf("ensuring database parent directory for %q: %w", path, err)
 		}
 
-		f, createErr := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, mode)
-		if createErr != nil {
-			return fmt.Errorf("creating database file %q: %w", path, createErr)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, mode)
+		if err != nil {
+			return fmt.Errorf("creating database file %q: %w", path, err)
 		}
 
 		err = f.Close()

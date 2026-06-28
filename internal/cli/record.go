@@ -123,15 +123,15 @@ func insertRecordWithRetry(dbPath string, entry db.HistoryEntry) error {
 	defer cancel()
 
 	err := db.WithDatabaseWriteLock(ctx, dbPath, func() error {
-		if drainErr := drainPendingRecordsLocked(dbPath); drainErr != nil {
-			return drainErr
+		if err := drainPendingRecordsLocked(dbPath); err != nil {
+			return err
 		}
 
 		return insertRecordWithRetryLocked(dbPath, entry)
 	})
 	if isRecordWriterContention(err) {
-		if queueErr := queuePendingRecord(dbPath, entry); queueErr != nil {
-			return fmt.Errorf("queueing history record after writer contention: %w", queueErr)
+		if err := queuePendingRecord(dbPath, entry); err != nil {
+			return fmt.Errorf("queueing history record after writer contention: %w", err)
 		}
 
 		return nil

@@ -223,9 +223,9 @@ func TestFetchCandidatesFailFilterModes(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, fetchErr := repo.FetchCandidates(100, tc.dedupe, tc.mode)
-			if fetchErr != nil {
-				t.Fatalf("FetchCandidates() error: %v", fetchErr)
+			got, err := repo.FetchCandidates(100, tc.dedupe, tc.mode)
+			if err != nil {
+				t.Fatalf("FetchCandidates() error: %v", err)
 			}
 
 			if len(got) != tc.wantLength {

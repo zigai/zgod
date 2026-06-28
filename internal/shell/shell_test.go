@@ -555,8 +555,8 @@ func TestInstallFishDetectsLegacyConfigFishInstall(t *testing.T) {
 	}
 
 	configPath := filepath.Join(home, ".config", "fish", "conf.d", "zgod.fish")
-	if _, statErr := os.Stat(configPath); !os.IsNotExist(statErr) {
-		t.Fatalf("new fish config should not be created, stat err = %v", statErr)
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("new fish config should not be created, stat err = %v", err)
 	}
 }
 

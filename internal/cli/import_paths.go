@@ -54,14 +54,14 @@ func commandReferencesExistingPathsWithMatcher(
 	}
 
 	for _, candidate := range pathCandidates {
-		resolvedPath, resolveErr := resolveCommandPath(candidate.value, workingDirectory)
-		if resolveErr != nil {
-			return false, fmt.Errorf("resolving path candidate %q: %w", candidate.value, resolveErr)
+		resolvedPath, err := resolveCommandPath(candidate.value, workingDirectory)
+		if err != nil {
+			return false, fmt.Errorf("resolving path candidate %q: %w", candidate.value, err)
 		}
 
-		exists, existsErr := matchesRequirement(resolvedPath, candidate.requirement)
-		if existsErr != nil {
-			return false, fmt.Errorf("checking path candidate %q: %w", candidate.value, existsErr)
+		exists, err := matchesRequirement(resolvedPath, candidate.requirement)
+		if err != nil {
+			return false, fmt.Errorf("checking path candidate %q: %w", candidate.value, err)
 		}
 
 		if !exists {

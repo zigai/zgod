@@ -135,18 +135,16 @@ func runImport(cmd *cobra.Command, args []string) error {
 	var summary importSummary
 
 	err = db.WithDatabaseWriteLock(context.Background(), targetPath, func() error {
-		targetDB, openErr := openImportTargetDatabase(targetPath)
-		if openErr != nil {
-			return openErr
+		targetDB, err := openImportTargetDatabase(targetPath)
+		if err != nil {
+			return err
 		}
 
 		defer func() { _ = targetDB.Close() }()
 
-		var importErr error
+		summary, err = importSourceHistoryEntries(targetDB, sourceDB, opts)
 
-		summary, importErr = importSourceHistoryEntries(targetDB, sourceDB, opts)
-
-		return importErr
+		return err
 	})
 	if err != nil {
 		return fmt.Errorf("locking target database for import: %w", err)

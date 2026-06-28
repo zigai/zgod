@@ -23,8 +23,8 @@ func TestImportHistoryEntriesImportsValidSedCommandWithExistingInputFile(t *test
 	workingDirectory := t.TempDir()
 
 	inputPath := filepath.Join(workingDirectory, "file.txt")
-	if writeErr := os.WriteFile(inputPath, []byte("a\n"), 0o600); writeErr != nil {
-		t.Fatalf("WriteFile() error: %v", writeErr)
+	if err := os.WriteFile(inputPath, []byte("a\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
 	}
 
 	entry := db.HistoryEntry{
@@ -379,8 +379,8 @@ func TestOpenImportDatabasesDoesNotCreateTargetForInvalidSource(t *testing.T) {
 		t.Fatal("openImportDatabases() error = nil, want invalid source error")
 	}
 
-	if _, statErr := os.Stat(targetPath); !os.IsNotExist(statErr) {
-		t.Fatalf("target database should not be created, stat err = %v", statErr)
+	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+		t.Fatalf("target database should not be created, stat err = %v", err)
 	}
 }
 
