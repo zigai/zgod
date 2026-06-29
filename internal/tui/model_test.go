@@ -244,9 +244,9 @@ func TestHandleToggleFailsCyclesFailFilterModesAndReloadsEntries(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	entries := []db.HistoryEntry{
-		{TSMs: 1000, ExitCode: 0, Command: "echo ok one"},
-		{TSMs: 2000, ExitCode: 1, Command: "echo fail"},
-		{TSMs: 3000, ExitCode: 0, Command: "echo ok two"},
+		{TimestampMS: 1000, ExitCode: 0, Command: "echo ok one"},
+		{TimestampMS: 2000, ExitCode: 1, Command: "echo fail"},
+		{TimestampMS: 3000, ExitCode: 0, Command: "echo ok two"},
 	}
 
 	for _, entry := range entries {
@@ -309,8 +309,8 @@ func TestNewModelUsesConfiguredDefaultFailFilter(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	entries := []db.HistoryEntry{
-		{TSMs: 1000, ExitCode: 0, Command: "echo ok"},
-		{TSMs: 2000, ExitCode: 1, Command: "echo fail"},
+		{TimestampMS: 1000, ExitCode: 0, Command: "echo ok"},
+		{TimestampMS: 2000, ExitCode: 1, Command: "echo fail"},
 	}
 
 	for _, entry := range entries {
@@ -352,8 +352,8 @@ func TestNewModelAppliesCWDFilterBeforeDedupe(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	entries := []db.HistoryEntry{
-		{TSMs: 1000, Command: "repeat", Directory: "/repo"},
-		{TSMs: 2000, Command: "repeat", Directory: "/elsewhere"},
+		{TimestampMS: 1000, Command: "repeat", Directory: "/repo"},
+		{TimestampMS: 2000, Command: "repeat", Directory: "/elsewhere"},
 	}
 
 	for _, entry := range entries {
@@ -386,14 +386,14 @@ func TestNewModelSearchesBeyondTenThousandEntries(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	repo := db.NewHistoryRepo(database)
-	if _, err = repo.Insert(db.HistoryEntry{TSMs: 1, Command: "old unique target"}); err != nil {
+	if _, err = repo.Insert(db.HistoryEntry{TimestampMS: 1, Command: "old unique target"}); err != nil {
 		t.Fatalf("repo.Insert(old target) error: %v", err)
 	}
 
 	for i := range 10000 {
 		entry := db.HistoryEntry{
-			TSMs:    int64(i + 2),
-			Command: "newer filler command",
+			TimestampMS: int64(i + 2),
+			Command:     "newer filler command",
 		}
 		if _, err = repo.Insert(entry); err != nil {
 			t.Fatalf("repo.Insert(filler %d) error: %v", i, err)
@@ -427,7 +427,7 @@ func TestHistoryLoadsInLimitedBatchThenFullSet(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	for i, command := range []string{"old target", "middle command", "new command"} {
-		if _, err = repo.Insert(db.HistoryEntry{TSMs: int64(i + 1), Command: command}); err != nil {
+		if _, err = repo.Insert(db.HistoryEntry{TimestampMS: int64(i + 1), Command: command}); err != nil {
 			t.Fatalf("repo.Insert(%q) error: %v", command, err)
 		}
 	}
@@ -484,7 +484,7 @@ func TestInitialQueryDefersFallbackUntilFullHistoryLoads(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	for i, command := range []string{"old unique target", "new filler", "newer filler"} {
-		if _, err = repo.Insert(db.HistoryEntry{TSMs: int64(i + 1), Command: command}); err != nil {
+		if _, err = repo.Insert(db.HistoryEntry{TimestampMS: int64(i + 1), Command: command}); err != nil {
 			t.Fatalf("repo.Insert(%q) error: %v", command, err)
 		}
 	}
@@ -542,7 +542,7 @@ func TestLimitedBatchCompletesWhenFewerThanLimitLoaded(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	for i, command := range []string{"one", "two", "three"} {
-		if _, err = repo.Insert(db.HistoryEntry{TSMs: int64(i + 1), Command: command}); err != nil {
+		if _, err = repo.Insert(db.HistoryEntry{TimestampMS: int64(i + 1), Command: command}); err != nil {
 			t.Fatalf("repo.Insert(%q) error: %v", command, err)
 		}
 	}
@@ -580,7 +580,7 @@ func TestApplyLoadedEntriesSearchesCollapsedMultilineCommands(t *testing.T) {
 	}
 
 	m.applyLoadedEntries([]db.HistoryEntry{
-		{ID: 1, TSMs: 1000, Command: "echo foo\nbar"},
+		{ID: 1, TimestampMS: 1000, Command: "echo foo\nbar"},
 	}, nil, true)
 
 	if len(m.displayEntries) != 1 {
@@ -665,7 +665,7 @@ func testFuzzySearchModel(entryCount int, query string) *Model {
 			command = "git checkout target"
 		}
 
-		m.allEntries[i] = db.HistoryEntry{TSMs: int64(i), Command: command}
+		m.allEntries[i] = db.HistoryEntry{TimestampMS: int64(i), Command: command}
 		m.candidates[i] = command
 	}
 

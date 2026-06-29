@@ -28,13 +28,13 @@ func TestImportHistoryEntriesImportsValidSedCommandWithExistingInputFile(t *test
 	}
 
 	entry := db.HistoryEntry{
-		TSMs:      1,
-		Duration:  10,
-		ExitCode:  0,
-		Command:   `sed 's/a/b/' file.txt`,
-		Directory: workingDirectory,
-		SessionID: "session-1",
-		Hostname:  "host-1",
+		TimestampMS: 1,
+		DurationMS:  10,
+		ExitCode:    0,
+		Command:     `sed 's/a/b/' file.txt`,
+		Directory:   workingDirectory,
+		SessionID:   "session-1",
+		Hostname:    "host-1",
 	}
 
 	summary, err := importHistoryEntries(database, []db.HistoryEntry{entry})
@@ -79,9 +79,9 @@ func TestImportHistoryEntriesAllowsBareCreatorTargets(t *testing.T) {
 	workingDirectory := t.TempDir()
 
 	entries := []db.HistoryEntry{
-		{TSMs: 1, Command: "touch new.txt", Directory: workingDirectory},
-		{TSMs: 2, Command: "mkdir out", Directory: workingDirectory},
-		{TSMs: 3, Command: "echo README.md", Directory: workingDirectory},
+		{TimestampMS: 1, Command: "touch new.txt", Directory: workingDirectory},
+		{TimestampMS: 2, Command: "mkdir out", Directory: workingDirectory},
+		{TimestampMS: 3, Command: "echo README.md", Directory: workingDirectory},
 	}
 
 	summary, err := importHistoryEntries(database, entries)
@@ -126,8 +126,8 @@ func TestImportHistoryEntriesSkipsMissingRequiredPaths(t *testing.T) {
 	workingDirectory := t.TempDir()
 
 	entries := []db.HistoryEntry{
-		{TSMs: 1, Command: "cd missing", Directory: workingDirectory},
-		{TSMs: 2, Command: `sed 's/a/b/' missing.txt`, Directory: workingDirectory},
+		{TimestampMS: 1, Command: "cd missing", Directory: workingDirectory},
+		{TimestampMS: 2, Command: `sed 's/a/b/' missing.txt`, Directory: workingDirectory},
 	}
 
 	summary, err := importHistoryEntries(database, entries)
@@ -159,13 +159,13 @@ func TestImportHistoryEntriesCountsDuplicateSourceRows(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	entry := db.HistoryEntry{
-		TSMs:      1000,
-		Duration:  10,
-		ExitCode:  0,
-		Command:   "echo duplicate",
-		Directory: "/tmp",
-		SessionID: "session-1",
-		Hostname:  "host-1",
+		TimestampMS: 1000,
+		DurationMS:  10,
+		ExitCode:    0,
+		Command:     "echo duplicate",
+		Directory:   "/tmp",
+		SessionID:   "session-1",
+		Hostname:    "host-1",
 	}
 
 	summary, err := importHistoryEntries(database, []db.HistoryEntry{entry, entry})
@@ -209,13 +209,13 @@ func TestImportHistoryEntriesCountsExistingTargetRowsAsDuplicates(t *testing.T) 
 
 	repo := db.NewHistoryRepo(database)
 	existing := db.HistoryEntry{
-		TSMs:      1000,
-		Duration:  10,
-		ExitCode:  0,
-		Command:   "echo already imported",
-		Directory: "/tmp",
-		SessionID: "session-1",
-		Hostname:  "host-1",
+		TimestampMS: 1000,
+		DurationMS:  10,
+		ExitCode:    0,
+		Command:     "echo already imported",
+		Directory:   "/tmp",
+		SessionID:   "session-1",
+		Hostname:    "host-1",
 	}
 
 	if _, err = repo.Insert(existing); err != nil {
@@ -256,8 +256,8 @@ func TestImportHistoryEntriesUpdatesLatestCommandForNewestStagedRow(t *testing.T
 	defer func() { _ = database.Close() }()
 
 	entries := []db.HistoryEntry{
-		{TSMs: 1000, Command: "repeat", Directory: "/old"},
-		{TSMs: 2000, Command: "repeat", Directory: "/new"},
+		{TimestampMS: 1000, Command: "repeat", Directory: "/old"},
+		{TimestampMS: 2000, Command: "repeat", Directory: "/new"},
 	}
 
 	summary, err := importHistoryEntries(database, entries)
@@ -270,17 +270,17 @@ func TestImportHistoryEntriesUpdatesLatestCommandForNewestStagedRow(t *testing.T
 	}
 
 	var (
-		tsMs      int64
-		directory string
+		timestampMS int64
+		directory   string
 	)
 
 	row := database.QueryRowContext(context.Background(), `SELECT ts_ms, directory FROM latest_command WHERE command = ?`, "repeat")
-	if err = row.Scan(&tsMs, &directory); err != nil {
+	if err = row.Scan(&timestampMS, &directory); err != nil {
 		t.Fatalf("reading latest_command: %v", err)
 	}
 
-	if tsMs != 2000 || directory != "/new" {
-		t.Fatalf("latest_command = (%d, %q), want (2000, /new)", tsMs, directory)
+	if timestampMS != 2000 || directory != "/new" {
+		t.Fatalf("latest_command = (%d, %q), want (2000, /new)", timestampMS, directory)
 	}
 }
 
@@ -296,9 +296,9 @@ func TestImportHistoryEntriesFiltersBeforeStaging(t *testing.T) {
 
 	workingDirectory := t.TempDir()
 	entries := []db.HistoryEntry{
-		{TSMs: 1, ExitCode: 1, Command: "echo failed", Directory: workingDirectory},
-		{TSMs: 2, Command: "cat missing.txt", Directory: workingDirectory},
-		{TSMs: 3, Command: "echo imported", Directory: workingDirectory},
+		{TimestampMS: 1, ExitCode: 1, Command: "echo failed", Directory: workingDirectory},
+		{TimestampMS: 2, Command: "cat missing.txt", Directory: workingDirectory},
+		{TimestampMS: 3, Command: "echo imported", Directory: workingDirectory},
 	}
 
 	summary, err := importHistoryEntries(database, entries)
@@ -334,7 +334,7 @@ func TestOpenImportDatabasesReadableSourceDoesNotRequireAuth(t *testing.T) {
 	}
 
 	sourceRepo := db.NewHistoryRepo(sourceDB)
-	if _, err = sourceRepo.Insert(db.HistoryEntry{TSMs: 1000, Command: "echo imported"}); err != nil {
+	if _, err = sourceRepo.Insert(db.HistoryEntry{TimestampMS: 1000, Command: "echo imported"}); err != nil {
 		_ = sourceDB.Close()
 
 		t.Fatalf("Insert(source) error: %v", err)

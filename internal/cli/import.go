@@ -559,8 +559,8 @@ func stageImportEntryTx(ctx context.Context, tx *sql.Tx, entry db.HistoryEntry) 
 		   ts_ms, duration, exit_code, command, directory, session_id, hostname
 		 )
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		entry.TSMs,
-		entry.Duration,
+		entry.TimestampMS,
+		entry.DurationMS,
 		entry.ExitCode,
 		entry.Command,
 		entry.Directory,

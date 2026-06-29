@@ -24,7 +24,7 @@ var (
 )
 
 const (
-	sqliteBusyTimeoutMs           = 2000
+	sqliteBusyTimeoutMS           = 2000
 	sqliteJournalModeRetryCount   = 3
 	sqliteJournalModeRetryBackoff = 100 * time.Millisecond
 )
@@ -131,7 +131,7 @@ func sqliteDSN(dbPath string, opts sqliteDSNOptions) (string, error) {
 		query.Add("_pragma", "query_only(ON)")
 	}
 
-	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", sqliteBusyTimeoutMs))
+	query.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", sqliteBusyTimeoutMS))
 	query.Add("_pragma", "foreign_keys(ON)")
 
 	if opts.synchronous != "" {

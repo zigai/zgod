@@ -35,7 +35,7 @@ func TestOpenSearchDatabaseReadsExistingDatabase(t *testing.T) {
 	}
 
 	repo := db.NewHistoryRepo(database)
-	if _, err = repo.Insert(db.HistoryEntry{TSMs: 1000, Command: "echo ok"}); err != nil {
+	if _, err = repo.Insert(db.HistoryEntry{TimestampMS: 1000, Command: "echo ok"}); err != nil {
 		t.Fatalf("repo.Insert() error: %v", err)
 	}
 
@@ -117,13 +117,13 @@ func TestDrainPendingRecordsForSearchFlushesQueuedRecords(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "history.db")
 
 	queued := db.HistoryEntry{
-		TSMs:      1234,
-		Duration:  56,
-		ExitCode:  7,
-		Command:   "queued for search",
-		Directory: "/tmp",
-		SessionID: "session-1",
-		Hostname:  "host-1",
+		TimestampMS: 1234,
+		DurationMS:  56,
+		ExitCode:    7,
+		Command:     "queued for search",
+		Directory:   "/tmp",
+		SessionID:   "session-1",
+		Hostname:    "host-1",
 	}
 	if err := queuePendingRecord(dbPath, queued); err != nil {
 		t.Fatalf("queuePendingRecord() error: %v", err)

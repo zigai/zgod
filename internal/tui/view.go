@@ -528,8 +528,8 @@ func (m *Model) renderResultLineContent(entryIdx int, entry history.ScoredEntry,
 	exitStyle, metaStyle := m.resultMetaStyles(entry.Entry.ExitCode, fullLineBg, selBg)
 
 	exitStyled := exitStyle.Render(formatExit(entry.Entry.ExitCode, layout.exitWidth))
-	durStyled := metaStyle.Render(formatDuration(entry.Entry.Duration, m.cfg.Display.DurationFormat, layout.durWidth))
-	timeStyled := metaStyle.Render(formatWhenAt(entry.Entry.TSMs, m.cfg.Display.TimeFormat, layout.timeWidth, now))
+	durStyled := metaStyle.Render(formatDuration(entry.Entry.DurationMS, m.cfg.Display.DurationFormat, layout.durWidth))
+	timeStyled := metaStyle.Render(formatWhenAt(entry.Entry.TimestampMS, m.cfg.Display.TimeFormat, layout.timeWidth, now))
 	cmdStyled := padRenderedCell(renderedCmd, layout.cmdWidth, lipgloss.Width(cmd), fullLineBg, selBg)
 
 	styledSep := layout.sep
@@ -692,8 +692,8 @@ func (m *Model) renderExpandedFirstLineAt(entry *history.ScoredEntry, layout res
 	}
 
 	exitStyled := exitStyle.Render(formatExit(entry.Entry.ExitCode, layout.exitWidth))
-	durStyled := metaStyle.Render(formatDuration(entry.Entry.Duration, m.cfg.Display.DurationFormat, layout.durWidth))
-	timeStyled := metaStyle.Render(formatWhenAt(entry.Entry.TSMs, m.cfg.Display.TimeFormat, layout.timeWidth, now))
+	durStyled := metaStyle.Render(formatDuration(entry.Entry.DurationMS, m.cfg.Display.DurationFormat, layout.durWidth))
+	timeStyled := metaStyle.Render(formatWhenAt(entry.Entry.TimestampMS, m.cfg.Display.TimeFormat, layout.timeWidth, now))
 	cmdStyled := padRenderedCell(renderedCmd, layout.cmdWidth, lipgloss.Width(cmdLine), fullLineBg, selBg)
 
 	styledSep := layout.sep
@@ -1547,16 +1547,16 @@ func formatExit(code int, width int) string {
 	return padLeftASCII(strconv.Itoa(code), width)
 }
 
-func formatDuration(ms int64, mode string, width int) string {
+func formatDuration(durationMS int64, mode string, width int) string {
 	var s string
 
 	switch mode {
 	case "ms":
-		s = strconv.FormatInt(ms, 10) + "ms"
+		s = strconv.FormatInt(durationMS, 10) + "ms"
 	case "s":
-		s = strconv.FormatFloat(float64(ms)/1000.0, 'f', 2, 64) + "s"
+		s = strconv.FormatFloat(float64(durationMS)/1000.0, 'f', 2, 64) + "s"
 	default:
-		s = humanDuration(ms)
+		s = humanDuration(durationMS)
 	}
 
 	if len(s) > width {
@@ -1566,13 +1566,13 @@ func formatDuration(ms int64, mode string, width int) string {
 	return padLeftASCII(s, width)
 }
 
-func formatWhenAt(tsMs int64, mode string, width int, now time.Time) string {
-	tsMs = normalizeTimestampMs(tsMs)
-	if tsMs <= 0 {
+func formatWhenAt(timestampMS int64, mode string, width int, now time.Time) string {
+	timestampMS = normalizeTimestampMS(timestampMS)
+	if timestampMS <= 0 {
 		return padLeftASCII("n/a", width)
 	}
 
-	t := time.UnixMilli(tsMs)
+	t := time.UnixMilli(timestampMS)
 
 	var s string
 
@@ -1590,24 +1590,24 @@ func formatWhenAt(tsMs int64, mode string, width int, now time.Time) string {
 	return padLeftASCII(s, width)
 }
 
-func humanDuration(ms int64) string {
-	if ms < 1000 {
-		return strconv.FormatInt(ms, 10) + "ms"
+func humanDuration(durationMS int64) string {
+	if durationMS < 1000 {
+		return strconv.FormatInt(durationMS, 10) + "ms"
 	}
 
-	sec := float64(ms) / 1000.0
-	if sec < 60 {
-		return strconv.FormatFloat(sec, 'f', 1, 64) + "s"
+	seconds := float64(durationMS) / 1000.0
+	if seconds < 60 {
+		return strconv.FormatFloat(seconds, 'f', 1, 64) + "s"
 	}
 
-	minutes := sec / 60.0
+	minutes := seconds / 60.0
 	if minutes < 60 {
 		return strconv.FormatFloat(minutes, 'f', 1, 64) + "m"
 	}
 
-	h := minutes / 60.0
+	hours := minutes / 60.0
 
-	return strconv.FormatFloat(h, 'f', 1, 64) + "h"
+	return strconv.FormatFloat(hours, 'f', 1, 64) + "h"
 }
 
 func humanSince(d time.Duration) string {
@@ -1655,26 +1655,26 @@ func safeSub(a, b time.Time) time.Duration {
 	return d
 }
 
-func normalizeTimestampMs(tsMs int64) int64 {
-	if tsMs <= 0 {
-		return tsMs
+func normalizeTimestampMS(timestampMS int64) int64 {
+	if timestampMS <= 0 {
+		return timestampMS
 	}
 
-	nowMs := time.Now().UnixMilli()
-	if tsMs > nowMs*1000 {
-		if tsMs > nowMs*1_000_000 {
-			tsMs /= 1_000_000
+	nowMS := time.Now().UnixMilli()
+	if timestampMS > nowMS*1000 {
+		if timestampMS > nowMS*1_000_000 {
+			timestampMS /= 1_000_000
 		} else {
-			tsMs /= 1000
+			timestampMS /= 1000
 		}
 	}
 
-	maxUnixMs := int64(math.MaxInt64) / int64(time.Millisecond)
-	if tsMs > maxUnixMs {
-		return nowMs
+	maxUnixMS := int64(math.MaxInt64) / int64(time.Millisecond)
+	if timestampMS > maxUnixMS {
+		return nowMS
 	}
 
-	return tsMs
+	return timestampMS
 }
 
 func trimToWidth(s string, width int) string {

@@ -8,14 +8,14 @@ import (
 )
 
 type HistoryEntry struct {
-	ID        int64
-	TSMs      int64
-	Duration  int64
-	ExitCode  int
-	Command   string
-	Directory string
-	SessionID string
-	Hostname  string
+	ID          int64
+	TimestampMS int64
+	DurationMS  int64
+	ExitCode    int
+	Command     string
+	Directory   string
+	SessionID   string
+	Hostname    string
 }
 
 type HistoryRepo struct {
@@ -40,7 +40,7 @@ func (r *HistoryRepo) Insert(entry HistoryEntry) (int64, error) {
 		ctx,
 		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		entry.TSMs, entry.Duration, entry.ExitCode, entry.Command,
+		entry.TimestampMS, entry.DurationMS, entry.ExitCode, entry.Command,
 		entry.Directory, entry.SessionID, entry.Hostname,
 	)
 	if err != nil {
@@ -165,7 +165,7 @@ func (r *HistoryRepo) ForEach(ctx context.Context, visit func(HistoryEntry) erro
 	for rows.Next() {
 		var e HistoryEntry
 
-		err = rows.Scan(&e.ID, &e.TSMs, &e.Duration, &e.ExitCode,
+		err = rows.Scan(&e.ID, &e.TimestampMS, &e.DurationMS, &e.ExitCode,
 			&e.Command, &e.Directory, &e.SessionID, &e.Hostname)
 		if err != nil {
 			return fmt.Errorf("scanning history row: %w", err)
@@ -353,15 +353,15 @@ func InsertIfNotExistsTx(tx *sql.Tx, entry HistoryEntry) (bool, error) {
 		     AND session_id = ?
 		     AND hostname = ?
 		 )`,
-		entry.TSMs,
-		entry.Duration,
+		entry.TimestampMS,
+		entry.DurationMS,
 		entry.ExitCode,
 		entry.Command,
 		entry.Directory,
 		entry.SessionID,
 		entry.Hostname,
-		entry.TSMs,
-		entry.Duration,
+		entry.TimestampMS,
+		entry.DurationMS,
 		entry.ExitCode,
 		entry.Command,
 		entry.Directory,
@@ -407,8 +407,8 @@ func upsertLatestCommandTx(ctx context.Context, tx *sql.Tx, entry HistoryEntry) 
 		    OR (excluded.ts_ms = latest_command.ts_ms AND excluded.history_id > latest_command.history_id)`,
 		entry.Command,
 		entry.ID,
-		entry.TSMs,
-		entry.Duration,
+		entry.TimestampMS,
+		entry.DurationMS,
 		entry.ExitCode,
 		entry.Directory,
 	)
@@ -463,7 +463,7 @@ func scanCandidateEntries(rows *sql.Rows) ([]HistoryEntry, error) {
 	for rows.Next() {
 		var e HistoryEntry
 
-		err := rows.Scan(&e.ID, &e.TSMs, &e.Duration, &e.ExitCode, &e.Command, &e.Directory)
+		err := rows.Scan(&e.ID, &e.TimestampMS, &e.DurationMS, &e.ExitCode, &e.Command, &e.Directory)
 		if err != nil {
 			return nil, fmt.Errorf("scanning history candidate row: %w", err)
 		}
@@ -485,7 +485,7 @@ func scanEntries(rows *sql.Rows) ([]HistoryEntry, error) {
 	for rows.Next() {
 		var e HistoryEntry
 
-		err := rows.Scan(&e.ID, &e.TSMs, &e.Duration, &e.ExitCode,
+		err := rows.Scan(&e.ID, &e.TimestampMS, &e.DurationMS, &e.ExitCode,
 			&e.Command, &e.Directory, &e.SessionID, &e.Hostname)
 		if err != nil {
 			return nil, fmt.Errorf("scanning history row: %w", err)

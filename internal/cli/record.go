@@ -29,13 +29,13 @@ var recordCmd = &cobra.Command{
 }
 
 const (
-	recordMsPerSecond           int64 = 1000
-	recordUnixMillisCutoffValue int64 = 1_000_000_000_000
-	recordBusyRetryAttempts           = 5
-	recordBusyRetryBackoff            = 250 * time.Millisecond
-	recordPendingNameAttempts         = 100
-	recordPendingFileExtension        = ".json"
-	recordPendingTempPrefix           = ".tmp-"
+	recordMillisecondsPerSecond       int64 = 1000
+	recordUnixMillisecondsCutoffValue int64 = 1_000_000_000_000
+	recordBusyRetryAttempts                 = 5
+	recordBusyRetryBackoff                  = 250 * time.Millisecond
+	recordPendingNameAttempts               = 100
+	recordPendingFileExtension              = ".json"
+	recordPendingTempPrefix                 = ".tmp-"
 )
 
 var (
@@ -44,13 +44,13 @@ var (
 )
 
 type pendingHistoryRecord struct {
-	TSMs      int64  `json:"tsMs"`
-	Duration  int64  `json:"duration"`
-	ExitCode  int    `json:"exitCode"`
-	Command   string `json:"command"`
-	Directory string `json:"directory"`
-	SessionID string `json:"sessionId"`
-	Hostname  string `json:"hostname"`
+	TimestampMS int64  `json:"tsMs"`
+	DurationMS  int64  `json:"duration"`
+	ExitCode    int    `json:"exitCode"`
+	Command     string `json:"command"`
+	Directory   string `json:"directory"`
+	SessionID   string `json:"sessionId"`
+	Hostname    string `json:"hostname"`
 }
 
 func registerRecordCommand() {
@@ -95,20 +95,20 @@ func runRecord(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolving database path: %w", err)
 	}
 
-	nowMs := time.Now().UnixMilli()
-	ts, duration := parseRecordTiming(cmd, nowMs)
+	nowMS := time.Now().UnixMilli()
+	timestampMS, durationMS := parseRecordTimingMS(cmd, nowMS)
 	sessionID, _ := cmd.Flags().GetString("session")
 	hostname := getHostname()
 
 	entry := db.HistoryEntry{
-		ID:        0,
-		TSMs:      ts,
-		Duration:  duration,
-		ExitCode:  exitCode,
-		Command:   command,
-		Directory: directory,
-		SessionID: sessionID,
-		Hostname:  hostname,
+		ID:          0,
+		TimestampMS: timestampMS,
+		DurationMS:  durationMS,
+		ExitCode:    exitCode,
+		Command:     command,
+		Directory:   directory,
+		SessionID:   sessionID,
+		Hostname:    hostname,
 	}
 
 	if err = insertRecordWithRetry(dbPath, entry); err != nil {
@@ -233,7 +233,7 @@ func queuePendingRecord(dbPath string, entry db.HistoryEntry) error {
 func pendingRecordFileName(entry db.HistoryEntry, attempt int) string {
 	return fmt.Sprintf(
 		"%020d-%d-%d-%02d%s",
-		entry.TSMs,
+		entry.TimestampMS,
 		os.Getpid(),
 		time.Now().UnixNano(),
 		attempt,
@@ -319,26 +319,26 @@ func flushPendingRecordLocked(dbPath string, path string) error {
 
 func newPendingHistoryRecord(entry db.HistoryEntry) pendingHistoryRecord {
 	return pendingHistoryRecord{
-		TSMs:      entry.TSMs,
-		Duration:  entry.Duration,
-		ExitCode:  entry.ExitCode,
-		Command:   entry.Command,
-		Directory: entry.Directory,
-		SessionID: entry.SessionID,
-		Hostname:  entry.Hostname,
+		TimestampMS: entry.TimestampMS,
+		DurationMS:  entry.DurationMS,
+		ExitCode:    entry.ExitCode,
+		Command:     entry.Command,
+		Directory:   entry.Directory,
+		SessionID:   entry.SessionID,
+		Hostname:    entry.Hostname,
 	}
 }
 
 func (r pendingHistoryRecord) historyEntry() db.HistoryEntry {
 	return db.HistoryEntry{
-		ID:        0,
-		TSMs:      r.TSMs,
-		Duration:  r.Duration,
-		ExitCode:  r.ExitCode,
-		Command:   r.Command,
-		Directory: r.Directory,
-		SessionID: r.SessionID,
-		Hostname:  r.Hostname,
+		ID:          0,
+		TimestampMS: r.TimestampMS,
+		DurationMS:  r.DurationMS,
+		ExitCode:    r.ExitCode,
+		Command:     r.Command,
+		Directory:   r.Directory,
+		SessionID:   r.SessionID,
+		Hostname:    r.Hostname,
 	}
 }
 
@@ -357,20 +357,20 @@ func shouldRecordCommand(cfg config.Config, command string, exitCode int, direct
 	return filter.ShouldRecord(command, exitCode, directory), nil
 }
 
-func parseRecordTiming(cmd *cobra.Command, nowMs int64) (int64, int64) {
+func parseRecordTimingMS(cmd *cobra.Command, nowMS int64) (int64, int64) {
 	tsStr, _ := cmd.Flags().GetString("ts")
-	ts := parseTimestamp(tsStr, nowMs)
+	timestampMS := parseTimestampMS(tsStr, nowMS)
 
-	duration, _ := cmd.Flags().GetInt64("duration")
-	if duration < 0 && ts > 0 && ts < nowMs {
-		duration = nowMs - ts
+	durationMS, _ := cmd.Flags().GetInt64("duration")
+	if durationMS < 0 && timestampMS > 0 && timestampMS < nowMS {
+		durationMS = nowMS - timestampMS
 	}
 
-	if duration < 0 {
-		duration = 0
+	if durationMS < 0 {
+		durationMS = 0
 	}
 
-	return ts, duration
+	return timestampMS, durationMS
 }
 
 func getHostname() string {
@@ -378,29 +378,29 @@ func getHostname() string {
 	return h
 }
 
-// parseTimestamp parses a timestamp string into milliseconds.
+// parseTimestampMS parses a timestamp string into milliseconds.
 // Accepts: "now", milliseconds (13 digits), seconds (10 digits), or seconds with "s" suffix.
-func parseTimestamp(s string, nowMs int64) int64 {
+func parseTimestampMS(s string, nowMS int64) int64 {
 	if s == "" || s == "now" {
-		return nowMs
+		return nowMS
 	}
 
 	if len(s) > 1 && s[len(s)-1] == 's' {
 		sec, err := strconv.ParseInt(s[:len(s)-1], 10, 64)
 		if err != nil {
-			return nowMs
+			return nowMS
 		}
 
-		return sec * recordMsPerSecond
+		return sec * recordMillisecondsPerSecond
 	}
 
 	val, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		return nowMs
+		return nowMS
 	}
 
-	if val < recordUnixMillisCutoffValue {
-		return val * recordMsPerSecond
+	if val < recordUnixMillisecondsCutoffValue {
+		return val * recordMillisecondsPerSecond
 	}
 
 	return val

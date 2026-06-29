@@ -23,11 +23,11 @@ func BenchmarkNewModelStartup(b *testing.B) {
 
 	for i := range 50_000 {
 		entry := db.HistoryEntry{
-			TSMs:      int64(i + 1),
-			Duration:  int64(i % 10_000),
-			ExitCode:  i % 3,
-			Command:   fmt.Sprintf("echo repeated command %05d", i%10_000),
-			Directory: fmt.Sprintf("/repo/%02d", i%25),
+			TimestampMS: int64(i + 1),
+			DurationMS:  int64(i % 10_000),
+			ExitCode:    i % 3,
+			Command:     fmt.Sprintf("echo repeated command %05d", i%10_000),
+			Directory:   fmt.Sprintf("/repo/%02d", i%25),
 		}
 		if _, err = repo.Insert(entry); err != nil {
 			b.Fatalf("repo.Insert(%d) error: %v", i, err)

@@ -46,8 +46,8 @@ func TestInsertRecordWithRetryWaitsForBusyDatabase(t *testing.T) {
 	}()
 
 	err = insertRecordWithRetry(dbPath, db.HistoryEntry{
-		TSMs:    2,
-		Command: "recorded after lock",
+		TimestampMS: 2,
+		Command:     "recorded after lock",
 	})
 	if err != nil {
 		t.Fatalf("insertRecordWithRetry() error: %v", err)
@@ -97,8 +97,8 @@ func TestInsertRecordWithRetryQueuesAndFlushesWhenWriteLockUnavailable(t *testin
 	<-lockAcquired
 
 	err := insertRecordWithRetry(dbPath, db.HistoryEntry{
-		TSMs:    10,
-		Command: "queued while lock held",
+		TimestampMS: 10,
+		Command:     "queued while lock held",
 	})
 	if err != nil {
 		t.Fatalf("insertRecordWithRetry() while lock held error: %v", err)
@@ -113,8 +113,8 @@ func TestInsertRecordWithRetryQueuesAndFlushesWhenWriteLockUnavailable(t *testin
 	}
 
 	err = insertRecordWithRetry(dbPath, db.HistoryEntry{
-		TSMs:    20,
-		Command: "recorded after queue",
+		TimestampMS: 20,
+		Command:     "recorded after queue",
 	})
 	if err != nil {
 		t.Fatalf("insertRecordWithRetry() after lock release error: %v", err)
