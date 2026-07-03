@@ -37,6 +37,10 @@ func TestDefault(t *testing.T) {
 		t.Errorf("default Select0 = %q, want 'ctrl+0'", cfg.Keys.Select0)
 	}
 
+	if cfg.Keys.SortHistory != "alt+t" {
+		t.Errorf("default SortHistory = %q, want 'alt+t'", cfg.Keys.SortHistory)
+	}
+
 	if cfg.Display.DefaultFailFilter != "include" {
 		t.Errorf("default DefaultFailFilter = %q, want 'include'", cfg.Display.DefaultFailFilter)
 	}

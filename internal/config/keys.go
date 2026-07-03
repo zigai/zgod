@@ -8,6 +8,7 @@ type KeyConfig struct {
 	ToggleCWD      string `toml:"toggle_cwd"`
 	ToggleDedupe   string `toml:"toggle_dedupe"`
 	ToggleFails    string `toml:"toggle_fails"`
+	SortHistory    string `toml:"sort_history"`
 	Accept         string `toml:"accept"`
 	Cancel         string `toml:"cancel"`
 	Up             string `toml:"up"`
@@ -39,6 +40,7 @@ func DefaultKeys() KeyConfig {
 		ToggleCWD:      "ctrl+d",
 		ToggleDedupe:   "ctrl+g",
 		ToggleFails:    "ctrl+f",
+		SortHistory:    "alt+t",
 		Accept:         "enter",
 		Cancel:         "esc",
 		Up:             "up",
