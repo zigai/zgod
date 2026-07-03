@@ -103,6 +103,7 @@ if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod 
 | `ctrl+d` | Toggle CWD filter |
 | `ctrl+g` | Toggle deduplication |
 | `ctrl+f` | Cycle fail filter (include/exclude/only) |
+| `alt+t` | Cycle date sort (newest/oldest/off) |
 | `alt+f` | Fuzzy mode |
 | `alt+r` | Regex mode |
 | `alt+g` | Glob mode |
@@ -182,6 +183,7 @@ mode_glob = "alt+g"
 toggle_cwd = "ctrl+d"
 toggle_dedupe = "ctrl+g"
 toggle_fails = "ctrl+f"
+sort_history = "alt+t"
 accept = "enter"
 cancel = "esc"
 up = "up"
