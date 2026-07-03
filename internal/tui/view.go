@@ -42,6 +42,7 @@ const (
 	indicatorToggleCWD
 	indicatorToggleFails
 	indicatorToggleDedupe
+	indicatorToggleHistorySort
 )
 
 type indicatorPill struct {
@@ -105,11 +106,12 @@ func (m *Model) renderIndicators() string {
 	width := m.getWidth()
 
 	key := indicatorCacheKey{
-		width:      width,
-		mode:       m.mode,
-		cwdMode:    m.cwdMode,
-		dedupe:     m.dedupe,
-		failFilter: m.failFilter,
+		width:       width,
+		mode:        m.mode,
+		cwdMode:     m.cwdMode,
+		dedupe:      m.dedupe,
+		failFilter:  m.failFilter,
+		historySort: m.historySort,
 	}
 	if m.indicatorCache.valid && m.indicatorCache.key == key {
 		return m.indicatorCache.value
@@ -135,7 +137,7 @@ func (m *Model) renderIndicators() string {
 func (m *Model) indicatorPills() []indicatorPill {
 	const searchModeIndicatorBg = "39"
 
-	pills := make([]indicatorPill, 0, 6)
+	pills := make([]indicatorPill, 0, 7)
 	modes := []struct {
 		mode    match.Mode
 		label   string
@@ -164,9 +166,29 @@ func (m *Model) indicatorPills() []indicatorPill {
 		indicatorPill{label: "cwd", bg: "10", active: m.cwdMode, action: indicatorToggleCWD},
 		failToggleIndicator(m.failFilter),
 		indicatorPill{label: "dedup", bg: "11", active: m.dedupe, action: indicatorToggleDedupe},
+		dateSortIndicator(m.historySort),
 	)
 
 	return pills
+}
+
+func dateSortIndicator(mode historySortMode) indicatorPill {
+	indicator := indicatorPill{label: "date", bg: "12", action: indicatorToggleHistorySort}
+
+	switch mode {
+	case historySortOff:
+		return indicator
+	case historySortNewest:
+		indicator.label = "newest"
+		indicator.active = true
+	case historySortOldest:
+		indicator.label = "oldest"
+		indicator.active = true
+	default:
+		return indicator
+	}
+
+	return indicator
 }
 
 func (m *Model) visibleIndicatorPills(width int) []indicatorPill {
@@ -404,6 +426,7 @@ func (m *Model) resultsBlockCacheKey(layout resultLayout, now time.Time) results
 		displayLen:       len(m.displayEntries),
 		query:            m.input.Value(),
 		mode:             m.mode,
+		historySort:      m.historySort,
 		showDir:          layout.showDir,
 		multilinePreview: m.cfg.Display.MultilinePreview,
 		timeFormat:       m.cfg.Display.TimeFormat,
@@ -978,6 +1001,7 @@ func (m *Model) renderHelp() string {
 		{m.cfg.Keys.ToggleCWD, "Filter to current directory"},
 		{m.cfg.Keys.ToggleDedupe, "Toggle command deduplication"},
 		{m.cfg.Keys.ToggleFails, "Cycle fail filter (include/exclude/only)"},
+		{m.cfg.Keys.SortHistory, "Cycle date sort (newest/oldest/off)"},
 		{m.cfg.Keys.PreviewCommand, "Preview multiline command"},
 		{m.cfg.Keys.Help, "Show/hide this help"},
 	}

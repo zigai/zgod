@@ -17,6 +17,14 @@ import (
 
 const modelRecencyIndexStep = 100
 
+type historySortMode int
+
+const (
+	historySortOff historySortMode = iota
+	historySortNewest
+	historySortOldest
+)
+
 type historyBatchLoadedMsg struct {
 	generation uint64
 	entries    []db.HistoryEntry
@@ -42,6 +50,7 @@ type Model struct {
 	cwdMode           bool
 	dedupe            bool
 	failFilter        db.FailFilterMode
+	historySort       historySortMode
 	cwd               string
 	homeDir           string
 	quitting          bool
@@ -76,11 +85,12 @@ type indicatorCache struct {
 }
 
 type indicatorCacheKey struct {
-	width      int
-	mode       match.Mode
-	cwdMode    bool
-	dedupe     bool
-	failFilter db.FailFilterMode
+	width       int
+	mode        match.Mode
+	cwdMode     bool
+	dedupe      bool
+	failFilter  db.FailFilterMode
+	historySort historySortMode
 }
 
 type footerCache struct {
@@ -120,6 +130,7 @@ type resultsBlockCacheKey struct {
 	displayLen       int
 	query            string
 	mode             match.Mode
+	historySort      historySortMode
 	showDir          bool
 	multilinePreview string
 	timeFormat       string
@@ -421,6 +432,7 @@ func (m *Model) updateMatches() {
 	opts.CWDBonus = cwdBonus
 
 	m.displayEntries = history.ScoreAndSortInto(m.displayEntries, m.allEntries, matches, opts)
+	m.applyHistorySort()
 	m.cursor = 0
 	m.lineCache = nil
 
@@ -450,6 +462,7 @@ func (m *Model) updateEmptyQueryMatches(query string, cwdBonus int) {
 	}
 
 	m.displayEntries = scored
+	m.applyHistorySort()
 	m.cursor = 0
 	m.lineCache = nil
 	m.resultsCache = cachedResultsBlock{}
@@ -502,6 +515,63 @@ func (m *Model) emptyQueryCWDPartitionStart(opts history.ScoringOpts, partitionC
 	}
 
 	return count
+}
+
+func (m *Model) cycleHistorySort() {
+	m.historySort = m.historySort.Next()
+	m.updateMatches()
+	m.footerCache = footerCache{}
+	m.indicatorCache = indicatorCache{}
+}
+
+func (s historySortMode) Next() historySortMode {
+	switch s {
+	case historySortOff:
+		return historySortNewest
+	case historySortNewest:
+		return historySortOldest
+	case historySortOldest:
+		return historySortOff
+	default:
+		return historySortOff
+	}
+}
+
+func (m *Model) applyHistorySort() {
+	sortScoredEntriesByHistoryDate(m.displayEntries, m.historySort)
+}
+
+func sortScoredEntriesByHistoryDate(entries []history.ScoredEntry, mode historySortMode) {
+	switch mode {
+	case historySortOff:
+		return
+	case historySortNewest:
+		sort.SliceStable(entries, func(i int, j int) bool {
+			return historyEntryNewer(entries[i].Entry, entries[j].Entry)
+		})
+	case historySortOldest:
+		sort.SliceStable(entries, func(i int, j int) bool {
+			return historyEntryOlder(entries[i].Entry, entries[j].Entry)
+		})
+	default:
+		return
+	}
+}
+
+func historyEntryNewer(a db.HistoryEntry, b db.HistoryEntry) bool {
+	if a.TimestampMS == b.TimestampMS {
+		return a.ID > b.ID
+	}
+
+	return a.TimestampMS > b.TimestampMS
+}
+
+func historyEntryOlder(a db.HistoryEntry, b db.HistoryEntry) bool {
+	if a.TimestampMS == b.TimestampMS {
+		return a.ID < b.ID
+	}
+
+	return a.TimestampMS < b.TimestampMS
 }
 
 func emptyQueryScoredEntry(e db.HistoryEntry, index int, opts history.ScoringOpts) history.ScoredEntry {
@@ -663,6 +733,9 @@ func (m *Model) handleToggle(msg tea.KeyMsg) (tea.Cmd, bool) {
 		m.dedupe = !m.dedupe
 	case matchKey(msg, m.cfg.Keys.ToggleFails):
 		m.failFilter = m.failFilter.Next()
+	case matchKey(msg, m.cfg.Keys.SortHistory):
+		m.cycleHistorySort()
+		return nil, true
 	default:
 		return nil, false
 	}

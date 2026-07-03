@@ -24,6 +24,7 @@ const (
 	footerShortcutModeNext
 	footerShortcutToggleCWD
 	footerShortcutToggleDedupe
+	footerShortcutHistorySort
 	footerShortcutHelp
 	footerShortcutPreview
 )
@@ -332,6 +333,7 @@ func (m *Model) footerShortcuts() []footerShortcut {
 		{key: m.cfg.Keys.ModeNext, desc: "mode", action: footerShortcutModeNext},
 		{key: m.cfg.Keys.ToggleCWD, desc: "cwd", action: footerShortcutToggleCWD},
 		{key: m.cfg.Keys.ToggleDedupe, desc: "dedup", action: footerShortcutToggleDedupe},
+		{key: m.cfg.Keys.SortHistory, desc: "date", action: footerShortcutHistorySort},
 		{key: m.cfg.Keys.Help, desc: "help", action: footerShortcutHelp},
 	}
 
@@ -476,6 +478,10 @@ func (m *Model) triggerIndicatorAction(action indicatorAction) tea.Cmd {
 		m.dedupe = !m.dedupe
 
 		return m.startLoadingEntries()
+	case indicatorToggleHistorySort:
+		m.cycleHistorySort()
+
+		return nil
 	default:
 		return nil
 	}
@@ -522,6 +528,10 @@ func (m *Model) triggerFooterShortcut(action footerShortcutAction) tea.Cmd {
 		m.dedupe = !m.dedupe
 
 		return m.startLoadingEntries()
+	case footerShortcutHistorySort:
+		m.cycleHistorySort()
+
+		return nil
 	case footerShortcutHelp:
 		m.showHelp = true
 
