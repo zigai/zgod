@@ -97,6 +97,8 @@ func TestRenderFooterUsesDefaultConfiguredKeys(t *testing.T) {
 		"cwd",
 		"ctrl+g",
 		"dedup",
+		"alt+t",
+		"date",
 		"ctrl+s",
 		"mode",
 	} {
@@ -112,6 +114,7 @@ func TestRenderFooterUsesRemappedKeys(t *testing.T) {
 	cfg := config.Default()
 	cfg.Keys.ToggleCWD = "alt+c"
 	cfg.Keys.ToggleDedupe = "alt+d"
+	cfg.Keys.SortHistory = "alt+h"
 	cfg.Keys.ModeNext = "alt+m"
 
 	m := &Model{
@@ -122,16 +125,46 @@ func TestRenderFooterUsesRemappedKeys(t *testing.T) {
 	}
 
 	rendered := m.renderFooter()
-	for _, needle := range []string{"alt+c", "alt+d", "alt+m"} {
+	for _, needle := range []string{"alt+c", "alt+d", "alt+h", "alt+m"} {
 		if !strings.Contains(rendered, needle) {
 			t.Fatalf("renderFooter() = %q, expected to contain %q", rendered, needle)
 		}
 	}
 
-	for _, needle := range []string{"ctrl+d cwd", "ctrl+g dedup", "ctrl+s mode"} {
+	for _, needle := range []string{"ctrl+d cwd", "ctrl+g dedup", "alt+t date", "ctrl+s mode"} {
 		if strings.Contains(rendered, needle) {
 			t.Fatalf("renderFooter() = %q, should not contain stale footer hint %q", rendered, needle)
 		}
+	}
+}
+
+func TestDateSortIndicator(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		mode       historySortMode
+		wantLabel  string
+		wantActive bool
+	}{
+		{name: "off", mode: historySortOff, wantLabel: "date"},
+		{name: "newest", mode: historySortNewest, wantLabel: "newest", wantActive: true},
+		{name: "oldest", mode: historySortOldest, wantLabel: "oldest", wantActive: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := dateSortIndicator(tc.mode)
+			if got.label != tc.wantLabel {
+				t.Fatalf("dateSortIndicator(%v).label = %q, want %q", tc.mode, got.label, tc.wantLabel)
+			}
+
+			if got.active != tc.wantActive {
+				t.Fatalf("dateSortIndicator(%v).active = %t, want %t", tc.mode, got.active, tc.wantActive)
+			}
+		})
 	}
 }
 
@@ -166,6 +199,22 @@ func TestFailToggleIndicator(t *testing.T) {
 				t.Fatalf("failToggleIndicator(%v).active = %t, want %t", tc.mode, got.active, tc.wantActive)
 			}
 		})
+	}
+}
+
+func TestRenderHelpShowsDateSortCycle(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	m := &Model{
+		cfg:    cfg,
+		styles: NewStyles(cfg.Theme),
+		width:  80,
+	}
+
+	rendered := m.renderHelp()
+	if !strings.Contains(rendered, "Cycle date sort (newest/oldest/off)") {
+		t.Fatalf("renderHelp() = %q, expected date sort help text", rendered)
 	}
 }
 

@@ -295,6 +295,59 @@ func TestHandleToggleFailsCyclesFailFilterModesAndReloadsEntries(t *testing.T) {
 	}
 }
 
+func TestHandleToggleSortHistoryCyclesCurrentMatchesByDate(t *testing.T) {
+	t.Parallel()
+
+	ti := textinput.New()
+	ti.SetValue("cmd")
+
+	cfg := config.Default()
+	cfg.Keys.SortHistory = "x"
+
+	m := &Model{
+		input: ti,
+		cfg:   cfg,
+		mode:  match.ModeFuzzy,
+		allEntries: []db.HistoryEntry{
+			{ID: 2, TimestampMS: 2000, Command: "cmd b"},
+			{ID: 3, TimestampMS: 3000, Command: "cmd c"},
+			{ID: 1, TimestampMS: 1000, Command: "cmd a"},
+			{ID: 4, TimestampMS: 4000, Command: "npm x"},
+		},
+	}
+
+	m.candidates = make([]string, len(m.allEntries))
+	for i, entry := range m.allEntries {
+		m.candidates[i] = entry.Command
+	}
+
+	m.updateMatches()
+	assertDisplayCommands(t, m, []string{"cmd b", "cmd c", "cmd a"})
+
+	for _, tc := range []struct {
+		name     string
+		wantMode historySortMode
+		want     []string
+	}{
+		{name: "newest", wantMode: historySortNewest, want: []string{"cmd c", "cmd b", "cmd a"}},
+		{name: "oldest", wantMode: historySortOldest, want: []string{"cmd a", "cmd b", "cmd c"}},
+		{name: "off", wantMode: historySortOff, want: []string{"cmd b", "cmd c", "cmd a"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, handled := m.handleControlKeys(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+			if !handled {
+				t.Fatal("handleControlKeys(sort_history) = false, want true")
+			}
+
+			if got := m.historySort; got != tc.wantMode {
+				t.Fatalf("historySort after %s = %v, want %v", tc.name, got, tc.wantMode)
+			}
+
+			assertDisplayCommands(t, m, tc.want)
+		})
+	}
+}
+
 func TestNewModelUsesConfiguredDefaultFailFilter(t *testing.T) {
 	t.Parallel()
 
@@ -672,6 +725,19 @@ func testFuzzySearchModel(entryCount int, query string) *Model {
 	m.updateMatches()
 
 	return m
+}
+
+func assertDisplayCommands(t *testing.T, m *Model, want []string) {
+	t.Helper()
+
+	got := make([]string, len(m.displayEntries))
+	for i, entry := range m.displayEntries {
+		got[i] = entry.Entry.Command
+	}
+
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("display commands = %v, want %v", got, want)
+	}
 }
 
 func runHistoryLoadCmd(t *testing.T, m *Model, cmd tea.Cmd) tea.Cmd {
