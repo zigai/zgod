@@ -253,8 +253,7 @@ func IsBusyError(err error) bool {
 		return false
 	}
 
-	var sqliteErr *sqlite.Error
-	if errors.As(err, &sqliteErr) {
+	if sqliteErr, ok := errors.AsType[*sqlite.Error](err); ok {
 		code := sqliteErr.Code()
 
 		return code == sqlite3.SQLITE_BUSY ||

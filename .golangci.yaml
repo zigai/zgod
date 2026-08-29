@@ -223,7 +223,6 @@ linters:
 
       - source: "cobra\\."
         linters: [exhaustruct]
-
       - source: "TODO"
         linters: [godot]
 
