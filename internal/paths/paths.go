@@ -14,6 +14,15 @@ var (
 	errUnsupportedTilde   = errors.New("unsupported tilde form")
 )
 
+func ConfigDir() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("getting user config directory: %w", err)
+	}
+
+	return filepath.Join(configDir, "zgod"), nil
+}
+
 func ConfigFile() (string, error) {
 	if path := os.Getenv("ZGOD_CONFIG"); path != "" {
 		return ExpandTilde(path)

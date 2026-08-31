@@ -11,14 +11,21 @@ import (
 func setConfigHome(t *testing.T, dir string) string {
 	t.Helper()
 
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "windows":
 		t.Setenv("APPDATA", dir)
-		return filepath.Join(dir, "zgod")
+	case "darwin":
+		t.Setenv("HOME", dir)
+	default:
+		t.Setenv("XDG_CONFIG_HOME", dir)
 	}
 
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("os.UserConfigDir() error: %v", err)
+	}
 
-	return filepath.Join(dir, "zgod")
+	return filepath.Join(configDir, "zgod")
 }
 
 func setDataHome(t *testing.T, dir string) string {
