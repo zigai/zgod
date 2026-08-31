@@ -119,8 +119,11 @@ shortcuts and top-right pills can be clicked, and clicking in the input moves th
 
 Default paths:
 
-- **Unix (Linux/macOS):**
-  - config file: `~/.config/zgod/config.toml`
+- **Linux:**
+  - config file: `$XDG_CONFIG_HOME/zgod/config.toml` or `~/.config/zgod/config.toml`
+  - history database: `$XDG_DATA_HOME/zgod/history.db` or `~/.local/share/zgod/history.db`
+- **macOS:**
+  - config file: `~/Library/Application Support/zgod/config.toml`
   - history database: `~/.local/share/zgod/history.db`
 - **Windows:**
   - config file: `%APPDATA%\zgod\config.toml`
