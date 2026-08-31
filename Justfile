@@ -1,5 +1,5 @@
 
-golangci_lint_version := "v2.13.2"
+golangci_lint_version := `cat .golangci-version`
 goreleaser_version := "v2.13.3"
 
 _:

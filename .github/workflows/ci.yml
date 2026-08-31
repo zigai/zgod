@@ -3,9 +3,6 @@ name: CI
 on:
   push:
 
-env:
-  GOLANGCI_LINT_VERSION: v2.12.2
-
 permissions:
   contents: read
 
@@ -46,8 +43,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Read golangci-lint version
+        id: golangci-lint-version
+        shell: bash
+        run: echo "version=$(<.golangci-version)" >> "$GITHUB_OUTPUT"
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          version: ${{ steps.golangci-lint-version.outputs.version }}
           install-mode: binary
