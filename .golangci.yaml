@@ -36,7 +36,7 @@ linters:
     - errname
     - errorlint
     - exhaustive
-    - exhaustruct
+    - exhaustruct_v5
     - exptostd
     - fatcontext
     - forcetypeassert
@@ -125,6 +125,17 @@ linters:
 
     cyclop:
       max-complexity: 12
+
+    decorder:
+      disable-dec-order-check: false
+      dec-order:
+        - const
+        - var
+        - type
+        - func
+
+    funcorder:
+      function: true
 
     gocognit:
       min-complexity: 20
@@ -222,31 +233,33 @@ linters:
         linters: [govet]
 
       - source: "cobra\\."
-        linters: [exhaustruct]
+        linters: [exhaustruct_v5]
       - source: "TODO"
         linters: [godot]
 
       - path: "internal/cli/.*\\.go"
         source: "cobra\\."
-        linters: [exhaustruct]
+        linters: [exhaustruct_v5]
 
       - path: "internal/cli/import_paths\\.go"
         source: "pathCandidate\\{"
-        linters: [exhaustruct]
+        linters: [exhaustruct_v5]
 
       - path: "internal/db/db\\.go"
         source: "url\\.URL\\{"
-        linters: [exhaustruct]
+        linters: [exhaustruct_v5]
 
       - path: "internal/tui/.*\\.go"
-        linters: [cyclop, exhaustruct, mnd]
+        linters: [cyclop, exhaustruct_v5, mnd]
 
       - path: "_test\\.go"
         linters:
           - bodyclose
-          - exhaustruct
+          - exhaustruct_v5
           - errcheck
           - goconst
           - gosec
           - dogsled
           - gocognit
+          - decorder
+          - funcorder
