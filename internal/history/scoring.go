@@ -25,6 +25,7 @@ type ScoringOpts struct {
 	CWDBonus    int
 	RecencyBase int
 }
+type ScoredEntriesByScore []ScoredEntry
 
 func DefaultScoringOpts(cwd string) ScoringOpts {
 	return ScoringOpts{
@@ -63,6 +64,10 @@ func ScoreAndSortInto(dst []ScoredEntry, entries []db.HistoryEntry, matches []ma
 
 func scoreInMatchOrder(scored []ScoredEntry, entries []db.HistoryEntry, matches []match.Match, opts ScoringOpts) bool {
 	partitionCWD := opts.CWD != "" && opts.CWDBonus > opts.RecencyBase
+	if !partitionCWD && opts.CWD != "" && opts.CWDBonus != 0 {
+		return false
+	}
+
 	cwdWrite := 0
 	otherWrite := cwdPartitionStart(entries, matches, opts, partitionCWD)
 
@@ -82,7 +87,7 @@ func scoreInMatchOrder(scored []ScoredEntry, entries []db.HistoryEntry, matches 
 		}
 	}
 
-	return partitionCWD || opts.CWD == "" || opts.CWDBonus == 0
+	return true
 }
 
 func cwdPartitionStart(entries []db.HistoryEntry, matches []match.Match, opts ScoringOpts, partitionCWD bool) int {
@@ -136,8 +141,6 @@ func scoredEntryForMatch(entry db.HistoryEntry, m match.Match, opts ScoringOpts)
 		FinalScore: score,
 	}
 }
-
-type ScoredEntriesByScore []ScoredEntry
 
 func (s ScoredEntriesByScore) Len() int {
 	return len(s)
