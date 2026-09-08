@@ -91,20 +91,31 @@ func TestDelete(t *testing.T) {
 
 	repo := NewHistoryRepo(database)
 
-	id, err := repo.Insert(HistoryEntry{TimestampMS: 1000, Command: "delete me"})
+	targetID, err := repo.Insert(HistoryEntry{TimestampMS: 1000, Command: "delete me"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err = repo.Delete(id); err != nil {
+	survivorID, err := repo.Insert(HistoryEntry{TimestampMS: 2000, Command: "keep me"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = repo.Delete(targetID); err != nil {
 		t.Fatalf("Delete() error: %v", err)
 	}
 
-	entries, _ := repo.Recent(10)
-	for _, e := range entries {
-		if e.ID == id {
-			t.Error("deleted entry should not appear in Recent()")
-		}
+	entries, err := repo.Recent(10)
+	if err != nil {
+		t.Fatalf("Recent() error: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("Recent() returned %d entries, want 1", len(entries))
+	}
+
+	if entries[0].ID != survivorID {
+		t.Fatalf("remaining entry ID = %d, want %d", entries[0].ID, survivorID)
 	}
 }
 
