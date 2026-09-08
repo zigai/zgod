@@ -223,9 +223,6 @@ linters:
     presets: []
 
     rules:
-      - text: "^Function name: generateJS,"
-        linters: [maintidx]
-
       - path: "main\\.go"
         linters: [mnd]
 
