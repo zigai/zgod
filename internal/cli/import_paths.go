@@ -11,27 +11,49 @@ import (
 	"github.com/zigai/zgod/internal/paths"
 )
 
-var (
-	errUnterminatedSingleQuote = errors.New("unterminated single quote")
-	errUnterminatedDoubleQuote = errors.New("unterminated double quote")
-)
-
 const (
 	windowsDrivePrefixLength = 3
 	minSedScriptLength       = 4
 	shortOptionLength        = 2
 )
 
-type pathRequirement int
-
 const (
 	pathParentMustExist pathRequirement = iota
 	pathMustExist
 )
 
+var (
+	errUnterminatedSingleQuote = errors.New("unterminated single quote")
+	errUnterminatedDoubleQuote = errors.New("unterminated double quote")
+)
+
+type pathRequirement int
+
 type pathCandidate struct {
 	value       string
 	requirement pathRequirement
+}
+
+type pathExtractor struct {
+	commandName           string
+	commandIndex          int
+	workingDirectory      string
+	gitSubcommand         string
+	afterDoubleDash       bool
+	expectSedExpression   bool
+	sedScriptConsumed     bool
+	lastOperandIndex      int
+	seen                  map[string]pathRequirement
+	pendingRequirement    pathRequirement
+	hasPendingRequirement bool
+}
+type commandTokenizer struct {
+	tokens        []string
+	current       strings.Builder
+	inSingleQuote bool
+	inDoubleQuote bool
+	escaped       bool
+	hasToken      bool
 }
 
 func commandReferencesExistingPaths(command string, workingDirectory string) (bool, error) {
@@ -47,6 +69,17 @@ func commandReferencesExistingPathsWithMatcher(
 	if err != nil {
 		tokens = strings.Fields(command)
 	}
+
+	n := 0
+
+	for _, token := range tokens {
+		if token != "" {
+			tokens[n] = token
+			n++
+		}
+	}
+
+	tokens = tokens[:n]
 
 	pathCandidates := extractPathCandidates(tokens, workingDirectory)
 	if len(pathCandidates) == 0 {
@@ -101,20 +134,6 @@ func extractPathCandidates(tokens []string, workingDirectory string) []pathCandi
 	}
 
 	return candidates
-}
-
-type pathExtractor struct {
-	commandName           string
-	commandIndex          int
-	workingDirectory      string
-	gitSubcommand         string
-	afterDoubleDash       bool
-	expectSedExpression   bool
-	sedScriptConsumed     bool
-	lastOperandIndex      int
-	seen                  map[string]pathRequirement
-	pendingRequirement    pathRequirement
-	hasPendingRequirement bool
 }
 
 func (e *pathExtractor) consume(index int, rawToken string) {
@@ -487,7 +506,7 @@ func isEnvironmentAssignment(token string) bool {
 }
 
 func pathCandidateFromFlagAssignment(token string, workingDirectory string) (pathCandidate, bool) {
-	if !strings.HasPrefix(token, "-") || !strings.Contains(token, "=") {
+	if !strings.HasPrefix(token, "-") {
 		return pathCandidate{}, false
 	}
 
@@ -829,6 +848,7 @@ func splitCommandTokens(command string) ([]string, error) {
 		inSingleQuote: false,
 		inDoubleQuote: false,
 		escaped:       false,
+		hasToken:      false,
 	}
 
 	for _, char := range command {
@@ -837,6 +857,7 @@ func splitCommandTokens(command string) ([]string, error) {
 
 	if tokenizer.escaped {
 		tokenizer.current.WriteRune('\\')
+		tokenizer.hasToken = true
 	}
 
 	if tokenizer.inSingleQuote {
@@ -850,14 +871,6 @@ func splitCommandTokens(command string) ([]string, error) {
 	tokenizer.appendToken()
 
 	return tokenizer.tokens, nil
-}
-
-type commandTokenizer struct {
-	tokens        []string
-	current       strings.Builder
-	inSingleQuote bool
-	inDoubleQuote bool
-	escaped       bool
 }
 
 func (t *commandTokenizer) consumeRune(char rune) {
@@ -881,6 +894,7 @@ func (t *commandTokenizer) consumeEscapedRune(char rune) bool {
 		return false
 	}
 
+	t.hasToken = true
 	if t.inDoubleQuote {
 		if char != '\\' && char != '"' && char != '$' && char != '`' {
 			t.current.WriteRune('\\')
@@ -907,6 +921,7 @@ func (t *commandTokenizer) consumeSingleQuotedRune(char rune) bool {
 		return false
 	}
 
+	t.hasToken = true
 	if char == '\'' {
 		t.inSingleQuote = false
 		return true
@@ -921,6 +936,8 @@ func (t *commandTokenizer) consumeDoubleQuotedRune(char rune) bool {
 	if !t.inDoubleQuote {
 		return false
 	}
+
+	t.hasToken = true
 
 	switch char {
 	case '\\':
@@ -940,6 +957,8 @@ func (t *commandTokenizer) consumeUnquotedRune(char rune) {
 		return
 	}
 
+	t.hasToken = true
+
 	switch char {
 	case '\\':
 		t.escaped = true
@@ -953,10 +972,11 @@ func (t *commandTokenizer) consumeUnquotedRune(char rune) {
 }
 
 func (t *commandTokenizer) appendToken() {
-	if t.current.Len() == 0 {
+	if !t.hasToken {
 		return
 	}
 
 	t.tokens = append(t.tokens, t.current.String())
 	t.current.Reset()
+	t.hasToken = false
 }

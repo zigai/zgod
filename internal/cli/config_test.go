@@ -14,7 +14,7 @@ import (
 )
 
 func TestConfigShowRejectsInvalidConfig(t *testing.T) {
-	setConfigHomes(t)
+	setCLITestHomes(t)
 
 	configPath, err := paths.ConfigFile()
 	if err != nil {
@@ -45,7 +45,7 @@ func TestConfigShowRejectsInvalidConfig(t *testing.T) {
 }
 
 func TestConfigShowRawPrintsInvalidConfig(t *testing.T) {
-	setConfigHomes(t)
+	setCLITestHomes(t)
 
 	configPath, err := paths.ConfigFile()
 	if err != nil {
@@ -81,7 +81,7 @@ func TestConfigShowRawPrintsInvalidConfig(t *testing.T) {
 }
 
 func TestConfigEditAllowsInvalidConfigAndParsesEditorArgs(t *testing.T) {
-	setConfigHomes(t)
+	setCLITestHomes(t)
 
 	configPath, err := paths.ConfigFile()
 	if err != nil {
@@ -158,6 +158,21 @@ func TestSplitCommandLine(t *testing.T) {
 			input:   "\"code -w",
 			wantErr: true,
 		},
+		{
+			name:  "preserves empty quoted argument",
+			input: `code --profile ""`,
+			want:  []string{"code", "--profile", ""},
+		},
+		{
+			name:    "rejects empty quoted executable",
+			input:   `"" code`,
+			wantErr: true,
+		},
+		{
+			name:    "rejects lone empty quotes",
+			input:   `""`,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -178,18 +193,99 @@ func TestSplitCommandLine(t *testing.T) {
 	}
 }
 
-func setConfigHomes(t *testing.T) {
+func TestConfigEditPreservesEmptyQuotedEditorArgument(t *testing.T) {
+	setCLITestHomes(t)
+
+	configPath, err := paths.ConfigFile()
+	if err != nil {
+		t.Fatalf("ConfigFile() error: %v", err)
+	}
+
+	if err = os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+
+	t.Setenv("EDITOR", `code --profile ""`)
+	t.Setenv("VISUAL", "")
+
+	var (
+		gotName string
+		gotArgs []string
+	)
+
+	oldRunner := runEditorProcess
+	runEditorProcess = func(name string, args []string) error {
+		gotName = name
+
+		gotArgs = append([]string(nil), args...)
+
+		return nil
+	}
+
+	t.Cleanup(func() {
+		runEditorProcess = oldRunner
+	})
+
+	if err = configEditCmd.RunE(&cobra.Command{}, nil); err != nil {
+		t.Fatalf("config edit error: %v", err)
+	}
+
+	if gotName != "code" {
+		t.Fatalf("editor name = %q, want %q", gotName, "code")
+	}
+
+	wantArgs := []string{"--profile", "", configPath}
+	if strings.Join(gotArgs, "\n") != strings.Join(wantArgs, "\n") {
+		t.Fatalf("editor args = %q, want %q", gotArgs, wantArgs)
+	}
+}
+
+func TestCLITestHomesIsolatesFromInheritedOverride(t *testing.T) {
+	t.Setenv("ZGOD_CONFIG", "/sentinel/inherited/override/config.toml")
+	baseDir := setCLITestHomes(t)
+
+	configPath, err := paths.ConfigFile()
+	if err != nil {
+		t.Fatalf("paths.ConfigFile() error: %v", err)
+	}
+
+	rel, err := filepath.Rel(baseDir, configPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		t.Fatalf("paths.ConfigFile() = %q, want path within %q", configPath, baseDir)
+	}
+}
+
+func setCLITestHomes(t *testing.T) string {
 	t.Helper()
 
 	baseDir := t.TempDir()
 
-	if runtime.GOOS == "windows" {
-		t.Setenv("APPDATA", filepath.Join(baseDir, "config"))
-		t.Setenv("LOCALAPPDATA", filepath.Join(baseDir, "data"))
+	t.Setenv("HOME", baseDir)
+	t.Setenv("USERPROFILE", baseDir)
 
-		return
+	configDir := filepath.Join(baseDir, "config")
+	dataDir := filepath.Join(baseDir, "data")
+
+	if runtime.GOOS == "windows" {
+		t.Setenv("APPDATA", configDir)
+		t.Setenv("LOCALAPPDATA", dataDir)
+	} else {
+		t.Setenv("XDG_CONFIG_HOME", configDir)
+		t.Setenv("XDG_DATA_HOME", dataDir)
 	}
 
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(baseDir, "config"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(baseDir, "data"))
+	zgodConfig := filepath.Join(configDir, "zgod", "config.toml")
+	t.Setenv("ZGOD_CONFIG", zgodConfig)
+
+	resolved, err := paths.ConfigFile()
+	if err != nil {
+		t.Fatalf("resolving isolated ConfigFile: %v", err)
+	}
+
+	rel, err := filepath.Rel(baseDir, resolved)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		t.Fatalf("ConfigFile %q is not within isolated test root %q", resolved, baseDir)
+	}
+
+	return baseDir
 }

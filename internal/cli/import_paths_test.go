@@ -22,10 +22,23 @@ func TestSplitCommandTokens(t *testing.T) {
 	}
 }
 
-func TestSplitCommandTokensFallsBackOnUnterminatedQuote(t *testing.T) {
+func TestSplitCommandTokensRejectsUnterminatedQuote(t *testing.T) {
 	_, err := splitCommandTokens(`cp "unterminated`)
 	if err == nil {
 		t.Fatal("splitCommandTokens() should fail for unterminated quote")
+	}
+}
+
+func TestCommandReferencesExistingPathsFallbackOnUnterminatedQuote(t *testing.T) {
+	tempDir := t.TempDir()
+
+	ok, err := commandReferencesExistingPaths(`cat ./missing "unterminated`, tempDir)
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths() error: %v", err)
+	}
+
+	if ok {
+		t.Fatal("commandReferencesExistingPaths() = true, want false for missing path in malformed quoting")
 	}
 }
 
@@ -357,5 +370,34 @@ func TestCommandReferencesExistingPathsGlob(t *testing.T) {
 
 	if !ok {
 		t.Fatal("expected glob to pass when at least one match exists")
+	}
+}
+
+func TestCommandReferencesExistingPathsCompactsEmptyTokens(t *testing.T) {
+	tempDir := t.TempDir()
+
+	filePath := filepath.Join(tempDir, "file.txt")
+	if err := os.WriteFile(filePath, []byte("ok"), 0o600); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	// cat "" ./file.txt -> "" is compacted, cat ./file.txt references existing file
+	ok, err := commandReferencesExistingPaths(`cat "" ./file.txt`, tempDir)
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths error: %v", err)
+	}
+
+	if !ok {
+		t.Fatal("commandReferencesExistingPaths() = false, want true when empty token is compacted")
+	}
+
+	// cat "" ./missing.txt -> "" is compacted, cat ./missing.txt rejects missing file
+	ok, err = commandReferencesExistingPaths(`cat "" ./missing.txt`, tempDir)
+	if err != nil {
+		t.Fatalf("commandReferencesExistingPaths error: %v", err)
+	}
+
+	if ok {
+		t.Fatal("commandReferencesExistingPaths() = true, want false for missing file")
 	}
 }

@@ -72,20 +72,6 @@ var configShowCmd = &cobra.Command{
 	},
 }
 
-func configShowRaw(cmd *cobra.Command) (bool, error) {
-	flag := cmd.Flags().Lookup("raw")
-	if flag == nil {
-		return false, nil
-	}
-
-	raw, err := cmd.Flags().GetBool("raw")
-	if err != nil {
-		return false, fmt.Errorf("reading --raw flag: %w", err)
-	}
-
-	return raw, nil
-}
-
 var configEditCmd = &cobra.Command{
 	Use:   "edit",
 	Short: "Open the configuration file in an editor",
@@ -106,6 +92,20 @@ var configEditCmd = &cobra.Command{
 
 		return openEditor(editor, path)
 	},
+}
+
+func configShowRaw(cmd *cobra.Command) (bool, error) {
+	flag := cmd.Flags().Lookup("raw")
+	if flag == nil {
+		return false, nil
+	}
+
+	raw, err := cmd.Flags().GetBool("raw")
+	if err != nil {
+		return false, fmt.Errorf("reading --raw flag: %w", err)
+	}
+
+	return raw, nil
 }
 
 func ensureConfigFile() (string, error) {
@@ -156,6 +156,10 @@ func splitCommandLine(command string) ([]string, error) {
 
 	if len(args) == 0 {
 		return nil, fmt.Errorf("%w: empty command", errInvalidEditorCommand)
+	}
+
+	if args[0] == "" {
+		return nil, fmt.Errorf("%w: empty executable", errInvalidEditorCommand)
 	}
 
 	return args, nil
