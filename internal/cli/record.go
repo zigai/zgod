@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,14 +19,6 @@ import (
 	"github.com/zigai/zgod/internal/paths"
 )
 
-var recordCmd = &cobra.Command{
-	Use:          "record",
-	Short:        "Record a command to history",
-	Hidden:       true,
-	SilenceUsage: true,
-	RunE:         runRecord,
-}
-
 const (
 	recordMillisecondsPerSecond       int64 = 1000
 	recordUnixMillisecondsCutoffValue int64 = 1_000_000_000_000
@@ -37,6 +28,14 @@ const (
 	recordPendingFileExtension              = ".json"
 	recordPendingTempPrefix                 = ".tmp-"
 )
+
+var recordCmd = &cobra.Command{
+	Use:          "record",
+	Short:        "Record a command to history",
+	Hidden:       true,
+	SilenceUsage: true,
+	RunE:         runRecord,
+}
 
 var (
 	errPendingRecordNameExhausted = errors.New("exhausted pending history record file names")
@@ -274,10 +273,6 @@ func drainPendingRecordsLocked(dbPath string) error {
 	if err != nil {
 		return fmt.Errorf("reading pending history directory %q: %w", dir, err)
 	}
-
-	sort.Slice(entries, func(i int, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
 
 	for _, entry := range entries {
 		name := entry.Name()

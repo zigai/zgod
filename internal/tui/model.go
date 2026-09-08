@@ -17,13 +17,13 @@ import (
 
 const modelRecencyIndexStep = 100
 
-type historySortMode int
-
 const (
 	historySortOff historySortMode = iota
 	historySortNewest
 	historySortOldest
 )
+
+type historySortMode int
 
 type historyBatchLoadedMsg struct {
 	generation uint64
@@ -663,11 +663,11 @@ func (m *Model) canIncrementalFuzzyMatch(query string) bool {
 
 func (m *Model) handleNavigation(msg tea.KeyMsg) bool {
 	switch {
-	case matchKey(msg, m.cfg.Keys.Up) || matchKeyStr(msg, "ctrl+p"):
+	case matchKey(msg, m.cfg.Keys.Up) || matchKey(msg, "ctrl+p"):
 		if m.cursor > 0 {
 			m.cursor--
 		}
-	case matchKey(msg, m.cfg.Keys.Down) || matchKeyStr(msg, "ctrl+n") || matchKeyStr(msg, "ctrl+r"):
+	case matchKey(msg, m.cfg.Keys.Down) || matchKey(msg, "ctrl+n") || matchKey(msg, "ctrl+r"):
 		if m.cursor < len(m.displayEntries)-1 {
 			m.cursor++
 		}
@@ -785,7 +785,7 @@ func (m *Model) handleControlKeys(msg tea.KeyMsg) (tea.Cmd, bool) {
 	case matchKey(msg, m.cfg.Keys.Help):
 		m.showHelp = true
 		return nil, true
-	case matchKey(msg, m.cfg.Keys.Cancel) || matchKeyStr(msg, "ctrl+c"):
+	case matchKey(msg, m.cfg.Keys.Cancel) || matchKey(msg, "ctrl+c"):
 		m.quitting = true
 		m.canceled = true
 
@@ -903,9 +903,5 @@ func (m *Model) currentResultCommand() (string, bool) {
 }
 
 func matchKey(msg tea.KeyMsg, spec string) bool {
-	return matchKeyStr(msg, spec)
-}
-
-func matchKeyStr(msg tea.KeyMsg, spec string) bool {
 	return msg.String() == spec
 }

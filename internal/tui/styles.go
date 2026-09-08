@@ -9,19 +9,13 @@ import (
 type Styles struct {
 	Prompt          lipgloss.Style
 	Match           lipgloss.Style
-	Selected        lipgloss.Style
-	Normal          lipgloss.Style
-	Mode            lipgloss.Style
-	Cursor          lipgloss.Style
 	HeaderBar       lipgloss.Style
-	Header          lipgloss.Style
 	Input           lipgloss.Style
 	Footer          lipgloss.Style
 	Border          lipgloss.Style
 	Title           lipgloss.Style
 	HelpKey         lipgloss.Style
 	HelpDesc        lipgloss.Style
-	SelectedItem    lipgloss.Style
 	Dimmed          lipgloss.Style
 	Meta            lipgloss.Style
 	ExitOk          lipgloss.Style
@@ -34,8 +28,6 @@ type Styles struct {
 }
 
 func NewStyles(theme config.ThemeConfig) Styles {
-	base := lipgloss.NewStyle()
-
 	borderColor := parseColor(theme.BorderColor)
 	if theme.BorderColor == "" {
 		borderColor = parseColor(theme.ModeColor)
@@ -74,26 +66,9 @@ func NewStyles(theme config.ThemeConfig) Styles {
 
 		Match: matchStyle,
 
-		Selected: lipgloss.NewStyle().
-			Background(parseColor(theme.SelectedBg)).
-			Foreground(parseColor(theme.SelectedFg)),
-
-		Normal: base,
-
-		Mode: lipgloss.NewStyle().
-			Foreground(parseColor(theme.ModeColor)).
-			Bold(true),
-
-		Cursor: lipgloss.NewStyle().
-			Foreground(parseColor(theme.PromptColor)).
-			Bold(true),
-
 		HeaderBar: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252")).
 			Padding(0, 1),
-
-		Header: lipgloss.NewStyle().
-			Bold(true),
 
 		Input: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("252")),
@@ -118,10 +93,6 @@ func NewStyles(theme config.ThemeConfig) Styles {
 
 		HelpDesc: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245")),
-
-		SelectedItem: lipgloss.NewStyle().
-			Background(lipgloss.Color("33")).
-			Bold(true),
 
 		Dimmed: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")),

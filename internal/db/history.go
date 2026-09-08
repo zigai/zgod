@@ -22,8 +22,68 @@ type HistoryRepo struct {
 	db *sql.DB
 }
 
+type candidateQuerySpec struct {
+	query    string
+	args     []any
+	fallback bool
+}
+
 func NewHistoryRepo(db *sql.DB) *HistoryRepo {
 	return &HistoryRepo{db: db}
+}
+
+func InsertIfNotExistsTx(tx *sql.Tx, entry HistoryEntry) (bool, error) {
+	res, err := tx.ExecContext(
+		context.Background(),
+		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
+		 SELECT ?, ?, ?, ?, ?, ?, ?
+		 WHERE NOT EXISTS (
+		   SELECT 1 FROM history
+		   WHERE ts_ms = ?
+		     AND duration = ?
+		     AND exit_code = ?
+		     AND command = ?
+		     AND directory = ?
+		     AND session_id = ?
+		     AND hostname = ?
+		 )`,
+		entry.TimestampMS,
+		entry.DurationMS,
+		entry.ExitCode,
+		entry.Command,
+		entry.Directory,
+		entry.SessionID,
+		entry.Hostname,
+		entry.TimestampMS,
+		entry.DurationMS,
+		entry.ExitCode,
+		entry.Command,
+		entry.Directory,
+		entry.SessionID,
+		entry.Hostname,
+	)
+	if err != nil {
+		return false, fmt.Errorf("inserting history entry if not exists: %w", err)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("reading affected rows for conditional insert: %w", err)
+	}
+
+	if rowsAffected > 0 {
+		id, err := res.LastInsertId()
+		if err != nil {
+			return false, fmt.Errorf("reading inserted history ID: %w", err)
+		}
+
+		entry.ID = id
+		if err = upsertLatestCommandTx(context.Background(), tx, entry); err != nil {
+			return false, err
+		}
+	}
+
+	return rowsAffected > 0, nil
 }
 
 func (r *HistoryRepo) Insert(entry HistoryEntry) (int64, error) {
@@ -233,12 +293,6 @@ func (r *HistoryRepo) queryCandidates(limit int, dedupe bool, failFilter FailFil
 	return rows, nil
 }
 
-type candidateQuerySpec struct {
-	query    string
-	args     []any
-	fallback bool
-}
-
 func (s candidateQuerySpec) withLimit(limit int) (string, []any) {
 	return appendCandidateLimit(s.query, s.args, limit)
 }
@@ -255,7 +309,7 @@ func candidateQuerySpecs(dedupe bool, failFilter FailFilterMode, dir string) []c
 	specs[0] = candidateQuerySpec{query: query, args: args, fallback: true}
 
 	if failFilter == FailFilterInclude && dir == "" {
-		query, args = dedupedCandidateQuery(dir)
+		query, args = dedupedCandidateQuery()
 		specs = append([]candidateQuerySpec{{query: query, args: args, fallback: true}}, specs...)
 	}
 
@@ -277,33 +331,16 @@ func candidateQuery(failFilter FailFilterMode, dir string) (string, []any) {
 	baseQuery := `SELECT id, ts_ms, duration, exit_code, command, directory
 		 FROM history`
 
-	switch {
-	case dir == "" && failFilter == FailFilterInclude:
-		return baseQuery, nil
-	case dir == "" && failFilter == FailFilterExclude:
-		return baseQuery + " WHERE exit_code = 0", nil
-	case dir == "" && failFilter == FailFilterOnly:
-		return baseQuery + " WHERE exit_code != 0", nil
-	case failFilter == FailFilterInclude:
-		return baseQuery + " WHERE directory = ?", []any{dir}
-	case failFilter == FailFilterExclude:
-		return baseQuery + " WHERE exit_code = 0 AND directory = ?", []any{dir}
-	case failFilter == FailFilterOnly:
-		return baseQuery + " WHERE exit_code != 0 AND directory = ?", []any{dir}
-	default:
-		return baseQuery, nil
-	}
+	where, args := candidateWhere(failFilter, dir)
+
+	return baseQuery + where, args
 }
 
-func dedupedCandidateQuery(dir string) (string, []any) {
+func dedupedCandidateQuery() (string, []any) {
 	baseQuery := `SELECT history_id AS id, ts_ms, duration, exit_code, command, directory
 		 FROM latest_command`
 
-	if dir == "" {
-		return baseQuery, nil
-	}
-
-	return baseQuery + " WHERE directory = ?", []any{dir}
+	return baseQuery, nil
 }
 
 func dedupedRawCandidateQuery(failFilter FailFilterMode, dir string) (string, []any) {
@@ -336,60 +373,6 @@ func candidateWhere(failFilter FailFilterMode, dir string) (string, []any) {
 	default:
 		return "", nil
 	}
-}
-
-func InsertIfNotExistsTx(tx *sql.Tx, entry HistoryEntry) (bool, error) {
-	res, err := tx.ExecContext(
-		context.Background(),
-		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
-		 SELECT ?, ?, ?, ?, ?, ?, ?
-		 WHERE NOT EXISTS (
-		   SELECT 1 FROM history
-		   WHERE ts_ms = ?
-		     AND duration = ?
-		     AND exit_code = ?
-		     AND command = ?
-		     AND directory = ?
-		     AND session_id = ?
-		     AND hostname = ?
-		 )`,
-		entry.TimestampMS,
-		entry.DurationMS,
-		entry.ExitCode,
-		entry.Command,
-		entry.Directory,
-		entry.SessionID,
-		entry.Hostname,
-		entry.TimestampMS,
-		entry.DurationMS,
-		entry.ExitCode,
-		entry.Command,
-		entry.Directory,
-		entry.SessionID,
-		entry.Hostname,
-	)
-	if err != nil {
-		return false, fmt.Errorf("inserting history entry if not exists: %w", err)
-	}
-
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("reading affected rows for conditional insert: %w", err)
-	}
-
-	if rowsAffected > 0 {
-		id, err := res.LastInsertId()
-		if err != nil {
-			return false, fmt.Errorf("reading inserted history ID: %w", err)
-		}
-
-		entry.ID = id
-		if err = upsertLatestCommandTx(context.Background(), tx, entry); err != nil {
-			return false, err
-		}
-	}
-
-	return rowsAffected > 0, nil
 }
 
 func upsertLatestCommandTx(ctx context.Context, tx *sql.Tx, entry HistoryEntry) error {
