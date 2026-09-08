@@ -1,11 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/zigai/zgod/internal/db"
 )
@@ -323,8 +326,8 @@ func TestImportHistoryEntriesFiltersBeforeStaging(t *testing.T) {
 	}
 }
 
-func TestOpenImportDatabasesReadableSourceDoesNotRequireAuth(t *testing.T) {
-	setImportHomes(t)
+func TestRunImportReadableSourceImportsEntries(t *testing.T) {
+	setCLITestHomes(t)
 
 	sourcePath := filepath.Join(t.TempDir(), "source.db")
 
@@ -344,58 +347,70 @@ func TestOpenImportDatabasesReadableSourceDoesNotRequireAuth(t *testing.T) {
 		t.Fatalf("Close(source) error: %v", err)
 	}
 
-	targetPath := filepath.Join(t.TempDir(), "target.db")
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("include-failed", false, "")
+	cmd.Flags().Bool("include-missing-paths", false, "")
 
-	targetDB, readOnlySourceDB, err := openImportDatabases(targetPath, sourcePath)
-	if err != nil {
-		t.Fatalf("openImportDatabases() error: %v", err)
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err = runImport(cmd, []string{sourcePath}); err != nil {
+		t.Fatalf("runImport() error: %v", err)
 	}
 
-	defer closeImportDatabases(targetDB, readOnlySourceDB)
-
-	summary, err := importSourceHistoryEntries(targetDB, readOnlySourceDB, importOptions{})
+	targetPath, err := resolveTargetImportPath()
 	if err != nil {
-		t.Fatalf("importSourceHistoryEntries() error: %v", err)
+		t.Fatalf("resolveTargetImportPath() error: %v", err)
 	}
 
-	if summary.imported != 1 {
-		t.Fatalf("summary.imported = %d, want 1", summary.imported)
+	targetDB, err := db.OpenReadOnly(targetPath)
+	if err != nil {
+		t.Fatalf("OpenReadOnly(target) error: %v", err)
+	}
+	defer func() { _ = targetDB.Close() }()
+
+	targetRepo := db.NewHistoryRepo(targetDB)
+
+	entries, err := targetRepo.Recent(10)
+	if err != nil {
+		t.Fatalf("Recent() error: %v", err)
+	}
+
+	if len(entries) != 1 || entries[0].Command != "echo imported" {
+		t.Fatalf("imported entries = %+v, want 1 entry with 'echo imported'", entries)
+	}
+
+	if !strings.Contains(stdout.String(), "imported=1") {
+		t.Fatalf("runImport output = %q, want imported=1", stdout.String())
 	}
 }
 
-func TestOpenImportDatabasesDoesNotCreateTargetForInvalidSource(t *testing.T) {
-	setImportHomes(t)
+func TestRunImportDoesNotCreateTargetForInvalidSource(t *testing.T) {
+	setCLITestHomes(t)
 
 	sourcePath := filepath.Join(t.TempDir(), "source.db")
 	if err := os.WriteFile(sourcePath, []byte("not sqlite"), 0o600); err != nil {
 		t.Fatalf("WriteFile(%q) error: %v", sourcePath, err)
 	}
 
-	targetPath := filepath.Join(t.TempDir(), "target.db")
+	targetPath, err := resolveTargetImportPath()
+	if err != nil {
+		t.Fatalf("resolveTargetImportPath() error: %v", err)
+	}
 
-	targetDB, sourceDB, err := openImportDatabases(targetPath, sourcePath)
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool("include-failed", false, "")
+	cmd.Flags().Bool("include-missing-paths", false, "")
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	err = runImport(cmd, []string{sourcePath})
 	if err == nil {
-		closeImportDatabases(targetDB, sourceDB)
-		t.Fatal("openImportDatabases() error = nil, want invalid source error")
+		t.Fatal("runImport() error = nil, want invalid source error")
 	}
 
 	if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
 		t.Fatalf("target database should not be created, stat err = %v", err)
 	}
-}
-
-func setImportHomes(t *testing.T) {
-	t.Helper()
-
-	baseDir := t.TempDir()
-
-	if runtime.GOOS == "windows" {
-		t.Setenv("APPDATA", filepath.Join(baseDir, "config"))
-		t.Setenv("LOCALAPPDATA", filepath.Join(baseDir, "data"))
-
-		return
-	}
-
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(baseDir, "config"))
-	t.Setenv("XDG_DATA_HOME", filepath.Join(baseDir, "data"))
 }

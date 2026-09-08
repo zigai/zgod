@@ -17,12 +17,6 @@ import (
 	"github.com/zigai/zgod/internal/paths"
 )
 
-var (
-	errImportSourceEqualsTarget = errors.New("source database must be different from target database")
-	errImportSourceRequired     = errors.New("source database path is required")
-	errImportSourceNotFound     = errors.New("source database does not exist")
-)
-
 const (
 	createImportStageSQL = `
 CREATE TEMP TABLE import_stage (
@@ -38,6 +32,18 @@ CREATE TEMP TABLE import_stage (
 )`
 
 	dropImportStageSQL = `DROP TABLE IF EXISTS temp.import_stage`
+)
+
+const (
+	importPathExists importPathCheckStatus = iota
+	importPathMissing
+	importPathError
+)
+
+var (
+	errImportSourceEqualsTarget = errors.New("source database must be different from target database")
+	errImportSourceRequired     = errors.New("source database path is required")
+	errImportSourceNotFound     = errors.New("source database does not exist")
 )
 
 var importCmd = &cobra.Command{
@@ -77,12 +83,6 @@ type importStageBuilder struct {
 }
 
 type importPathCheckStatus int
-
-const (
-	importPathExists importPathCheckStatus = iota
-	importPathMissing
-	importPathError
-)
 
 type importPathCheckCache struct {
 	commands map[importCommandPathKey]importPathCheckStatus
@@ -197,22 +197,6 @@ func resolveTargetImportPath() (string, error) {
 	return targetPath, nil
 }
 
-func openImportDatabases(targetPath string, sourcePath string) (*sql.DB, *sql.DB, error) {
-	sourceDB, err := openImportSourceDatabase(sourcePath)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	targetDB, err := openImportTargetDatabase(targetPath)
-	if err != nil {
-		_ = sourceDB.Close()
-
-		return nil, nil, err
-	}
-
-	return targetDB, sourceDB, nil
-}
-
 func openImportSourceDatabase(sourcePath string) (*sql.DB, error) {
 	sourceDB, err := db.OpenReadOnly(sourcePath)
 	if err != nil {
@@ -239,11 +223,6 @@ func openImportTargetDatabase(targetPath string) (*sql.DB, error) {
 	}
 
 	return targetDB, nil
-}
-
-func closeImportDatabases(targetDB *sql.DB, sourceDB *sql.DB) {
-	_ = sourceDB.Close()
-	_ = targetDB.Close()
 }
 
 func printImportSummary(cmd *cobra.Command, summary importSummary) {
