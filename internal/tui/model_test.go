@@ -439,26 +439,88 @@ func TestNewModelSearchesBeyondTenThousandEntries(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	repo := db.NewHistoryRepo(database)
-	if _, err = repo.Insert(db.HistoryEntry{TimestampMS: 1, Command: "old unique target"}); err != nil {
-		t.Fatalf("repo.Insert(old target) error: %v", err)
+
+	tx, err := database.Begin()
+	if err != nil {
+		t.Fatalf("database.Begin() error: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmtHist, err := tx.Prepare(`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname) VALUES (?, 0, 0, ?, '', '', '')`)
+	if err != nil {
+		t.Fatalf("Prepare history error: %v", err)
+	}
+	defer stmtHist.Close()
+
+	stmtLatest, err := tx.Prepare(`INSERT INTO latest_command (command, history_id, ts_ms, duration, exit_code, directory) VALUES (?, ?, ?, 0, 0, '')`)
+	if err != nil {
+		t.Fatalf("Prepare latest_command error: %v", err)
+	}
+	defer stmtLatest.Close()
+
+	res, err := stmtHist.Exec(1, "old unique target")
+	if err != nil {
+		t.Fatalf("insert old target error: %v", err)
+	}
+
+	id, _ := res.LastInsertId()
+	if _, err = stmtLatest.Exec("old unique target", id, 1); err != nil {
+		t.Fatalf("insert old target latest error: %v", err)
 	}
 
 	for i := range 10000 {
-		entry := db.HistoryEntry{
-			TimestampMS: int64(i + 2),
-			Command:     "newer filler command",
+		cmdStr := fmt.Sprintf("filler command %d", i)
+		ts := int64(i + 2)
+
+		res, err = stmtHist.Exec(ts, cmdStr)
+		if err != nil {
+			t.Fatalf("insert filler error: %v", err)
 		}
-		if _, err = repo.Insert(entry); err != nil {
-			t.Fatalf("repo.Insert(filler %d) error: %v", i, err)
+
+		id, _ = res.LastInsertId()
+		if _, err = stmtLatest.Exec(cmdStr, id, ts); err != nil {
+			t.Fatalf("insert filler latest error: %v", err)
 		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		t.Fatalf("tx.Commit() error: %v", err)
 	}
 
 	cfg := config.Default()
 	m := NewModel(cfg, repo, "", "", 10, false, "target")
-	m.loadEntries()
+
+	cmd := m.loadEntriesCmd(m.startupLimit(), false, m.historyLoadGen)
+	next := runHistoryLoadCmd(t, m, cmd)
+
+	if got, want := len(m.allEntries), 10000; got != want {
+		t.Fatalf("len(allEntries) after first batch = %d, want %d", got, want)
+	}
+
+	if len(m.displayEntries) != 0 {
+		t.Fatalf("displayEntries after first batch = %d, want 0", len(m.displayEntries))
+	}
+
+	if m.historyComplete {
+		t.Fatal("historyComplete after first batch = true, want false")
+	}
+
+	if next == nil {
+		t.Fatal("continuation command after first batch is nil, want scheduled load")
+	}
+
+	runHistoryLoadCmd(t, m, next)
+
+	if got, want := len(m.allEntries), 10001; got != want {
+		t.Fatalf("len(allEntries) after full load = %d, want %d", got, want)
+	}
+
+	if !m.historyComplete {
+		t.Fatal("historyComplete after full load = false, want true")
+	}
 
 	if len(m.displayEntries) == 0 {
-		t.Fatal("displayEntries is empty, want old target to be searchable")
+		t.Fatal("displayEntries after full load is empty, want old target to be searchable")
 	}
 
 	if got, want := m.displayEntries[0].Entry.Command, "old unique target"; got != want {
