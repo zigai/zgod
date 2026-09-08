@@ -7,12 +7,12 @@ import (
 	"unicode/utf8"
 )
 
-type RegexMatcher struct{}
-
 const (
 	regexMatchScore             = 100
 	defaultLiteralMatchCapacity = 64
 )
+
+type RegexMatcher struct{}
 
 func (m *RegexMatcher) Match(pattern string, candidates []string) []Match {
 	if pattern == "" {
@@ -99,21 +99,21 @@ func MatchLiteralCommandsFold(pattern string, candidates []string, dst []Match) 
 	patternASCII := isASCII(pattern)
 	lowerPattern := strings.ToLower(pattern)
 
-	for i, c := range candidates {
-		var ok bool
+	var (
+		re         *regexp.Regexp
+		compileErr error
+	)
 
-		if patternASCII {
-			var ascii bool
-
-			ok, ascii = containsFoldASCII(c, lowerPattern)
-			if !ascii {
-				ok = strings.Contains(strings.ToLower(c), lowerPattern)
-			}
-		} else {
-			ok = strings.Contains(strings.ToLower(c), lowerPattern)
+	getRe := func() *regexp.Regexp {
+		if re == nil && compileErr == nil {
+			re, compileErr = regexp.Compile("(?i)" + regexp.QuoteMeta(pattern))
 		}
 
-		if !ok {
+		return re
+	}
+
+	for i, c := range candidates {
+		if !matchLiteralCandidateFold(c, patternASCII, lowerPattern, getRe) {
 			continue
 		}
 
@@ -125,6 +125,43 @@ func MatchLiteralCommandsFold(pattern string, candidates []string, dst []Match) 
 	}
 
 	return matches
+}
+
+func MatchRegexCommands(re *regexp.Regexp, candidates []string, dst []Match) []Match {
+	matches := dst[:0]
+	if cap(matches) < len(candidates) {
+		matches = make([]Match, 0, len(candidates))
+	}
+
+	for i, c := range candidates {
+		if !re.MatchString(c) {
+			continue
+		}
+
+		matches = append(matches, Match{
+			Index:         i,
+			Score:         regexMatchScore,
+			MatchedRanges: nil,
+		})
+	}
+
+	return matches
+}
+
+func matchLiteralCandidateFold(c string, patternASCII bool, lowerPattern string, getRe func() *regexp.Regexp) bool {
+	if patternASCII {
+		ok, ascii := containsFoldASCII(c, lowerPattern)
+		if ascii {
+			return ok
+		}
+	}
+
+	compiled := getRe()
+	if compiled == nil {
+		return false
+	}
+
+	return compiled.MatchString(c)
 }
 
 func containsFoldASCII(s string, lowerSubstr string) (bool, bool) {
@@ -179,27 +216,6 @@ func toLowerASCII(b byte) byte {
 	}
 
 	return b
-}
-
-func MatchRegexCommands(re *regexp.Regexp, candidates []string, dst []Match) []Match {
-	matches := dst[:0]
-	if cap(matches) < len(candidates) {
-		matches = make([]Match, 0, len(candidates))
-	}
-
-	for i, c := range candidates {
-		if !re.MatchString(c) {
-			continue
-		}
-
-		matches = append(matches, Match{
-			Index:         i,
-			Score:         regexMatchScore,
-			MatchedRanges: nil,
-		})
-	}
-
-	return matches
 }
 
 func buildRuneByteOffsets(s string) []int {

@@ -173,6 +173,54 @@ func TestRegexMatcherLiteralFastPathMatchesCaseInsensitiveSubstring(t *testing.T
 	}
 }
 
+func TestRegexMatcherLiteralUnicodeFoldDifferential(t *testing.T) {
+	m := &RegexMatcher{}
+
+	candidates := []string{
+		"baſic command",     // long s: 'ſ' folds with 's'
+		"greek word: βάσιϛ", // Greek final sigma: 'ς' folds with 'σ'
+		"regular basic",
+		"invalid utf8: \xff\xfe abc",
+	}
+
+	tests := []struct {
+		name    string
+		pattern string
+	}{
+		{name: "ascii s matches long s", pattern: "basic"},
+		{name: "long s matches ascii s", pattern: "baſic"},
+		{name: "sigma matches final sigma", pattern: "βάσισ"},
+		{name: "final sigma matches sigma", pattern: "βάσιϛ"},
+		{name: "pattern in invalid utf8 candidate", pattern: "abc"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fullMatches := m.Match(tt.pattern, candidates)
+			literalMatches := m.MatchCommands(tt.pattern, candidates, nil)
+
+			if len(literalMatches) != len(fullMatches) {
+				t.Fatalf("literalMatches count = %d, fullMatches count = %d", len(literalMatches), len(fullMatches))
+			}
+
+			for i := range fullMatches {
+				if literalMatches[i].Index != fullMatches[i].Index {
+					t.Fatalf("literalMatches[%d].Index = %d, fullMatches[%d].Index = %d",
+						i, literalMatches[i].Index, i, fullMatches[i].Index)
+				}
+
+				if literalMatches[i].Score != 100 {
+					t.Fatalf("literalMatches[%d].Score = %d, want 100", i, literalMatches[i].Score)
+				}
+
+				if literalMatches[i].MatchedRanges != nil {
+					t.Fatalf("literalMatches[%d].MatchedRanges = %+v, want nil", i, literalMatches[i].MatchedRanges)
+				}
+			}
+		})
+	}
+}
+
 func TestGlobMatcher(t *testing.T) {
 	m := &GlobMatcher{}
 	candidates := []string{"git checkout", "git commit", "go build", "echo hello"}
@@ -203,6 +251,31 @@ func TestGlobMatcherSimpleStarFastPath(t *testing.T) {
 
 	if matches[0].Index != 0 {
 		t.Fatalf("glob 'git*test*' matched index %d, want 0", matches[0].Index)
+	}
+}
+
+func TestGlobMatcherRepeatedTerminalLiterals(t *testing.T) {
+	m := &GlobMatcher{}
+	candidates := []string{
+		"foo bar foo",
+		"git commit git",
+		"a b a c a",
+		"bar a",
+	}
+
+	matches := m.Match("*foo*foo", candidates)
+	if len(matches) != 1 || matches[0].Index != 0 {
+		t.Fatalf("glob '*foo*foo' matches = %+v, want index 0", matches)
+	}
+
+	matches = m.Match("*git*git", candidates)
+	if len(matches) != 1 || matches[0].Index != 1 {
+		t.Fatalf("glob '*git*git' matches = %+v, want index 1", matches)
+	}
+
+	matches = m.Match("*a*a", candidates)
+	if len(matches) != 2 {
+		t.Fatalf("glob '*a*a' matches = %+v, want 2 matches", matches)
 	}
 }
 
