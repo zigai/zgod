@@ -55,9 +55,17 @@ func TestFilterGlob(t *testing.T) {
 }
 
 func TestFilterRegex(t *testing.T) {
-	f, _ := NewFilter(config.FilterConfig{CommandRegex: []string{`^\s*$`}})
-	if f.ShouldRecord("   ", 0, "") {
-		t.Error("whitespace command should be filtered by regex")
+	f, err := NewFilter(config.FilterConfig{CommandRegex: []string{`^sudo `}})
+	if err != nil {
+		t.Fatalf("NewFilter() error: %v", err)
+	}
+
+	if f.ShouldRecord("sudo ls", 0, "") {
+		t.Error("'sudo ls' should be filtered by regex '^sudo '")
+	}
+
+	if !f.ShouldRecord("git status", 0, "") {
+		t.Error("'git status' should not be filtered")
 	}
 }
 
