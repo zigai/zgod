@@ -12,7 +12,10 @@ import (
 	"time"
 )
 
-var errRecordedCommandTimeout = errors.New("timed out waiting for recorded commands")
+var (
+	errRecordedCommandTimeout = errors.New("timed out waiting for recorded commands")
+	errPowerShellNotAvailable = errors.New("powershell not available")
+)
 
 func TestParse(t *testing.T) {
 	tests := []struct {
@@ -170,122 +173,344 @@ func TestInitScript(t *testing.T) {
 	}
 }
 
-func TestInitScriptContainsRuntimeCommandGuards(t *testing.T) {
-	tests := []struct {
-		name        string
-		shell       Shell
-		mustContain []string
-	}{
-		{
-			name:  "bash",
-			shell: Bash,
-			mustContain: []string{
-				"__zgod_has_command()",
-				"if ! __zgod_has_command; then",
-				"__zgod_start_dir",
-				"\"$__zgod_bin\" record",
-				"selected=$(\"$__zgod_bin\" search",
-			},
-		},
-		{
-			name:  "zsh",
-			shell: Zsh,
-			mustContain: []string{
-				"__zgod_has_command()",
-				"if ! __zgod_has_command; then",
-				"__zgod_start_dir",
-				"\"$__zgod_bin\" record",
-				"selected=$(\"$__zgod_bin\" search",
-			},
-		},
-		{
-			name:  "fish",
-			shell: Fish,
-			mustContain: []string{
-				"function __zgod_has_command",
-				"if not __zgod_has_command",
-				"__zgod_start_dir",
-				"command \"$__zgod_bin\" record",
-				"set -l selected (command \"$__zgod_bin\" search",
-			},
-		},
-		{
-			name:  shellNamePowerShell,
-			shell: PowerShell,
-			mustContain: []string{
-				"function __zgod_has_command",
-				"if (-not (__zgod_has_command)) {",
-				"$script:__zgod_start_dir",
-				"$psi.FileName = $script:__zgod_bin",
-				"$selected = & $script:__zgod_bin search",
-			},
-		},
+func findPowerShell() (string, error) {
+	if p, err := exec.LookPath("pwsh"); err == nil {
+		return p, nil
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			script, err := InitScript(tt.shell, InitOptions{})
-			if err != nil {
-				t.Fatalf("InitScript(%v) error: %v", tt.shell, err)
-			}
+	if p, err := exec.LookPath("powershell"); err == nil {
+		return p, nil
+	}
 
-			for _, needle := range tt.mustContain {
-				if !strings.Contains(script, needle) {
-					t.Errorf("InitScript(%v) output doesn't contain %q", tt.shell, needle)
-				}
-			}
-		})
+	return "", errPowerShellNotAvailable
+}
+
+func runPowerShellScript(t *testing.T, scriptContent string) string {
+	t.Helper()
+
+	psBin, err := findPowerShell()
+	if err != nil {
+		t.Skip("powershell not available")
+	}
+
+	tempDir := t.TempDir()
+
+	psScriptPath := filepath.Join(tempDir, "test.ps1")
+	if err := os.WriteFile(psScriptPath, []byte(scriptContent), 0o644); err != nil {
+		t.Fatalf("WriteFile(test.ps1) error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, psBin, "-NoProfile", "-NonInteractive", "-File", psScriptPath)
+	cmd.Dir = tempDir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("running powershell failed: %v\n%s", err, output)
+	}
+
+	return string(output)
+}
+
+func TestInitScriptCommandGuardsPreventLaunchWhenExecutableMissing(t *testing.T) {
+	t.Run("bash", testInitScriptGuardsBash)
+	t.Run("zsh", testInitScriptGuardsZsh)
+	t.Run("fish", testInitScriptGuardsFish)
+	t.Run(shellNamePowerShell, testInitScriptGuardsPowerShell)
+}
+
+func testInitScriptGuardsBash(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+
+	tempDir := t.TempDir()
+	capturePath := filepath.Join(tempDir, "capture.log")
+	rcPath := filepath.Join(tempDir, "bashrc")
+
+	initScript, err := InitScript(Bash, InitOptions{BinPath: "zgod"})
+	if err != nil {
+		t.Fatalf("InitScript(Bash) error: %v", err)
+	}
+
+	if err := os.WriteFile(rcPath, []byte("PS1=''\n"+initScript), 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bash", "--noprofile", "--rcfile", rcPath, "-i")
+	cmd.Dir = tempDir
+	cmd.Env = []string{
+		"HOME=" + tempDir,
+		"PATH=" + tempDir,
+		"TERM=dumb",
+		"ZGOD_CAPTURE_FILE=" + capturePath,
+	}
+	cmd.Stdin = strings.NewReader("echo hi\nexit 0\n")
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bash failed without zgod executable: %v\n%s", err, output)
+	}
+
+	if _, err := os.Stat(capturePath); !os.IsNotExist(err) {
+		t.Fatal("capture file should not be created when zgod is missing")
 	}
 }
 
-func TestZshInitScriptHardensHooks(t *testing.T) {
-	script, err := InitScript(Zsh, InitOptions{})
+func testInitScriptGuardsZsh(t *testing.T) {
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("zsh not available")
+	}
+
+	tempDir := t.TempDir()
+	capturePath := filepath.Join(tempDir, "capture.log")
+	rcPath := filepath.Join(tempDir, ".zshrc")
+
+	initScript, err := InitScript(Zsh, InitOptions{BinPath: "zgod"})
 	if err != nil {
 		t.Fatalf("InitScript(Zsh) error: %v", err)
 	}
 
-	for _, needle := range []string{
-		"zmodload zsh/datetime 2>/dev/null || true",
-		"__zgod_command=\"\"",
-		"__zgod_start_ms=\"\"",
-		"emulate -L zsh",
-		"if [[ -n \"$1\" ]]; then",
-		"__zgod_command=\"$3\"",
-		"printf '%s000' \"$(date +%s)\"",
-		"return 0",
-		"return \"$exit_code\"",
-		"typeset -ga preexec_functions precmd_functions",
-		"preexec_functions=(${preexec_functions:#__zgod_preexec})",
-		"precmd_functions=(${precmd_functions:#__zgod_precmd})",
-		"functions -c preexec __zgod_user_preexec",
-		"functions -c precmd __zgod_user_precmd",
-		"preexec() {",
-		"__zgod_preexec \"$@\"",
-		"__zgod_user_preexec \"$@\"",
-		"precmd() {",
-		"__zgod_precmd \"$@\"",
-		"__zgod_user_precmd \"$@\"",
-	} {
-		if !strings.Contains(script, needle) {
-			t.Fatalf("InitScript(Zsh) output doesn't contain %q", needle)
-		}
+	if err := os.WriteFile(rcPath, []byte(initScript), 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "zsh", "-c", "source $ZDOTDIR/.zshrc; preexec 'echo hi'; precmd")
+	cmd.Dir = tempDir
+	cmd.Env = []string{
+		"HOME=" + tempDir,
+		"ZDOTDIR=" + tempDir,
+		"PATH=" + tempDir,
+		"TERM=dumb",
+		"ZGOD_CAPTURE_FILE=" + capturePath,
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("zsh failed without zgod executable: %v\n%s", err, output)
+	}
+
+	if _, err := os.Stat(capturePath); !os.IsNotExist(err) {
+		t.Fatal("capture file should not be created when zgod is missing")
 	}
 }
 
-func TestFishInitScriptDisownsRecordedProcessByPID(t *testing.T) {
-	script, err := InitScript(Fish, InitOptions{})
+func testInitScriptGuardsFish(t *testing.T) {
+	if _, err := exec.LookPath("fish"); err != nil {
+		t.Skip("fish not available")
+	}
+
+	tempDir := t.TempDir()
+	capturePath := filepath.Join(tempDir, "capture.log")
+	initPath := filepath.Join(tempDir, "init.fish")
+
+	initScript, err := InitScript(Fish, InitOptions{BinPath: "zgod"})
 	if err != nil {
 		t.Fatalf("InitScript(Fish) error: %v", err)
 	}
 
-	for _, needle := range []string{
-		"set -l record_pid $last_pid",
-		"if test (count $record_pid) -gt 0",
-		"disown $record_pid",
-	} {
-		if !strings.Contains(script, needle) {
-			t.Fatalf("InitScript(Fish) output doesn't contain %q", needle)
-		}
+	if err := os.WriteFile(initPath, []byte(initScript), 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "fish", "-c", "source "+initPath+"; __zgod_preexec 'echo hi'; __zgod_postexec")
+	cmd.Dir = tempDir
+	cmd.Env = []string{
+		"HOME=" + tempDir,
+		"PATH=" + tempDir,
+		"TERM=dumb",
+		"ZGOD_CAPTURE_FILE=" + capturePath,
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("fish failed without zgod executable: %v\n%s", err, output)
+	}
+
+	if _, err := os.Stat(capturePath); !os.IsNotExist(err) {
+		t.Fatal("capture file should not be created when zgod is missing")
+	}
+}
+
+func testInitScriptGuardsPowerShell(t *testing.T) {
+	psBin, err := findPowerShell()
+	if err != nil {
+		t.Skip("powershell not available")
+	}
+
+	tempDir := t.TempDir()
+
+	initScript, err := InitScript(PowerShell, InitOptions{BinPath: "zgod"})
+	if err != nil {
+		t.Fatalf("InitScript(PowerShell) error: %v", err)
+	}
+
+	scriptContent := fmt.Sprintf(`
+$env:PATH = %q
+%s
+__zgod_preexec "echo hi"
+__zgod_postexec
+`, tempDir, initScript)
+
+	psScriptPath := filepath.Join(tempDir, "test.ps1")
+	if err := os.WriteFile(psScriptPath, []byte(scriptContent), 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, psBin, "-NoProfile", "-NonInteractive", "-File", psScriptPath)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("powershell failed without zgod executable: %v\n%s", err, output)
+	}
+}
+
+func TestZshInitScriptPreservesExistingHooksAndRecordsCommands(t *testing.T) {
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("zsh not available")
+	}
+
+	tempDir := t.TempDir()
+	capturePath := filepath.Join(tempDir, "capture.log")
+	userLogPath := filepath.Join(tempDir, "user.log")
+	rcPath := filepath.Join(tempDir, ".zshrc")
+	fakeZgodPath := filepath.Join(tempDir, "zgod")
+
+	fakeZgod := `#!/bin/sh
+if [ "$1" = "record" ]; then
+    printf '%s\n' "$*" >> "$ZGOD_CAPTURE_FILE"
+    exit 0
+fi
+`
+	if err := os.WriteFile(fakeZgodPath, []byte(fakeZgod), 0o755); err != nil {
+		t.Fatalf("WriteFile(zgod) error: %v", err)
+	}
+
+	initScript, err := InitScript(Zsh, InitOptions{BinPath: "zgod"})
+	if err != nil {
+		t.Fatalf("InitScript(Zsh) error: %v", err)
+	}
+
+	if err := os.WriteFile(rcPath, []byte(initScript), 0o644); err != nil {
+		t.Fatalf("WriteFile(.zshrc) error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmdScript := fmt.Sprintf(`
+preexec() { echo "user_preexec:$1" >> %q; }
+precmd() { echo "user_precmd" >> %q; }
+source "$ZDOTDIR/.zshrc"
+preexec "git commit -m test"
+precmd
+`, userLogPath, userLogPath)
+
+	cmd := exec.CommandContext(ctx, "zsh", "-c", cmdScript)
+	cmd.Dir = tempDir
+	cmd.Env = append(
+		os.Environ(),
+		"HOME="+tempDir,
+		"ZDOTDIR="+tempDir,
+		"PATH="+tempDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"TERM=dumb",
+		"ZGOD_CAPTURE_FILE="+capturePath,
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("zsh execution failed: %v\n%s", err, out)
+	}
+
+	userData, err := os.ReadFile(userLogPath)
+	if err != nil {
+		t.Fatalf("ReadFile(user.log) error: %v", err)
+	}
+
+	if !strings.Contains(string(userData), "user_preexec:git commit -m test") || !strings.Contains(string(userData), "user_precmd") {
+		t.Fatalf("user hooks not called as expected: %q", string(userData))
+	}
+
+	captureData, err := os.ReadFile(capturePath)
+	if err != nil {
+		t.Fatalf("ReadFile(capture.log) error: %v", err)
+	}
+
+	capStr := string(captureData)
+	if !strings.Contains(capStr, "--command git commit -m test") || !strings.Contains(capStr, "--exit-code 0") {
+		t.Fatalf("recorded output = %q, want command and exit-code", capStr)
+	}
+}
+
+func TestFishInitScriptRecordsCommands(t *testing.T) {
+	if _, err := exec.LookPath("fish"); err != nil {
+		t.Skip("fish not available")
+	}
+
+	tempDir := t.TempDir()
+	capturePath := filepath.Join(tempDir, "capture.log")
+	initPath := filepath.Join(tempDir, "init.fish")
+	fakeZgodPath := filepath.Join(tempDir, "zgod")
+
+	fakeZgod := `#!/bin/sh
+if [ "$1" = "record" ]; then
+    printf '%s\n' "$*" >> "$ZGOD_CAPTURE_FILE"
+    exit 0
+fi
+`
+	if err := os.WriteFile(fakeZgodPath, []byte(fakeZgod), 0o755); err != nil {
+		t.Fatalf("WriteFile(zgod) error: %v", err)
+	}
+
+	initScript, err := InitScript(Fish, InitOptions{BinPath: "zgod"})
+	if err != nil {
+		t.Fatalf("InitScript(Fish) error: %v", err)
+	}
+
+	if err := os.WriteFile(initPath, []byte(initScript), 0o644); err != nil {
+		t.Fatalf("WriteFile(init.fish) error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "fish", "-c", "source "+initPath+"; __zgod_preexec 'echo fish_test'; __zgod_postexec")
+	cmd.Dir = tempDir
+	cmd.Env = append(
+		os.Environ(),
+		"HOME="+tempDir,
+		"PATH="+tempDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"TERM=dumb",
+		"ZGOD_CAPTURE_FILE="+capturePath,
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("fish execution failed: %v\n%s", err, out)
+	}
+
+	captureData, err := os.ReadFile(capturePath)
+	if err != nil {
+		t.Fatalf("ReadFile(capture.log) error: %v", err)
+	}
+
+	capStr := string(captureData)
+	if !strings.Contains(capStr, "--command echo fish_test") || !strings.Contains(capStr, "--duration") {
+		t.Fatalf("recorded output = %q, want command and duration", capStr)
 	}
 }
 
@@ -356,71 +581,191 @@ func TestInitScriptEscapesConfigPath(t *testing.T) {
 }
 
 func TestPowerShellInitScriptTracksPowerShellFailures(t *testing.T) {
-	script, err := InitScript(PowerShell, InitOptions{})
+	if _, err := findPowerShell(); err != nil {
+		t.Skip("powershell not available")
+	}
+
+	tempDir := t.TempDir()
+	capturePath := filepath.Join(tempDir, "capture.log")
+	fakeZgodPath := filepath.Join(tempDir, "zgod")
+
+	fakeZgod := `#!/bin/sh
+if [ "$1" = "record" ]; then
+    printf '%s\n' "$*" >> "$ZGOD_CAPTURE_FILE"
+    exit 0
+fi
+`
+	if err := os.WriteFile(fakeZgodPath, []byte(fakeZgod), 0o755); err != nil {
+		t.Fatalf("WriteFile(zgod) error: %v", err)
+	}
+
+	initScript, err := InitScript(PowerShell, InitOptions{BinPath: "zgod"})
 	if err != nil {
 		t.Fatalf("InitScript(PowerShell) error: %v", err)
 	}
 
-	mustContain := []string{
-		"$success = $?",
-		"$lastExitCode = $LASTEXITCODE",
-		"$exitCode = __zgod_resolve_exit_code $success $lastExitCode",
-		"if ($success) { return 0 }",
-		"return 1",
+	scriptContent := fmt.Sprintf(`
+$env:PATH = %q + [System.IO.Path]::PathSeparator + $env:PATH
+$env:ZGOD_CAPTURE_FILE = %q
+%s
+__zgod_preexec "failing_cmd"
+& { exit 42 }
+__zgod_postexec
+`, tempDir, capturePath, initScript)
+
+	output := runPowerShellScript(t, scriptContent)
+
+	captureData, err := os.ReadFile(capturePath)
+	if err != nil {
+		t.Fatalf("ReadFile(capture.log) error: %v\n%s", err, output)
 	}
 
-	for _, needle := range mustContain {
-		if !strings.Contains(script, needle) {
-			t.Fatalf("InitScript(PowerShell) output doesn't contain %q", needle)
-		}
-	}
-
-	if strings.Contains(script, "$global:LASTEXITCODE = 0") {
-		t.Fatal("InitScript(PowerShell) should not reset LASTEXITCODE in preexec")
+	if !strings.Contains(string(captureData), "--exit-code 42") {
+		t.Fatalf("recorded output = %q, want --exit-code 42", string(captureData))
 	}
 }
 
 func TestInstantExecutePathsRecordSelectedCommand(t *testing.T) {
-	tests := []struct {
-		name        string
-		shell       Shell
-		mustContain []string
-	}{
-		{
-			name:  "bash",
-			shell: Bash,
-			mustContain: []string{
-				"local start_ms=$(__zgod_get_time_ms)",
-				"local start_dir=\"$PWD\"",
-				"__zgod_record_command_async \"$selected\" \"$start_ms\" \"$exit_code\" \"$start_dir\"",
-				"return \"$exit_code\"",
-			},
-		},
-		{
-			name:  shellNamePowerShell,
-			shell: PowerShell,
-			mustContain: []string{
-				"$ts = __zgod_get_time_ms",
-				"$dir = $PWD.Path",
-				"$exitCode = __zgod_resolve_exit_code $? $LASTEXITCODE",
-				"__zgod_record_async $selected $ts $exitCode $dir $script:__zgod_session_id",
-			},
-		},
+	t.Run("bash", testInstantExecutePathsBash)
+	t.Run(shellNamePowerShell, testInstantExecutePathsPowerShell)
+}
+
+func testInstantExecutePathsBash(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			script, err := InitScript(tt.shell, InitOptions{})
-			if err != nil {
-				t.Fatalf("InitScript(%v) error: %v", tt.shell, err)
-			}
+	tempDir := t.TempDir()
+	capturePath := filepath.Join(tempDir, "capture.log")
+	captureDirPath := filepath.Join(tempDir, "capture-dir.log")
+	fakeZgodPath := filepath.Join(tempDir, "zgod")
+	rcPath := filepath.Join(tempDir, "bashrc")
 
-			for _, needle := range tt.mustContain {
-				if !strings.Contains(script, needle) {
-					t.Fatalf("InitScript(%v) output doesn't contain %q", tt.shell, needle)
-				}
-			}
-		})
+	fakeZgod := `#!/usr/bin/env bash
+set -eu
+
+if [ "${1:-}" = "search" ]; then
+	printf 'echo instant_ran\n'
+	exit 2
+fi
+
+if [ "${1:-}" = "record" ]; then
+	shift
+	record_command=""
+	record_directory=""
+	record_exit=0
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+			--command)
+				record_command=$2
+				shift 2
+				;;
+			--directory)
+				record_directory=$2
+				shift 2
+				;;
+			--exit-code)
+				record_exit=$2
+				shift 2
+				;;
+			*)
+				shift
+				;;
+		esac
+	done
+	printf '%s\n' "$record_command" >> "$ZGOD_CAPTURE_FILE"
+	printf '%s\n' "$record_directory" >> "$ZGOD_CAPTURE_DIRECTORY_FILE"
+	exit 0
+fi
+`
+	if err := os.WriteFile(fakeZgodPath, []byte(fakeZgod), 0o755); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	initScript, err := InitScript(Bash, InitOptions{BinPath: "zgod"})
+	if err != nil {
+		t.Fatalf("InitScript error: %v", err)
+	}
+
+	rcContent := "PS1=''\n" + strings.ReplaceAll(initScript, "</dev/tty", "</dev/null")
+	if err := os.WriteFile(rcPath, []byte(rcContent), 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "bash", "--noprofile", "--rcfile", rcPath, "-i")
+	cmd.Dir = tempDir
+	cmd.Env = append(
+		os.Environ(),
+		"HOME="+tempDir,
+		"PATH="+tempDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"TERM=dumb",
+		"ZGOD_CAPTURE_FILE="+capturePath,
+		"ZGOD_CAPTURE_DIRECTORY_FILE="+captureDirPath,
+	)
+	cmd.Stdin = strings.NewReader("__zgod_search\nexit 0\n")
+
+	output, runErr := cmd.CombinedOutput()
+	if runErr != nil {
+		t.Fatalf("running bash failed: %v\n%s", runErr, output)
+	}
+
+	if !strings.Contains(string(output), "instant_ran") {
+		t.Fatalf("output %q does not contain instant_ran", string(output))
+	}
+
+	recorded, err := waitForRecordedCommands(capturePath)
+	if err != nil {
+		t.Fatalf("waiting for recorded commands: %v\n%s", err, output)
+	}
+
+	if len(recorded) == 0 || recorded[0] != "echo instant_ran" {
+		t.Fatalf("recorded = %v, want ['echo instant_ran']", recorded)
+	}
+}
+
+func testInstantExecutePathsPowerShell(t *testing.T) {
+	if _, err := findPowerShell(); err != nil {
+		t.Skip("powershell not available")
+	}
+
+	tempDir := t.TempDir()
+	capturePath := filepath.Join(tempDir, "capture.log")
+	fakeZgodPath := filepath.Join(tempDir, "zgod")
+
+	fakeZgod := `#!/bin/sh
+if [ "$1" = "search" ]; then
+    printf 'Write-Output instant_ps_ran\n'
+    exit 2
+fi
+if [ "$1" = "record" ]; then
+    printf '%s\n' "$*" >> "$ZGOD_CAPTURE_FILE"
+    exit 0
+fi
+`
+	if err := os.WriteFile(fakeZgodPath, []byte(fakeZgod), 0o755); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	initScript, err := InitScript(PowerShell, InitOptions{BinPath: "zgod"})
+	if err != nil {
+		t.Fatalf("InitScript error: %v", err)
+	}
+
+	scriptContent := fmt.Sprintf(`
+$env:PATH = %q + [System.IO.Path]::PathSeparator + $env:PATH
+$env:ZGOD_CAPTURE_FILE = %q
+%s
+if (Get-Command __zgod_search -ErrorAction SilentlyContinue) {
+    __zgod_search
+}
+`, tempDir, capturePath, initScript)
+
+	output := runPowerShellScript(t, scriptContent)
+	if !strings.Contains(output, "instant_ps_ran") {
+		t.Fatalf("output %q does not contain instant_ps_ran", output)
 	}
 }
 
@@ -448,29 +793,54 @@ func TestPowerShellInitScriptDoesNotCreateJobsPerCommand(t *testing.T) {
 }
 
 func TestPowerShellInitScriptChecksPSReadLineBeforeHandlers(t *testing.T) {
+	if _, err := findPowerShell(); err != nil {
+		t.Skip("powershell not available")
+	}
+
+	initScript, err := InitScript(PowerShell, InitOptions{})
+	if err != nil {
+		t.Fatalf("InitScript(PowerShell) error: %v", err)
+	}
+
+	scriptContent := fmt.Sprintf(`
+function Get-Module { param($Name) return $null }
+function Set-PSReadLineKeyHandler { throw "Set-PSReadLineKeyHandler should not be called when PSReadLine is absent" }
+function Set-PSReadLineOption { throw "Set-PSReadLineOption should not be called when PSReadLine is absent" }
+%s
+Write-Output "sourced successfully"
+`, initScript)
+
+	output := runPowerShellScript(t, scriptContent)
+	if !strings.Contains(output, "sourced successfully") {
+		t.Fatalf("output %q does not contain 'sourced successfully'", output)
+	}
+}
+
+func TestPowerShellInitScriptPreservesPostCommandLookupAction(t *testing.T) {
 	script, err := InitScript(PowerShell, InitOptions{})
 	if err != nil {
 		t.Fatalf("InitScript(PowerShell) error: %v", err)
 	}
 
-	guardIdx := strings.Index(script, "if (Get-Module -Name PSReadLine) {")
-	if guardIdx < 0 {
-		t.Fatal("InitScript(PowerShell) should guard PSReadLine usage")
+	if strings.Contains(script, "PostCommandLookupAction") {
+		t.Fatal("InitScript(PowerShell) should not overwrite PostCommandLookupAction")
 	}
 
-	for _, needle := range []string{
-		"Set-PSReadLineKeyHandler",
-		"Set-PSReadLineOption -AddToHistoryHandler",
-		"$originalPrompt = $function:prompt",
-	} {
-		idx := strings.Index(script, needle)
-		if idx < 0 {
-			t.Fatalf("InitScript(PowerShell) output doesn't contain %q", needle)
-		}
+	if _, err := findPowerShell(); err != nil {
+		t.Skip("powershell not available")
+	}
 
-		if idx < guardIdx {
-			t.Fatalf("InitScript(PowerShell) uses %q before checking PSReadLine", needle)
-		}
+	scriptContent := fmt.Sprintf(`
+$ExecutionContext.InvokeCommand.PostCommandLookupAction = { "original_callback" }
+%s
+if ($ExecutionContext.InvokeCommand.PostCommandLookupAction -and (& $ExecutionContext.InvokeCommand.PostCommandLookupAction) -eq "original_callback") {
+    Write-Output "preserved"
+}
+`, script)
+
+	output := runPowerShellScript(t, scriptContent)
+	if !strings.Contains(output, "preserved") {
+		t.Fatalf("output %q does not contain 'preserved'", output)
 	}
 }
 
@@ -869,22 +1239,17 @@ fi
 	cmd.Stdin = strings.NewReader(opts.command + "\nexit 0\n")
 
 	output, runErr := cmd.CombinedOutput()
+	if runErr != nil {
+		t.Fatalf("running bash failed: %v\n%s", runErr, output)
+	}
 
 	recorded, err := waitForRecordedCommands(capturePath)
 	if err != nil {
-		if runErr != nil {
-			t.Fatalf("running bash failed: %v\n%s", runErr, output)
-		}
-
 		t.Fatalf("waiting for recorded command failed: %v\n%s", err, output)
 	}
 
 	recordedDirs, err := waitForRecordedCommands(captureDirPath)
 	if err != nil {
-		if runErr != nil {
-			t.Fatalf("running bash failed: %v\n%s", runErr, output)
-		}
-
 		t.Fatalf("waiting for recorded directories failed: %v\n%s", err, output)
 	}
 

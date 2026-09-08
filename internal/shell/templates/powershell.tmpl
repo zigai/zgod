@@ -81,56 +81,58 @@ function __zgod_postexec {
     if ($script:__zgod_in_hook) { return }
     if (-not $script:__zgod_command) { return }
     $script:__zgod_in_hook = $true
+    try {
+        if (-not (__zgod_has_command)) {
+            $script:__zgod_command = ""
+            return
+        }
 
-    if (-not (__zgod_has_command)) {
+        $cmd = $script:__zgod_command
+        $ts = $script:__zgod_start_ms
+        $exitCode = __zgod_resolve_exit_code $success $lastExitCode
+        $dir = $script:__zgod_start_dir
+        $session = $script:__zgod_session_id
+
+        __zgod_record_async $cmd $ts $exitCode $dir $session
+
         $script:__zgod_command = ""
+        $script:__zgod_start_dir = ""
+    } finally {
         $script:__zgod_in_hook = $false
-        return
     }
-
-    $cmd = $script:__zgod_command
-    $ts = $script:__zgod_start_ms
-    $exitCode = __zgod_resolve_exit_code $success $lastExitCode
-    $dir = $script:__zgod_start_dir
-    $session = $script:__zgod_session_id
-
-    __zgod_record_async $cmd $ts $exitCode $dir $session
-
-    $script:__zgod_command = ""
-    $script:__zgod_start_dir = ""
-    $script:__zgod_in_hook = $false
 }
 
 if (Get-Module -Name PSReadLine) {
     function __zgod_search {
         $script:__zgod_in_hook = $true
-
-        if (-not (__zgod_has_command)) {
-            $script:__zgod_in_hook = $false
-            return
-        }
-
-        $currentLine = $null
-        [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$currentLine, [ref]$null)
-
-        $selected = & $script:__zgod_bin search --height 15 --query $currentLine
-        $rc = $LASTEXITCODE
-
-        if ($rc -eq 2 -and $selected) {
-            __zgod_init
-            $ts = __zgod_get_time_ms
-            $dir = $PWD.Path
-            [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
-            Invoke-Expression $selected
-            $exitCode = __zgod_resolve_exit_code $? $LASTEXITCODE
-            if (__zgod_has_command) {
-                __zgod_record_async $selected $ts $exitCode $dir $script:__zgod_session_id
+        try {
+            if (-not (__zgod_has_command)) {
+                return
             }
-        } elseif ($rc -eq 0 -and $selected) {
-            [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
-            [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
+
+            $currentLine = $null
+            [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$currentLine, [ref]$null)
+
+            $selected = & $script:__zgod_bin search --height 15 --query $currentLine
+            $rc = $LASTEXITCODE
+
+            if ($rc -eq 2 -and $selected) {
+                __zgod_init
+                $ts = __zgod_get_time_ms
+                $dir = $PWD.Path
+                [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
+                Invoke-Expression $selected
+                $exitCode = __zgod_resolve_exit_code $? $LASTEXITCODE
+                if (__zgod_has_command) {
+                    __zgod_record_async $selected $ts $exitCode $dir $script:__zgod_session_id
+                }
+            } elseif ($rc -eq 0 -and $selected) {
+                [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
+                [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
+            }
+        } finally {
+            $script:__zgod_in_hook = $false
         }
-        $script:__zgod_in_hook = $false
     }
 
     Set-PSReadLineKeyHandler -Chord 'Ctrl+r' -ScriptBlock { __zgod_search }
@@ -139,10 +141,6 @@ if (Get-Module -Name PSReadLine) {
         param([string]$line)
         __zgod_preexec $line
         return $true
-    }
-
-    $ExecutionContext.InvokeCommand.PostCommandLookupAction = {
-        param($commandName, $commandLookupEventArgs)
     }
 
     $originalPrompt = $function:prompt
