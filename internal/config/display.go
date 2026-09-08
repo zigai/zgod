@@ -22,6 +22,7 @@ type DisplayConfig struct {
 	HideMultiline     bool   `toml:"hide_multiline"`
 	MultilinePreview  string `toml:"multiline_preview"`
 	MultilineCollapse string `toml:"multiline_collapse"`
+	NerdFont          bool   `toml:"nerd_font"`
 }
 
 func DefaultDisplay() DisplayConfig {
@@ -42,5 +43,6 @@ func DefaultDisplay() DisplayConfig {
 		HideMultiline:     false,
 		MultilinePreview:  "popup",
 		MultilineCollapse: " ",
+		NerdFont:          true,
 	}
 }

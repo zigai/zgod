@@ -325,9 +325,17 @@ func (m *Model) inputVisibleStart(width int) int {
 	return start
 }
 
+func (m *Model) navKeyLabel() string {
+	if m.cfg.Display.NerdFont && m.cfg.Keys.Up == "up" && m.cfg.Keys.Down == "down" {
+		return "↑↓"
+	}
+
+	return m.cfg.Keys.Up + "/" + m.cfg.Keys.Down
+}
+
 func (m *Model) footerShortcuts() []footerShortcut {
 	shortcuts := []footerShortcut{
-		{key: m.cfg.Keys.Up + "/" + m.cfg.Keys.Down, desc: "nav", action: footerShortcutNone},
+		{key: m.navKeyLabel(), desc: "nav", action: footerShortcutNone},
 		{key: m.cfg.Keys.Accept, desc: "select", action: footerShortcutAccept},
 		{key: m.cfg.Keys.Cancel, desc: "cancel", action: footerShortcutCancel},
 		{key: m.cfg.Keys.ModeNext, desc: "mode", action: footerShortcutModeNext},

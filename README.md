@@ -177,7 +177,7 @@ startup_limit = 10000           # max history entries loaded at startup
 hide_multiline = false          # hide multiline commands from results
 multiline_preview = "popup"     # popup | preview_pane | expand | collapsed
 multiline_collapse = " "        # symbol to replace newlines in collapsed view
-
+nerd_font = true                # use nerd font icon for navigation by default
 [keys]
 mode_next = "ctrl+s"
 mode_fuzzy = "alt+f"

@@ -53,6 +53,10 @@ func TestDefault(t *testing.T) {
 	if cfg.Display.DefaultFailFilter != "include" {
 		t.Errorf("default DefaultFailFilter = %q, want 'include'", cfg.Display.DefaultFailFilter)
 	}
+
+	if !cfg.Display.NerdFont {
+		t.Error("default NerdFont should be true")
+	}
 }
 
 func TestLoadMissingFile(t *testing.T) {
@@ -108,6 +112,7 @@ prompt = "$ "
 
 [display]
 default_fail_filter = "exclude"
+nerd_font = false
 `
 	// #nosec G306 -- test file doesn't need restricted permissions
 	if err := os.WriteFile(configPath, []byte(tomlContent), 0o644); err != nil {
@@ -133,6 +138,10 @@ default_fail_filter = "exclude"
 
 	if cfg.Display.DefaultFailFilter != "exclude" {
 		t.Errorf("DefaultFailFilter = %q, want 'exclude'", cfg.Display.DefaultFailFilter)
+	}
+
+	if cfg.Display.NerdFont {
+		t.Error("NerdFont should be false from config")
 	}
 }
 

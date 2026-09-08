@@ -93,6 +93,8 @@ func TestRenderFooterUsesDefaultConfiguredKeys(t *testing.T) {
 
 	rendered := m.renderFooter()
 	for _, needle := range []string{
+		"↑↓",
+		"nav",
 		"ctrl+d",
 		"cwd",
 		"ctrl+g",
@@ -105,6 +107,51 @@ func TestRenderFooterUsesDefaultConfiguredKeys(t *testing.T) {
 		if !strings.Contains(rendered, needle) {
 			t.Fatalf("renderFooter() = %q, expected to contain %q", rendered, needle)
 		}
+	}
+}
+
+func TestRenderFooterNerdFontDisabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.Display.NerdFont = false
+	m := &Model{
+		cfg:            cfg,
+		styles:         NewStyles(cfg.Theme),
+		width:          200,
+		displayEntries: make([]history.ScoredEntry, 1),
+	}
+
+	rendered := m.renderFooter()
+	if !strings.Contains(rendered, "up/down") {
+		t.Fatalf("renderFooter() = %q, expected to contain %q", rendered, "up/down")
+	}
+
+	if strings.Contains(rendered, "↑↓") {
+		t.Fatalf("renderFooter() = %q, should not contain %q when NerdFont is disabled", rendered, "↑↓")
+	}
+}
+
+func TestRenderFooterRemappedNavigationKeys(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.Keys.Up = "k"
+	cfg.Keys.Down = "j"
+	m := &Model{
+		cfg:            cfg,
+		styles:         NewStyles(cfg.Theme),
+		width:          200,
+		displayEntries: make([]history.ScoredEntry, 1),
+	}
+
+	rendered := m.renderFooter()
+	if !strings.Contains(rendered, "k/j") {
+		t.Fatalf("renderFooter() = %q, expected to contain %q", rendered, "k/j")
+	}
+
+	if strings.Contains(rendered, "↑↓") {
+		t.Fatalf("renderFooter() = %q, should not contain %q when keys are remapped", rendered, "↑↓")
 	}
 }
 
