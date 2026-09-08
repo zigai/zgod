@@ -1,12 +1,28 @@
 package match
 
-type Mode int
-
 const (
 	ModeFuzzy Mode = iota
 	ModeRegex
 	ModeGlob
 )
+
+type (
+	Mode  int
+	Range struct {
+		Start int
+		End   int
+	}
+)
+
+type Match struct {
+	Index         int
+	Score         int
+	MatchedRanges []Range
+}
+
+type Matcher interface {
+	Match(pattern string, candidates []string) []Match
+}
 
 func (m Mode) String() string {
 	switch m {
@@ -46,21 +62,6 @@ func (m Mode) Next(enabled []Mode) Mode {
 	}
 
 	return enabled[0]
-}
-
-type Range struct {
-	Start int
-	End   int
-}
-
-type Match struct {
-	Index         int
-	Score         int
-	MatchedRanges []Range
-}
-
-type Matcher interface {
-	Match(pattern string, candidates []string) []Match
 }
 
 func New(mode Mode) Matcher {

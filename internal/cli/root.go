@@ -31,6 +31,15 @@ var rootCmd = &cobra.Command{
 
 var setupCommandsOnce sync.Once
 
+func Execute() {
+	setupCommands()
+
+	err := rootCmd.Execute()
+	if err != nil {
+		os.Exit(1)
+	}
+}
+
 func setupCommands() {
 	setupCommandsOnce.Do(func() {
 		rootCmd.Flags().BoolP("version", "v", false, "Print version")
@@ -41,13 +50,4 @@ func setupCommands() {
 		registerRecordCommand()
 		registerSearchCommand()
 	})
-}
-
-func Execute() {
-	setupCommands()
-
-	err := rootCmd.Execute()
-	if err != nil {
-		os.Exit(1)
-	}
 }

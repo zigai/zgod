@@ -53,33 +53,60 @@ func InitScript(s Shell, opts InitOptions) (string, error) {
 	return buf.String(), nil
 }
 
-func templateName(s Shell) string {
-	if s == Pwsh {
-		return shellNamePowerShell
-	}
-
-	return s.String()
-}
-
-func getPowerShellProfilePath(s Shell) (string, error) {
-	home, err := os.UserHomeDir()
+func Install(s Shell, customConfigPath string) error {
+	configPath, err := ConfigFilePath(s)
 	if err != nil {
-		return "", fmt.Errorf("getting home directory for PowerShell profile: %w", err)
+		return err
 	}
 
-	return powerShellProfilePathForHome(home, s, runtime.GOOS), nil
-}
+	if err = os.MkdirAll(filepath.Dir(configPath), 0o750); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
 
-func powerShellProfilePathForHome(home string, s Shell, goos string) string {
-	if goos == "windows" {
-		if s == PowerShell {
-			return filepath.Join(home, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1")
+	line := setupLineWithBin(s, customConfigPath, CurrentExecutablePath())
+	legacyLine := setupLine(s, customConfigPath)
+
+	if err = ensureNoLegacyFishInstall(s, configPath, line); err != nil {
+		return err
+	}
+
+	if legacyLine != line {
+		if err = ensureNoLegacyFishInstall(s, configPath, legacyLine); err != nil {
+			return err
 		}
-
-		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
 	}
 
-	return filepath.Join(home, ".config", shellNamePowerShell, "Microsoft.PowerShell_profile.ps1")
+	// #nosec G304 -- configPath is derived from known shell config locations
+	content, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reading config file: %w", err)
+	}
+
+	contentText := string(content)
+	if strings.Contains(contentText, line) {
+		return fmt.Errorf("%w in %s", errAlreadyInstalled, configPath)
+	}
+
+	updated, err := updateSetupLine(configPath, contentText, legacyLine, line)
+	if err != nil {
+		return err
+	}
+
+	if updated {
+		fmt.Printf("Updated zgod in %s\n", configPath)
+		printRestartHint(s, configPath)
+
+		return nil
+	}
+
+	if err = writeSetupLine(configPath, content, line); err != nil {
+		return err
+	}
+
+	fmt.Printf("Added zgod to %s\n", configPath)
+	printRestartHint(s, configPath)
+
+	return nil
 }
 
 func ConfigFilePath(s Shell) (string, error) {
@@ -89,21 +116,6 @@ func ConfigFilePath(s Shell) (string, error) {
 	}
 
 	return configFilePathForHome(home, s)
-}
-
-func configFilePathForHome(home string, s Shell) (string, error) {
-	switch s {
-	case Bash:
-		return filepath.Join(home, ".bashrc"), nil
-	case Zsh:
-		return filepath.Join(home, ".zshrc"), nil
-	case Fish:
-		return filepath.Join(home, ".config", "fish", "conf.d", "zgod.fish"), nil
-	case PowerShell, Pwsh:
-		return getPowerShellProfilePath(s)
-	default:
-		return "", fmt.Errorf("%w: %s", errUnsupportedShell, s)
-	}
 }
 
 // CurrentExecutablePath returns the executable path shell integrations should run.
@@ -134,6 +146,41 @@ func CurrentExecutablePath() string {
 	}
 
 	return path
+}
+
+func templateName(s Shell) string {
+	if s == Pwsh {
+		return shellNamePowerShell
+	}
+
+	return s.String()
+}
+
+func powerShellProfilePathForHome(home string, s Shell, goos string) string {
+	if goos == "windows" {
+		if s == PowerShell {
+			return filepath.Join(home, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1")
+		}
+
+		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+	}
+
+	return filepath.Join(home, ".config", shellNamePowerShell, "Microsoft.PowerShell_profile.ps1")
+}
+
+func configFilePathForHome(home string, s Shell) (string, error) {
+	switch s {
+	case Bash:
+		return filepath.Join(home, ".bashrc"), nil
+	case Zsh:
+		return filepath.Join(home, ".zshrc"), nil
+	case Fish:
+		return filepath.Join(home, ".config", "fish", "conf.d", "zgod.fish"), nil
+	case PowerShell, Pwsh:
+		return powerShellProfilePathForHome(home, s, runtime.GOOS), nil
+	default:
+		return "", fmt.Errorf("%w: %s", errUnsupportedShell, s)
+	}
 }
 
 func absolutePathOrOriginal(path string) string {
@@ -289,62 +336,6 @@ func ensureNoLegacyFishInstall(s Shell, configPath, line string) error {
 	if strings.Contains(string(legacyContent), line) {
 		return fmt.Errorf("%w in %s", errAlreadyInstalled, legacyPath)
 	}
-
-	return nil
-}
-
-func Install(s Shell, customConfigPath string) error {
-	configPath, err := ConfigFilePath(s)
-	if err != nil {
-		return err
-	}
-
-	if err = os.MkdirAll(filepath.Dir(configPath), 0o750); err != nil {
-		return fmt.Errorf("creating config directory: %w", err)
-	}
-
-	line := setupLineWithBin(s, customConfigPath, CurrentExecutablePath())
-	legacyLine := setupLine(s, customConfigPath)
-
-	if err = ensureNoLegacyFishInstall(s, configPath, line); err != nil {
-		return err
-	}
-
-	if legacyLine != line {
-		if err = ensureNoLegacyFishInstall(s, configPath, legacyLine); err != nil {
-			return err
-		}
-	}
-
-	// #nosec G304 -- configPath is derived from known shell config locations
-	content, err := os.ReadFile(configPath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("reading config file: %w", err)
-	}
-
-	contentText := string(content)
-	if strings.Contains(contentText, line) {
-		return fmt.Errorf("%w in %s", errAlreadyInstalled, configPath)
-	}
-
-	updated, err := updateSetupLine(configPath, contentText, legacyLine, line)
-	if err != nil {
-		return err
-	}
-
-	if updated {
-		fmt.Printf("Updated zgod in %s\n", configPath)
-		printRestartHint(s, configPath)
-
-		return nil
-	}
-
-	if err = writeSetupLine(configPath, content, line); err != nil {
-		return err
-	}
-
-	fmt.Printf("Added zgod to %s\n", configPath)
-	printRestartHint(s, configPath)
 
 	return nil
 }

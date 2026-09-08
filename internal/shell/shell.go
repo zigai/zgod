@@ -5,8 +5,6 @@ import (
 	"fmt"
 )
 
-type Shell int
-
 const (
 	Zsh Shell = iota
 	Bash
@@ -18,6 +16,8 @@ const (
 const shellNamePowerShell = "powershell"
 
 var errUnsupportedShell = errors.New("unsupported shell")
+
+type Shell int
 
 func Parse(name string) (Shell, error) {
 	switch name {

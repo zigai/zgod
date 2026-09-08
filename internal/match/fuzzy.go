@@ -5,8 +5,6 @@ import (
 	"unicode/utf8"
 )
 
-type FuzzyMatcher struct{}
-
 const (
 	fuzzyFirstCharMatchBonus            = 10
 	fuzzyMatchFollowingSeparatorBonus   = 20
@@ -14,6 +12,22 @@ const (
 	fuzzyAdjacentMatchBonus             = 5
 	fuzzyUnmatchedLeadingCharPenalty    = -5
 	fuzzyMaxUnmatchedLeadingCharPenalty = -15
+)
+
+type (
+	FuzzyMatcher    struct{}
+	fuzzyScoreState struct {
+		lastRune               rune
+		lastASCII              byte
+		patternIndex           int
+		bestScore              int
+		matchedIndex           int
+		currAdjacentMatchBonus int
+		lastMatchedIndex       int
+		matchedCount           int
+		totalScore             int
+		lastIndex              int
+	}
 )
 
 func (m *FuzzyMatcher) Match(pattern string, candidates []string) []Match {
@@ -235,19 +249,6 @@ func fuzzyScore(patternRunes []rune, candidate string) (int, bool) {
 	}
 
 	return state.finalScore(len(candidate)), state.matchedCount == len(patternRunes)
-}
-
-type fuzzyScoreState struct {
-	lastRune               rune
-	lastASCII              byte
-	patternIndex           int
-	bestScore              int
-	matchedIndex           int
-	currAdjacentMatchBonus int
-	lastMatchedIndex       int
-	matchedCount           int
-	totalScore             int
-	lastIndex              int
 }
 
 func newFuzzyScoreState() fuzzyScoreState {

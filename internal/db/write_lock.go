@@ -10,9 +10,9 @@ import (
 	"github.com/zigai/zgod/internal/paths"
 )
 
-var ErrDatabaseWriteLockTimeout = errors.New("timed out waiting for database write lock")
-
 const databaseWriteLockPollInterval = 25 * time.Millisecond
+
+var ErrDatabaseWriteLockTimeout = errors.New("timed out waiting for database write lock")
 
 type databaseWriteLock struct {
 	file *os.File

@@ -19,6 +19,13 @@ import (
 	"github.com/zigai/zgod/internal/tui"
 )
 
+const (
+	searchDefaultHeight       = 15
+	searchExitCodeCanceled    = 1
+	searchExitCodeInstantExec = 2
+	searchPendingDrainTimeout = 250 * time.Millisecond
+)
+
 var errUnexpectedModelType = errors.New("unexpected model type")
 
 var searchCmd = &cobra.Command{
@@ -26,13 +33,6 @@ var searchCmd = &cobra.Command{
 	Short: "Interactive history search",
 	RunE:  runSearch,
 }
-
-const (
-	searchDefaultHeight       = 15
-	searchExitCodeCanceled    = 1
-	searchExitCodeInstantExec = 2
-	searchPendingDrainTimeout = 250 * time.Millisecond
-)
 
 type searchContext struct {
 	cfg     config.Config

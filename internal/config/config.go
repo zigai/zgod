@@ -12,6 +12,16 @@ import (
 	"github.com/zigai/zgod/internal/paths"
 )
 
+var (
+	errNoMatchModeEnabled       = errors.New("at least one match mode must be enabled")
+	errInvalidDBPath            = errors.New("invalid db.path")
+	errInvalidDefaultScope      = errors.New("invalid default_scope")
+	errDefaultModeNotEnabled    = errors.New("default_mode is not enabled")
+	errInvalidDefaultMode       = errors.New("invalid default_mode")
+	errInvalidDefaultFailFilter = errors.New("invalid default_fail_filter")
+	errInvalidMultilinePreview  = errors.New("invalid multiline_preview")
+)
+
 type Config struct {
 	DB      DBConfig      `toml:"db"`
 	Filters FilterConfig  `toml:"filters"`
@@ -33,16 +43,6 @@ type FilterConfig struct {
 	DirectoryRegex   []string `toml:"directory_regex"`
 	MaxCommandLength int      `toml:"max_command_length"`
 }
-
-var (
-	errNoMatchModeEnabled       = errors.New("at least one match mode must be enabled")
-	errInvalidDBPath            = errors.New("invalid db.path")
-	errInvalidDefaultScope      = errors.New("invalid default_scope")
-	errDefaultModeNotEnabled    = errors.New("default_mode is not enabled")
-	errInvalidDefaultMode       = errors.New("invalid default_mode")
-	errInvalidDefaultFailFilter = errors.New("invalid default_fail_filter")
-	errInvalidMultilinePreview  = errors.New("invalid multiline_preview")
-)
 
 func Default() Config {
 	return Config{

@@ -9,14 +9,6 @@ import (
 	"github.com/zigai/zgod/internal/match"
 )
 
-type mouseInputBounds struct {
-	x     int
-	y     int
-	width int
-}
-
-type footerShortcutAction int
-
 const (
 	footerShortcutNone footerShortcutAction = iota
 	footerShortcutAccept
@@ -28,6 +20,14 @@ const (
 	footerShortcutHelp
 	footerShortcutPreview
 )
+
+type mouseInputBounds struct {
+	x     int
+	y     int
+	width int
+}
+
+type footerShortcutAction int
 
 type footerShortcut struct {
 	key    string

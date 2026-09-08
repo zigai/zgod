@@ -17,17 +17,23 @@ import (
 	"github.com/zigai/zgod/internal/paths"
 )
 
+const (
+	sqliteBusyTimeoutMS           = 2000
+	sqliteJournalModeRetryCount   = 3
+	sqliteJournalModeRetryBackoff = 100 * time.Millisecond
+)
+
 var (
 	errDatabaseFileDoesNotExist = errors.New("database file does not exist")
 	errDatabasePathIsDirectory  = errors.New("database path is a directory")
 	errSQLitePragmaNoDetails    = errors.New("sqlite pragma failed without error details")
 )
 
-const (
-	sqliteBusyTimeoutMS           = 2000
-	sqliteJournalModeRetryCount   = 3
-	sqliteJournalModeRetryBackoff = 100 * time.Millisecond
-)
+type sqliteDSNOptions struct {
+	mode        string
+	queryOnly   bool
+	synchronous string
+}
 
 func Open(dbPath string) (*sql.DB, error) {
 	if err := ensureFilePermissions(dbPath, 0o600); err != nil {
@@ -89,6 +95,27 @@ func OpenReadOnly(dbPath string) (*sql.DB, error) {
 	return db, nil
 }
 
+func IsBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if sqliteErr, ok := errors.AsType[*sqlite.Error](err); ok {
+		code := sqliteErr.Code()
+
+		return code == sqlite3.SQLITE_BUSY ||
+			code == sqlite3.SQLITE_BUSY_RECOVERY ||
+			code == sqlite3.SQLITE_BUSY_SNAPSHOT ||
+			code == sqlite3.SQLITE_BUSY_TIMEOUT
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "sqlite_busy") ||
+		strings.Contains(msg, "database is locked") ||
+		strings.Contains(msg, "database table is locked")
+}
+
 func sqliteReadOnlyDSN(dbPath string) (string, error) {
 	return sqliteDSN(dbPath, sqliteDSNOptions{
 		mode:        "ro",
@@ -103,12 +130,6 @@ func sqliteWritableDSN(dbPath string) (string, error) {
 		queryOnly:   false,
 		synchronous: "NORMAL",
 	})
-}
-
-type sqliteDSNOptions struct {
-	mode        string
-	queryOnly   bool
-	synchronous string
 }
 
 func sqliteDSN(dbPath string, opts sqliteDSNOptions) (string, error) {
@@ -246,25 +267,4 @@ func applySQLitePragmaWithRetry(db *sql.DB, pragma string, retries int, backoff 
 	}
 
 	return lastErr
-}
-
-func IsBusyError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	if sqliteErr, ok := errors.AsType[*sqlite.Error](err); ok {
-		code := sqliteErr.Code()
-
-		return code == sqlite3.SQLITE_BUSY ||
-			code == sqlite3.SQLITE_BUSY_RECOVERY ||
-			code == sqlite3.SQLITE_BUSY_SNAPSHOT ||
-			code == sqlite3.SQLITE_BUSY_TIMEOUT
-	}
-
-	msg := strings.ToLower(err.Error())
-
-	return strings.Contains(msg, "sqlite_busy") ||
-		strings.Contains(msg, "database is locked") ||
-		strings.Contains(msg, "database table is locked")
 }

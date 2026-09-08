@@ -1,12 +1,12 @@
 package db
 
-type FailFilterMode int
-
 const (
 	FailFilterInclude FailFilterMode = iota
 	FailFilterExclude
 	FailFilterOnly
 )
+
+type FailFilterMode int
 
 func (m FailFilterMode) String() string {
 	switch m {
