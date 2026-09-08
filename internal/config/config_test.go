@@ -5,14 +5,23 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/zigai/zgod/internal/paths"
 )
 
-func setTestHomes(t *testing.T, dir string) {
+func setTestHomes(t *testing.T, dir string) string {
 	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("XDG_DATA_HOME", dir)
 	t.Setenv("APPDATA", dir)
 	t.Setenv("LOCALAPPDATA", dir)
+
+	configPath := filepath.Join(dir, "config.toml")
+	t.Setenv("ZGOD_CONFIG", configPath)
+
+	return configPath
 }
 
 func TestDefault(t *testing.T) {
@@ -48,7 +57,7 @@ func TestDefault(t *testing.T) {
 
 func TestLoadMissingFile(t *testing.T) {
 	dir := t.TempDir()
-	setTestHomes(t, dir)
+	configPath := setTestHomes(t, dir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -57,6 +66,10 @@ func TestLoadMissingFile(t *testing.T) {
 
 	if !cfg.Filters.IgnoreSpace {
 		t.Error("missing file should return defaults")
+	}
+
+	if _, err = os.Stat(configPath); err != nil {
+		t.Fatalf("expected missing config file to be created at %q: %v", configPath, err)
 	}
 }
 
@@ -83,12 +96,7 @@ func TestLoadMissingFileCreatesCustomConfigParentDir(t *testing.T) {
 
 func TestLoadTOML(t *testing.T) {
 	dir := t.TempDir()
-	setTestHomes(t, dir)
-
-	zgodDir := filepath.Join(dir, "zgod")
-	if err := os.MkdirAll(zgodDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	configPath := setTestHomes(t, dir)
 
 	tomlContent := `
 [filters]
@@ -102,7 +110,7 @@ prompt = "$ "
 default_fail_filter = "exclude"
 `
 	// #nosec G306 -- test file doesn't need restricted permissions
-	if err := os.WriteFile(filepath.Join(zgodDir, "config.toml"), []byte(tomlContent), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte(tomlContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,6 +133,35 @@ default_fail_filter = "exclude"
 
 	if cfg.Display.DefaultFailFilter != "exclude" {
 		t.Errorf("DefaultFailFilter = %q, want 'exclude'", cfg.Display.DefaultFailFilter)
+	}
+}
+
+func TestLoadPlatformDefaultPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ZGOD_CONFIG", "")
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("APPDATA", dir)
+	t.Setenv("LOCALAPPDATA", dir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	if !cfg.Filters.IgnoreSpace {
+		t.Error("missing file should return defaults")
+	}
+
+	configPath, err := paths.ConfigFile()
+	if err != nil {
+		t.Fatalf("paths.ConfigFile() error: %v", err)
+	}
+
+	if _, err = os.Stat(configPath); err != nil {
+		t.Fatalf("expected platform default config file to be created at %q: %v", configPath, err)
 	}
 }
 
