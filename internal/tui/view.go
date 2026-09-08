@@ -32,8 +32,6 @@ const (
 	failIncludeIndicator = "214"
 )
 
-type indicatorAction int
-
 const (
 	indicatorNone indicatorAction = iota
 	indicatorModeFuzzy
@@ -45,11 +43,26 @@ const (
 	indicatorToggleHistorySort
 )
 
+type indicatorAction int
+
 type indicatorPill struct {
 	label  string
 	bg     string
 	active bool
 	action indicatorAction
+}
+
+type resultLayout struct {
+	width       int
+	prefixWidth int
+	exitWidth   int
+	durWidth    int
+	timeWidth   int
+	dirWidth    int
+	cmdWidth    int
+	sep         string
+	barChar     string
+	showDir     bool
 }
 
 func failToggleIndicator(mode db.FailFilterMode) indicatorPill {
@@ -103,7 +116,7 @@ func (m *Model) View() string {
 }
 
 func (m *Model) renderIndicators() string {
-	width := m.getWidth()
+	width := m.width
 
 	key := indicatorCacheKey{
 		width:       width,
@@ -193,9 +206,6 @@ func dateSortIndicator(mode historySortMode) indicatorPill {
 
 func (m *Model) visibleIndicatorPills(width int) []indicatorPill {
 	pills := m.indicatorPills()
-	if len(pills) == 0 {
-		return nil
-	}
 
 	for len(pills) > 0 && m.indicatorPillsWidth(pills) > width {
 		pills = pills[:len(pills)-1]
@@ -240,7 +250,7 @@ func (m *Model) renderIndicatorPill(pill indicatorPill) string {
 }
 
 func (m *Model) renderHeader() string {
-	width := m.getWidth()
+	width := m.width
 	indicatorStr := m.renderIndicators()
 
 	fillWidth := max(width-lipgloss.Width(indicatorStr), 0)
@@ -251,7 +261,7 @@ func (m *Model) renderHeader() string {
 }
 
 func (m *Model) isMerged() bool {
-	width := m.getWidth()
+	width := m.width
 	prompt := m.cfg.Theme.Prompt
 	promptWidth := lipgloss.Width(m.styles.Prompt.Render(prompt))
 	indicatorStr := m.renderIndicators()
@@ -280,7 +290,7 @@ func (m *Model) chromeHeight() int {
 }
 
 func (m *Model) renderInputBar() string {
-	width := m.getWidth()
+	width := m.width
 	prompt := m.styles.Prompt.Render(m.cfg.Theme.Prompt)
 	indicatorStr := m.renderIndicators()
 
@@ -310,7 +320,7 @@ func (m *Model) renderInputBar() string {
 }
 
 func (m *Model) renderInput() string {
-	width := m.getWidth()
+	width := m.width
 	prompt := m.styles.Prompt.Render(m.cfg.Theme.Prompt)
 	input := m.input.View()
 
@@ -347,7 +357,7 @@ func (m *Model) renderEmptyState(headerRows int) string {
 }
 
 func (m *Model) renderResults() string {
-	width := m.getWidth()
+	width := m.width
 	layout := m.calcResultLayout()
 	now := time.Now()
 
@@ -380,17 +390,12 @@ func (m *Model) renderResults() string {
 		isSelected := idx == m.cursor
 
 		if expandMode && isSelected && m.entryIsMultiline(idx) {
-			expandedLines := m.renderExpandedResultLinesWithLayout(idx, layout, now)
-
 			remaining := m.height - len(lines)
 			if remaining <= 0 {
 				break
 			}
 
-			if len(expandedLines) > remaining {
-				expandedLines = expandedLines[:remaining]
-			}
-
+			expandedLines := m.renderExpandedResultLinesWithLayout(idx, layout, now, remaining)
 			lines = append(lines, expandedLines...)
 
 			continue
@@ -435,21 +440,8 @@ func (m *Model) resultsBlockCacheKey(layout resultLayout, now time.Time) results
 	}
 }
 
-type resultLayout struct {
-	width       int
-	prefixWidth int
-	exitWidth   int
-	durWidth    int
-	timeWidth   int
-	dirWidth    int
-	cmdWidth    int
-	sep         string
-	barChar     string
-	showDir     bool
-}
-
 func (m *Model) calcResultLayout() resultLayout {
-	width := m.getWidth()
+	width := m.width
 
 	barChar := m.cfg.Theme.SelectionBarChar
 	if barChar == "" {
@@ -702,17 +694,7 @@ func (m *Model) renderExpandedFirstLineAt(entry *history.ScoredEntry, layout res
 		renderedCmd = cmdStyle.Render(cmdLine)
 	}
 
-	exitStyle := m.styles.ExitOk
-	if entry.Entry.ExitCode != 0 {
-		exitStyle = m.styles.ExitFail
-	}
-
-	metaStyle := m.styles.Meta
-
-	if fullLineBg {
-		exitStyle = exitStyle.Background(selBg)
-		metaStyle = metaStyle.Background(selBg)
-	}
+	exitStyle, metaStyle := m.resultMetaStyles(entry.Entry.ExitCode, fullLineBg, selBg)
 
 	exitStyled := exitStyle.Render(formatExit(entry.Entry.ExitCode, layout.exitWidth))
 	durStyled := metaStyle.Render(formatDuration(entry.Entry.DurationMS, m.cfg.Display.DurationFormat, layout.durWidth))
@@ -806,10 +788,10 @@ func padLeft(s string, width int) string {
 
 func (m *Model) renderExpandedResultLines(entryIdx int) []string {
 	layout := m.calcResultLayout()
-	return m.renderExpandedResultLinesWithLayout(entryIdx, layout, time.Now())
+	return m.renderExpandedResultLinesWithLayout(entryIdx, layout, time.Now(), 0)
 }
 
-func (m *Model) renderExpandedResultLinesWithLayout(entryIdx int, layout resultLayout, now time.Time) []string {
+func (m *Model) renderExpandedResultLinesWithLayout(entryIdx int, layout resultLayout, now time.Time, maxLines int) []string {
 	if entryIdx >= len(m.displayEntries) {
 		return nil
 	}
@@ -818,9 +800,17 @@ func (m *Model) renderExpandedResultLinesWithLayout(entryIdx int, layout resultL
 	fullLineBg := config.BoolDefault(m.cfg.Theme.SelectionFullLine, true)
 	selBg := parseColor(m.cfg.Theme.SelectedBg)
 
-	cmdLines := strings.Split(entry.Entry.Command, "\n")
-	result := make([]string, 0, len(cmdLines))
+	var cmdLines []string
+	if maxLines > 0 {
+		cmdLines = strings.SplitN(entry.Entry.Command, "\n", maxLines+1)
+		if len(cmdLines) > maxLines {
+			cmdLines = cmdLines[:maxLines]
+		}
+	} else {
+		cmdLines = strings.Split(entry.Entry.Command, "\n")
+	}
 
+	result := make([]string, 0, len(cmdLines))
 	for i, cmdLine := range cmdLines {
 		cmdLine = strings.ReplaceAll(cmdLine, "\t", "    ")
 		cmdLine = trimToWidth(cmdLine, layout.cmdWidth)
@@ -839,7 +829,7 @@ func (m *Model) renderExpandedResultLinesWithLayout(entryIdx int, layout resultL
 }
 
 func (m *Model) renderFooter() string {
-	width := m.getWidth()
+	width := m.width
 	left := m.renderFooterLeft()
 	right := m.styles.HelpDesc.Render(m.matchCountLabel())
 	contentWidth := max(width-lipgloss.Width(m.styles.Footer.Render("")), 0)
@@ -933,7 +923,7 @@ func (m *Model) selectedIsMultiline() bool {
 }
 
 func (m *Model) renderPreviewPane() string {
-	width := m.getWidth()
+	width := m.width
 
 	if len(m.displayEntries) == 0 || m.cursor >= len(m.displayEntries) {
 		emptyLine := strings.Repeat(" ", width)
@@ -980,7 +970,7 @@ func (m *Model) renderPreviewPane() string {
 }
 
 func (m *Model) renderHelp() string {
-	width := m.getWidth()
+	width := m.width
 
 	header := m.styles.Title.Render(" Keybindings ")
 
@@ -1038,7 +1028,7 @@ func (m *Model) renderHelp() string {
 }
 
 func (m *Model) renderPreviewPopup() string {
-	width := m.getWidth()
+	width := m.width
 
 	header := m.styles.Title.Render(" Command Preview ")
 
@@ -1086,10 +1076,6 @@ func (m *Model) visibleResultShortcutLabel() string {
 	return strings.Join(keys, "/")
 }
 
-func (m *Model) getWidth() int {
-	return m.width
-}
-
 func (m *Model) visibleResultRange() (int, int) {
 	count := len(m.displayEntries)
 	if count == 0 {
@@ -1097,10 +1083,6 @@ func (m *Model) visibleResultRange() (int, int) {
 	}
 
 	maxVisible := min(m.pageSize(), count)
-
-	if maxVisible == 0 {
-		return 0, 0
-	}
 
 	// Window scrolling
 	start := 0
@@ -1347,25 +1329,6 @@ func fuzzyRenderRanges(pattern string, text string) []match.Range {
 	}
 
 	return nil
-}
-
-func regexRenderRanges(pattern string, text string) []match.Range {
-	if pattern == "" || text == "" {
-		return nil
-	}
-
-	if match.IsLiteralRegex(pattern) {
-		if ranges, ok := literalFoldRanges(pattern, text); ok {
-			return ranges
-		}
-	}
-
-	re, err := regexp.Compile("(?i)" + pattern)
-	if err != nil {
-		return nil
-	}
-
-	return regexRanges(re, text)
 }
 
 func literalFoldRanges(pattern string, text string) ([]match.Range, bool) {

@@ -273,6 +273,32 @@ func TestRenderExpandedResultLinesPreservesUTF8(t *testing.T) {
 	}
 }
 
+func TestRenderResultsBoundsExpandedRowsByRemainingViewport(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.Display.MultilinePreview = "expand"
+
+	multilineCmd := "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8"
+	m := &Model{
+		cfg:    cfg,
+		styles: NewStyles(cfg.Theme),
+		width:  80,
+		height: 4,
+		cursor: 0,
+		displayEntries: []history.ScoredEntry{
+			{Entry: db.HistoryEntry{Command: multilineCmd}},
+		},
+	}
+
+	rendered := m.renderResults()
+
+	lines := strings.Split(rendered, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("rendered viewport height = %d, want 4", len(lines))
+	}
+}
+
 func TestRenderResultLineFitsWideUnicodeCommand(t *testing.T) {
 	t.Parallel()
 
@@ -330,9 +356,24 @@ func TestWrapToWidthUsesCellWidth(t *testing.T) {
 func TestFormatDirectoryTruncatesUnicodeWithoutPanic(t *testing.T) {
 	t.Parallel()
 
-	got := formatDirectory(strings.Repeat("é", 10), 12, "")
+	input := strings.Repeat("é", 10)
+
+	got := formatDirectory(input, 6, "")
 	if !utf8.ValidString(got) {
 		t.Fatalf("formatDirectory() produced invalid UTF-8: %q", got)
+	}
+
+	want := "…" + strings.Repeat("é", 5)
+	if got != want {
+		t.Fatalf("formatDirectory() = %q, want %q", got, want)
+	}
+
+	if w := lipgloss.Width(got); w > 6 {
+		t.Fatalf("formatDirectory() display width = %d, want <= 6", w)
+	}
+
+	if got == input {
+		t.Fatalf("formatDirectory() returned input unchanged, want truncation")
 	}
 }
 
@@ -425,7 +466,9 @@ func TestFuzzyRenderRanges(t *testing.T) {
 func TestRegexRenderRangesUsesRuneRanges(t *testing.T) {
 	t.Parallel()
 
-	got := regexRenderRanges("é", "héllo")
+	m := Model{}
+	m.input.SetValue("é")
+	got := m.regexRenderRanges("héllo")
 	want := []match.Range{{Start: 1, End: 2}}
 
 	if len(got) != len(want) {
@@ -440,7 +483,9 @@ func TestRegexRenderRangesUsesRuneRanges(t *testing.T) {
 func TestRegexRenderRangesLiteralFastPath(t *testing.T) {
 	t.Parallel()
 
-	got := regexRenderRanges("git", "Git git")
+	m := Model{}
+	m.input.SetValue("git")
+	got := m.regexRenderRanges("Git git")
 	want := []match.Range{
 		{Start: 0, End: 3},
 		{Start: 4, End: 7},
@@ -454,6 +499,36 @@ func TestRegexRenderRangesLiteralFastPath(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("regexRenderRanges()[%d] = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+func TestRegexRenderRangesReplacesCachedPattern(t *testing.T) {
+	t.Parallel()
+
+	m := Model{}
+	m.input.SetValue(`g.t`)
+	got := m.regexRenderRanges("got git")
+	want := []match.Range{
+		{Start: 0, End: 3},
+		{Start: 4, End: 7},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("initial regexRenderRanges len = %d, want %d", len(got), len(want))
+	}
+
+	m.input.SetValue(`^g.t`)
+	got = m.regexRenderRanges("got git")
+	want = []match.Range{
+		{Start: 0, End: 3},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("after pattern change regexRenderRanges len = %d, want %d", len(got), len(want))
+	}
+
+	if got[0] != want[0] {
+		t.Fatalf("regexRenderRanges()[0] = %+v, want %+v", got[0], want[0])
 	}
 }
 
