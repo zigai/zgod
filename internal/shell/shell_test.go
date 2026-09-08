@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -212,6 +213,53 @@ func runPowerShellScript(t *testing.T, scriptContent string) string {
 	}
 
 	return string(output)
+}
+
+func installFakeZgod(t *testing.T, targetDir string) {
+	t.Helper()
+
+	binName := "zgod"
+	if runtime.GOOS == "windows" {
+		binName = "zgod.exe"
+	}
+
+	binPath := filepath.Join(targetDir, binName)
+	srcPath := filepath.Join(t.TempDir(), "fake_zgod.go")
+
+	src := `package main
+
+import (
+	"fmt"
+	"os"
+	"strings"
+)
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "search" {
+		fmt.Println("Write-Output instant_ps_ran")
+		os.Exit(2)
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "record" {
+		captureFile := os.Getenv("ZGOD_CAPTURE_FILE")
+		if captureFile != "" {
+			f, err := os.OpenFile(captureFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+			if err == nil {
+				defer f.Close()
+				fmt.Fprintln(f, strings.Join(os.Args[1:], " "))
+			}
+		}
+	}
+}
+`
+	if err := os.WriteFile(srcPath, []byte(src), 0o644); err != nil {
+		t.Fatalf("WriteFile(fake_zgod.go) error: %v", err)
+	}
+
+	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", binPath, srcPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("building fake zgod binary: %v\n%s", err, out)
+	}
 }
 
 func TestInitScriptCommandGuardsPreventLaunchWhenExecutableMissing(t *testing.T) {
@@ -581,23 +629,14 @@ func TestInitScriptEscapesConfigPath(t *testing.T) {
 }
 
 func TestPowerShellInitScriptTracksPowerShellFailures(t *testing.T) {
-	if _, err := findPowerShell(); err != nil {
+	psBin, err := findPowerShell()
+	if err != nil {
 		t.Skip("powershell not available")
 	}
 
 	tempDir := t.TempDir()
 	capturePath := filepath.Join(tempDir, "capture.log")
-	fakeZgodPath := filepath.Join(tempDir, "zgod")
-
-	fakeZgod := `#!/bin/sh
-if [ "$1" = "record" ]; then
-    printf '%s\n' "$*" >> "$ZGOD_CAPTURE_FILE"
-    exit 0
-fi
-`
-	if err := os.WriteFile(fakeZgodPath, []byte(fakeZgod), 0o755); err != nil {
-		t.Fatalf("WriteFile(zgod) error: %v", err)
-	}
+	installFakeZgod(t, tempDir)
 
 	initScript, err := InitScript(PowerShell, InitOptions{BinPath: "zgod"})
 	if err != nil {
@@ -609,19 +648,19 @@ $env:PATH = %q + [System.IO.Path]::PathSeparator + $env:PATH
 $env:ZGOD_CAPTURE_FILE = %q
 %s
 __zgod_preexec "failing_cmd"
-& { exit 42 }
+& %q -NoProfile -NonInteractive -Command "exit 42"
 __zgod_postexec
-`, tempDir, capturePath, initScript)
+`, tempDir, capturePath, initScript, psBin)
 
 	output := runPowerShellScript(t, scriptContent)
 
-	captureData, err := os.ReadFile(capturePath)
+	recorded, err := waitForRecordedCommands(capturePath)
 	if err != nil {
-		t.Fatalf("ReadFile(capture.log) error: %v\n%s", err, output)
+		t.Fatalf("waiting for recorded commands: %v\n%s", err, output)
 	}
 
-	if !strings.Contains(string(captureData), "--exit-code 42") {
-		t.Fatalf("recorded output = %q, want --exit-code 42", string(captureData))
+	if len(recorded) == 0 || !strings.Contains(recorded[0], "--exit-code 42") {
+		t.Fatalf("recorded output = %v, want --exit-code 42", recorded)
 	}
 }
 
@@ -733,21 +772,7 @@ func testInstantExecutePathsPowerShell(t *testing.T) {
 
 	tempDir := t.TempDir()
 	capturePath := filepath.Join(tempDir, "capture.log")
-	fakeZgodPath := filepath.Join(tempDir, "zgod")
-
-	fakeZgod := `#!/bin/sh
-if [ "$1" = "search" ]; then
-    printf 'Write-Output instant_ps_ran\n'
-    exit 2
-fi
-if [ "$1" = "record" ]; then
-    printf '%s\n' "$*" >> "$ZGOD_CAPTURE_FILE"
-    exit 0
-fi
-`
-	if err := os.WriteFile(fakeZgodPath, []byte(fakeZgod), 0o755); err != nil {
-		t.Fatalf("WriteFile error: %v", err)
-	}
+	installFakeZgod(t, tempDir)
 
 	initScript, err := InitScript(PowerShell, InitOptions{BinPath: "zgod"})
 	if err != nil {
@@ -755,17 +780,43 @@ fi
 	}
 
 	scriptContent := fmt.Sprintf(`
+Add-Type @"
+namespace Microsoft.PowerShell {
+    public class PSConsoleReadLine {
+        public static void GetBufferState(out string input, out int cursor) {
+            input = "";
+            cursor = 0;
+        }
+        public static void RevertLine() {}
+        public static void Insert(string s) {}
+    }
+}
+"@
+function Get-Module {
+    param($Name)
+    if ($Name -eq "PSReadLine") { return [PSCustomObject]@{ Name = "PSReadLine" } }
+    return $null
+}
+function Set-PSReadLineKeyHandler { param($Chord, $ScriptBlock) }
+function Set-PSReadLineOption { param($AddToHistoryHandler) }
 $env:PATH = %q + [System.IO.Path]::PathSeparator + $env:PATH
 $env:ZGOD_CAPTURE_FILE = %q
 %s
-if (Get-Command __zgod_search -ErrorAction SilentlyContinue) {
-    __zgod_search
-}
+__zgod_search
 `, tempDir, capturePath, initScript)
 
 	output := runPowerShellScript(t, scriptContent)
 	if !strings.Contains(output, "instant_ps_ran") {
 		t.Fatalf("output %q does not contain instant_ps_ran", output)
+	}
+
+	recorded, err := waitForRecordedCommands(capturePath)
+	if err != nil {
+		t.Fatalf("waiting for recorded commands: %v\n%s", err, output)
+	}
+
+	if len(recorded) == 0 || !strings.Contains(recorded[0], "Write-Output instant_ps_ran") {
+		t.Fatalf("recorded output = %v, want Write-Output instant_ps_ran", recorded)
 	}
 }
 
@@ -831,9 +882,11 @@ func TestPowerShellInitScriptPreservesPostCommandLookupAction(t *testing.T) {
 	}
 
 	scriptContent := fmt.Sprintf(`
-$ExecutionContext.InvokeCommand.PostCommandLookupAction = { "original_callback" }
+$called = $false
+$ExecutionContext.InvokeCommand.PostCommandLookupAction = { param($cmd, $args) $global:called = $true }
 %s
-if ($ExecutionContext.InvokeCommand.PostCommandLookupAction -and (& $ExecutionContext.InvokeCommand.PostCommandLookupAction) -eq "original_callback") {
+$null = Get-Command Get-Date -ErrorAction SilentlyContinue
+if ($called) {
     Write-Output "preserved"
 }
 `, script)
