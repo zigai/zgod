@@ -6,23 +6,23 @@ const (
 )
 
 type DisplayConfig struct {
-	TimeFormat        string `toml:"time_format"`
-	DurationFormat    string `toml:"duration_format"`
-	ShowHints         bool   `toml:"show_hints"`
-	ShowDirectory     bool   `toml:"show_directory"`
-	InstantExecute    bool   `toml:"instant_execute"`
-	EnableFuzzy       bool   `toml:"enable_fuzzy"`
-	EnableRegex       bool   `toml:"enable_regex"`
-	EnableGlob        bool   `toml:"enable_glob"`
-	CWDBoost          int    `toml:"cwd_boost"`
-	DefaultScope      string `toml:"default_scope"`
-	DefaultMode       string `toml:"default_mode"`
-	DefaultFailFilter string `toml:"default_fail_filter"`
-	StartupLimit      int    `toml:"startup_limit"`
-	HideMultiline     bool   `toml:"hide_multiline"`
-	MultilinePreview  string `toml:"multiline_preview"`
-	MultilineCollapse string `toml:"multiline_collapse"`
-	NerdFont          bool   `toml:"nerd_font"`
+	TimeFormat        string `json:"timeFormat"        toml:"time_format"`
+	DurationFormat    string `json:"durationFormat"    toml:"duration_format"`
+	ShowHints         bool   `json:"showHints"         toml:"show_hints"`
+	ShowDirectory     bool   `json:"showDirectory"     toml:"show_directory"`
+	InstantExecute    bool   `json:"instantExecute"    toml:"instant_execute"`
+	EnableFuzzy       bool   `json:"enableFuzzy"       toml:"enable_fuzzy"`
+	EnableRegex       bool   `json:"enableRegex"       toml:"enable_regex"`
+	EnableGlob        bool   `json:"enableGlob"        toml:"enable_glob"`
+	CWDBoost          int    `json:"cwdBoost"          toml:"cwd_boost"`
+	DefaultScope      string `json:"defaultScope"      toml:"default_scope"`
+	DefaultMode       string `json:"defaultMode"       toml:"default_mode"`
+	DefaultFailFilter string `json:"defaultFailFilter" toml:"default_fail_filter"`
+	StartupLimit      int    `json:"startupLimit"      toml:"startup_limit"`
+	HideMultiline     bool   `json:"hideMultiline"     toml:"hide_multiline"`
+	MultilinePreview  string `json:"multilinePreview"  toml:"multiline_preview"`
+	MultilineCollapse string `json:"multilineCollapse" toml:"multiline_collapse"`
+	NerdFont          bool   `json:"nerdFont"          toml:"nerd_font"`
 }
 
 func DefaultDisplay() DisplayConfig {

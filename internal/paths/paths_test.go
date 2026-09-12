@@ -14,18 +14,11 @@ func setConfigHome(t *testing.T, dir string) string {
 	switch runtime.GOOS {
 	case "windows":
 		t.Setenv("APPDATA", dir)
-	case "darwin":
-		t.Setenv("HOME", dir)
 	default:
 		t.Setenv("XDG_CONFIG_HOME", dir)
 	}
 
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		t.Fatalf("os.UserConfigDir() error: %v", err)
-	}
-
-	return filepath.Join(configDir, "zgod")
+	return filepath.Join(dir, "zgod")
 }
 
 func setDataHome(t *testing.T, dir string) string {

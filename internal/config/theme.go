@@ -1,20 +1,20 @@
 package config
 
 type ThemeConfig struct {
-	Prompt            string `toml:"prompt"`
-	PromptColor       string `toml:"prompt_color"`
-	MatchColor        string `toml:"match_color"`
-	SelectedBg        string `toml:"selected_bg"`
-	SelectedFg        string `toml:"selected_fg"`
-	ModeColor         string `toml:"mode_color"`
-	BorderColor       string `toml:"border_color"`
-	MatchBold         *bool  `toml:"match_bold"`
-	MatchUnderline    *bool  `toml:"match_underline"`
-	MatchBg           string `toml:"match_bg"`
-	SelectionBarShow  *bool  `toml:"selection_bar_show"`
-	SelectionBarChar  string `toml:"selection_bar_char"`
-	SelectionBarColor string `toml:"selection_bar_color"`
-	SelectionFullLine *bool  `toml:"selection_full_line"`
+	Prompt            string `json:"prompt"            toml:"prompt"`
+	PromptColor       string `json:"promptColor"       toml:"prompt_color"`
+	MatchColor        string `json:"matchColor"        toml:"match_color"`
+	SelectedBg        string `json:"selectedBg"        toml:"selected_bg"`
+	SelectedFg        string `json:"selectedFg"        toml:"selected_fg"`
+	ModeColor         string `json:"modeColor"         toml:"mode_color"`
+	BorderColor       string `json:"borderColor"       toml:"border_color"`
+	MatchBold         *bool  `json:"matchBold"         toml:"match_bold"`
+	MatchUnderline    *bool  `json:"matchUnderline"    toml:"match_underline"`
+	MatchBg           string `json:"matchBg"           toml:"match_bg"`
+	SelectionBarShow  *bool  `json:"selectionBarShow"  toml:"selection_bar_show"`
+	SelectionBarChar  string `json:"selectionBarChar"  toml:"selection_bar_char"`
+	SelectionBarColor string `json:"selectionBarColor" toml:"selection_bar_color"`
+	SelectionFullLine *bool  `json:"selectionFullLine" toml:"selection_full_line"`
 }
 
 func DefaultTheme() ThemeConfig {
@@ -27,9 +27,9 @@ func DefaultTheme() ThemeConfig {
 		Prompt:      "> ",
 		PromptColor: "cyan",
 		MatchColor:  "yellow",
-		SelectedBg:  "24",
+		SelectedBg:  "4",
 		SelectedFg:  "",
-		ModeColor:   "240",
+		ModeColor:   "8",
 		BorderColor: "",
 
 		MatchBold:      &matchBold,

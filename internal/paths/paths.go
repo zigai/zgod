@@ -15,12 +15,25 @@ var (
 )
 
 func ConfigDir() (string, error) {
-	configDir, err := os.UserConfigDir()
+	if runtime.GOOS != "windows" {
+		if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+			return filepath.Join(dir, "zgod"), nil
+		}
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("getting home directory: %w", err)
+		}
+
+		return filepath.Join(home, ".config", "zgod"), nil
+	}
+
+	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("getting user config directory: %w", err)
 	}
 
-	return filepath.Join(configDir, "zgod"), nil
+	return filepath.Join(dir, "zgod"), nil
 }
 
 func ConfigFile() (string, error) {
@@ -33,7 +46,16 @@ func ConfigFile() (string, error) {
 		return "", err
 	}
 
-	return filepath.Join(dir, "config.toml"), nil
+	path := filepath.Join(dir, "config.toml")
+
+	legacy := LegacyConfigFile()
+	if _, err = os.Stat(path); errors.Is(err, os.ErrNotExist) && legacy != "" {
+		if _, legacyErr := os.Stat(legacy); legacyErr == nil {
+			return legacy, nil
+		}
+	}
+
+	return path, nil
 }
 
 func DatabaseFile() (string, error) {

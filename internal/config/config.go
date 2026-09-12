@@ -3,10 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
-
-	"github.com/BurntSushi/toml"
 
 	"github.com/zigai/zgod/internal/db"
 	"github.com/zigai/zgod/internal/paths"
@@ -23,25 +20,25 @@ var (
 )
 
 type Config struct {
-	DB      DBConfig      `toml:"db"`
-	Filters FilterConfig  `toml:"filters"`
-	Theme   ThemeConfig   `toml:"theme"`
-	Display DisplayConfig `toml:"display"`
-	Keys    KeyConfig     `toml:"keys"`
+	DB      DBConfig      `json:"db"      toml:"db"`
+	Filters FilterConfig  `json:"filters" toml:"filters"`
+	Theme   ThemeConfig   `json:"theme"   toml:"theme"`
+	Display DisplayConfig `json:"display" toml:"display"`
+	Keys    KeyConfig     `json:"keys"    toml:"keys"`
 }
 
 type DBConfig struct {
-	Path string `toml:"path"`
+	Path string `json:"path" toml:"path"`
 }
 
 type FilterConfig struct {
-	IgnoreSpace      bool     `toml:"ignore_space"`
-	ExitCode         []int    `toml:"exit_code"`
-	CommandGlob      []string `toml:"command_glob"`
-	CommandRegex     []string `toml:"command_regex"`
-	DirectoryGlob    []string `toml:"directory_glob"`
-	DirectoryRegex   []string `toml:"directory_regex"`
-	MaxCommandLength int      `toml:"max_command_length"`
+	IgnoreSpace      bool     `json:"ignoreSpace"      toml:"ignore_space"`
+	ExitCode         []int    `json:"exitCode"         toml:"exit_code"`
+	CommandGlob      []string `json:"commandGlob"      toml:"command_glob"`
+	CommandRegex     []string `json:"commandRegex"     toml:"command_regex"`
+	DirectoryGlob    []string `json:"directoryGlob"    toml:"directory_glob"`
+	DirectoryRegex   []string `json:"directoryRegex"   toml:"directory_regex"`
+	MaxCommandLength int      `json:"maxCommandLength" toml:"max_command_length"`
 }
 
 func Default() Config {
@@ -65,36 +62,7 @@ func Default() Config {
 }
 
 func Load() (Config, error) {
-	cfg := Default()
-
-	configPath, err := paths.ConfigFile()
-	if err != nil {
-		return cfg, fmt.Errorf("resolving config file path: %w", err)
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			err = cfg.Save()
-			if err != nil {
-				return cfg, err
-			}
-
-			return cfg, nil
-		}
-
-		return cfg, err
-	}
-
-	if _, err = toml.Decode(string(data), &cfg); err != nil {
-		return cfg, fmt.Errorf("decoding config TOML: %w", err)
-	}
-
-	if err = cfg.Validate(); err != nil {
-		return cfg, err
-	}
-
-	return cfg, nil
+	return LoadWithOptions(LoadOptions{Path: "", NoConfig: false, NoCreate: false, Overrides: nil})
 }
 
 func (c Config) Validate() error {
@@ -123,7 +91,11 @@ func (c Config) Validate() error {
 		return err
 	}
 
-	return c.validateMultilinePreview()
+	if err = c.validateMultilinePreview(); err != nil {
+		return err
+	}
+
+	return c.validateValues()
 }
 
 func (c Config) Save() error {
@@ -132,22 +104,7 @@ func (c Config) Save() error {
 		return fmt.Errorf("resolving config file path: %w", err)
 	}
 
-	if err = paths.EnsureParentDir(configPath, 0o700); err != nil {
-		return fmt.Errorf("ensuring config directory for %q: %w", configPath, err)
-	}
-
-	f, err := os.OpenFile(configPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return fmt.Errorf("opening config file %q: %w", configPath, err)
-	}
-
-	defer func() { _ = f.Close() }()
-
-	if err = toml.NewEncoder(f).Encode(c); err != nil {
-		return fmt.Errorf("encoding config TOML: %w", err)
-	}
-
-	return nil
+	return saveConfigFile(configPath, c, true)
 }
 
 func (c Config) DatabasePath() (string, error) {

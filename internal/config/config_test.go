@@ -18,8 +18,16 @@ func setTestHomes(t *testing.T, dir string) string {
 	t.Setenv("APPDATA", dir)
 	t.Setenv("LOCALAPPDATA", dir)
 
-	configPath := filepath.Join(dir, "config.toml")
-	t.Setenv("ZGOD_CONFIG", configPath)
+	t.Setenv("ZGOD_CONFIG", "")
+
+	configPath, err := paths.ConfigFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	return configPath
 }
@@ -77,24 +85,20 @@ func TestLoadMissingFile(t *testing.T) {
 	}
 }
 
-func TestLoadMissingFileCreatesCustomConfigParentDir(t *testing.T) {
+func TestLoadMissingExplicitFileDoesNotCreateIt(t *testing.T) {
 	dir := t.TempDir()
 	setTestHomes(t, dir)
 
 	configPath := filepath.Join(dir, "custom", "nested", "zgod.toml")
 	t.Setenv("ZGOD_CONFIG", configPath)
 
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
+	_, err := Load()
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Load() = %v, want missing explicit config error", err)
 	}
 
-	if !cfg.Filters.IgnoreSpace {
-		t.Error("missing custom config should return defaults")
-	}
-
-	if _, err = os.Stat(configPath); err != nil {
-		t.Fatalf("expected custom config file to be created: %v", err)
+	if _, err = os.Stat(filepath.Dir(configPath)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("explicit config parent should not be created: %v", err)
 	}
 }
 
