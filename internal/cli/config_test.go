@@ -35,7 +35,7 @@ func TestConfigShowRejectsInvalidConfig(t *testing.T) {
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 
-	if err = configShowCmd.RunE(cmd, nil); err == nil {
+	if err = runConfigShow(cmd, nil); err == nil {
 		t.Fatal("config show error = nil, want invalid config error")
 	}
 
@@ -71,7 +71,7 @@ func TestConfigShowRawPrintsInvalidConfig(t *testing.T) {
 	var stdout bytes.Buffer
 	cmd.SetOut(&stdout)
 
-	if err = configShowCmd.RunE(cmd, nil); err != nil {
+	if err = runConfigShow(cmd, nil); err != nil {
 		t.Fatalf("config show --raw error: %v", err)
 	}
 
@@ -117,7 +117,7 @@ func TestConfigEditAllowsInvalidConfigAndParsesEditorArgs(t *testing.T) {
 		runEditorProcess = oldRunner
 	})
 
-	if err = configEditCmd.RunE(&cobra.Command{}, nil); err != nil {
+	if err = runConfigEdit(&cobra.Command{}, nil); err != nil {
 		t.Fatalf("config edit error: %v", err)
 	}
 
@@ -226,7 +226,7 @@ func TestConfigEditPreservesEmptyQuotedEditorArgument(t *testing.T) {
 		runEditorProcess = oldRunner
 	})
 
-	if err = configEditCmd.RunE(&cobra.Command{}, nil); err != nil {
+	if err = runConfigEdit(&cobra.Command{}, nil); err != nil {
 		t.Fatalf("config edit error: %v", err)
 	}
 
@@ -274,8 +274,7 @@ func setCLITestHomes(t *testing.T) string {
 		t.Setenv("XDG_DATA_HOME", dataDir)
 	}
 
-	zgodConfig := filepath.Join(configDir, "zgod", "config.toml")
-	t.Setenv("ZGOD_CONFIG", zgodConfig)
+	t.Setenv("ZGOD_CONFIG", "")
 
 	resolved, err := paths.ConfigFile()
 	if err != nil {

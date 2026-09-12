@@ -5,13 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/spf13/cobra"
-
-	"github.com/zigai/zgod/internal/config"
-	"github.com/zigai/zgod/internal/paths"
 )
 
 var (
@@ -29,69 +26,68 @@ var runEditorProcess = func(name string, args []string) error {
 	return c.Run()
 }
 
-var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Manage configuration",
-	Run: func(cmd *cobra.Command, args []string) {
-		_ = cmd.Help()
-	},
-}
+func runConfigShow(cmd *cobra.Command, _ []string) error {
+	raw, err := configShowRaw(cmd)
+	if err != nil {
+		return err
+	}
 
-var configShowCmd = &cobra.Command{
-	Use:          "show",
-	Short:        "Print the current configuration",
-	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		raw, err := configShowRaw(cmd)
+	if raw {
+		path, err := commandConfigPath(cmd)
 		if err != nil {
 			return err
 		}
 
-		configPath, err := ensureConfigFile()
+		data, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("reading config: %w", err)
 		}
 
-		if !raw {
-			if _, err = config.Load(); err != nil {
-				return fmt.Errorf("validating config file: %w", err)
-			}
-		}
-
-		data, err := os.ReadFile(configPath)
-		if err != nil {
-			return fmt.Errorf("reading config file: %w", err)
-		}
-
-		_, err = cmd.OutOrStdout().Write(data)
-		if err != nil {
-			return fmt.Errorf("writing config to stdout: %w", err)
+		if _, err = cmd.OutOrStdout().Write(data); err != nil {
+			return fmt.Errorf("writing raw config: %w", err)
 		}
 
 		return nil
-	},
+	}
+
+	cfg, err := loadConfig(cmd)
+	if err != nil {
+		return err
+	}
+
+	if flagBool(cmd, "json") {
+		return writeJSON(cmd.OutOrStdout(), cfg)
+	}
+
+	if err = toml.NewEncoder(cmd.OutOrStdout()).Encode(cfg); err != nil {
+		return fmt.Errorf("writing effective config: %w", err)
+	}
+
+	return nil
 }
 
-var configEditCmd = &cobra.Command{
-	Use:   "edit",
-	Short: "Open the configuration file in an editor",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		editor := os.Getenv("EDITOR")
-		if editor == "" {
-			editor = os.Getenv("VISUAL")
-		}
+func runConfigEdit(cmd *cobra.Command, _ []string) error {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = os.Getenv("VISUAL")
+	}
 
-		if editor == "" {
-			return errNoEditorConfigured
-		}
+	if editor == "" {
+		return errNoEditorConfigured
+	}
 
-		path, err := ensureConfigFile()
-		if err != nil {
+	path, err := commandConfigPath(cmd)
+	if err != nil {
+		return err
+	}
+
+	if _, err = os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		if _, err = loadConfig(cmd); err != nil {
 			return err
 		}
+	}
 
-		return openEditor(editor, path)
-	},
+	return openEditor(editor, path)
 }
 
 func configShowRaw(cmd *cobra.Command) (bool, error) {
@@ -106,32 +102,6 @@ func configShowRaw(cmd *cobra.Command) (bool, error) {
 	}
 
 	return raw, nil
-}
-
-func ensureConfigFile() (string, error) {
-	configPath, err := paths.ConfigFile()
-	if err != nil {
-		return "", fmt.Errorf("resolving config file path: %w", err)
-	}
-
-	_, err = os.Stat(configPath)
-	if err == nil {
-		return configPath, nil
-	}
-
-	if !errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("checking config file: %w", err)
-	}
-
-	if err = os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
-		return "", fmt.Errorf("creating config directory: %w", err)
-	}
-
-	if err = config.Default().Save(); err != nil {
-		return "", fmt.Errorf("creating default config: %w", err)
-	}
-
-	return configPath, nil
 }
 
 func openEditor(editor, path string) error {
@@ -165,9 +135,13 @@ func splitCommandLine(command string) ([]string, error) {
 	return args, nil
 }
 
-func registerConfigCommand() {
-	configShowCmd.Flags().Bool("raw", false, "Print config without validating it")
-	configCmd.AddCommand(configShowCmd)
-	configCmd.AddCommand(configEditCmd)
-	rootCmd.AddCommand(configCmd)
+func registerConfigCommand(root *cobra.Command) {
+	cmd := &cobra.Command{Use: "config", Short: "Manage configuration", GroupID: "management", RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
+	show := &cobra.Command{Use: "show", Short: "Print effective configuration", RunE: runConfigShow}
+	show.Flags().Bool("raw", false, "Print the chosen config file without validation")
+	show.Flags().Bool("json", false, "Print effective configuration as JSON")
+
+	edit := &cobra.Command{Use: "edit", Short: "Open the user configuration in an editor", RunE: runConfigEdit}
+	cmd.AddCommand(show, edit)
+	root.AddCommand(cmd)
 }

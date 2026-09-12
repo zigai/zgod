@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -45,14 +46,6 @@ var (
 	errImportSourceRequired     = errors.New("source database path is required")
 	errImportSourceNotFound     = errors.New("source database does not exist")
 )
-
-var importCmd = &cobra.Command{
-	Use:          "import <source-db-path>",
-	Short:        "Import history from another SQLite database",
-	SilenceUsage: true,
-	Args:         cobra.ExactArgs(1),
-	RunE:         runImport,
-}
 
 type importOptions struct {
 	includeFailed       bool
@@ -104,14 +97,44 @@ type importPathCheckResult struct {
 	err    error
 }
 
-func registerImportCommand() {
+func registerImportCommand(root *cobra.Command) {
+	importCmd := &cobra.Command{Use: "import <source-db-path|->", Short: "Import history from a SQLite database or stdin", GroupID: "management", Args: cobra.ExactArgs(1), RunE: runImport}
 	importCmd.Flags().Bool("include-failed", false, "Include commands with non-zero exit code")
 	importCmd.Flags().Bool(
 		"include-missing-paths",
 		false,
 		"Include commands that reference paths missing on this machine",
 	)
-	rootCmd.AddCommand(importCmd)
+	importCmd.Flags().Bool("json", false, "Print the import summary as JSON")
+	root.AddCommand(importCmd)
+}
+
+func importSourceArgument(cmd *cobra.Command, argument string) (string, func(), error) {
+	if argument != "-" {
+		return argument, func() {}, nil
+	}
+
+	file, err := os.CreateTemp("", "zgod-import-*.db")
+	if err != nil {
+		return "", nil, fmt.Errorf("creating stdin database: %w", err)
+	}
+
+	cleanup := func() { _ = os.Remove(file.Name()) }
+
+	if _, err = io.Copy(file, cmd.InOrStdin()); err != nil {
+		_ = file.Close()
+
+		cleanup()
+
+		return "", nil, fmt.Errorf("reading SQLite database from stdin: %w", err)
+	}
+
+	if err = file.Close(); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("closing stdin database: %w", err)
+	}
+
+	return file.Name(), cleanup, nil
 }
 
 func runImport(cmd *cobra.Command, args []string) error {
@@ -120,7 +143,13 @@ func runImport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	sourcePath, targetPath, err := resolveImportPaths(args)
+	sourceArg, cleanup, err := importSourceArgument(cmd, args[0])
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	sourcePath, targetPath, err := resolveImportPaths(cmd, []string{sourceArg})
 	if err != nil {
 		return err
 	}
@@ -131,6 +160,10 @@ func runImport(cmd *cobra.Command, args []string) error {
 	}
 
 	defer func() { _ = sourceDB.Close() }()
+
+	if err = config.EnsureDefault(configOptions(cmd)); err != nil {
+		return fmt.Errorf("creating default configuration: %w", err)
+	}
 
 	var summary importSummary
 
@@ -150,18 +183,16 @@ func runImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("locking target database for import: %w", err)
 	}
 
-	printImportSummary(cmd, summary)
-
-	return nil
+	return printImportSummary(cmd, summary)
 }
 
-func resolveImportPaths(args []string) (string, string, error) {
+func resolveImportPaths(cmd *cobra.Command, args []string) (string, string, error) {
 	sourcePath, err := resolveExistingPath(args)
 	if err != nil {
 		return "", "", err
 	}
 
-	targetPath, err := resolveTargetImportPath()
+	targetPath, err := resolveTargetImportPath(cmd)
 	if err != nil {
 		return "", "", err
 	}
@@ -178,8 +209,11 @@ func resolveImportPaths(args []string) (string, string, error) {
 	return sourcePath, targetPath, nil
 }
 
-func resolveTargetImportPath() (string, error) {
-	cfg, err := config.Load()
+func resolveTargetImportPath(cmd *cobra.Command) (string, error) {
+	opts := configOptions(cmd)
+	opts.NoCreate = true
+
+	cfg, err := config.LoadWithOptions(opts)
 	if err != nil {
 		return "", fmt.Errorf("loading config: %w", err)
 	}
@@ -213,10 +247,6 @@ func openImportSourceDatabase(sourcePath string) (*sql.DB, error) {
 }
 
 func openImportTargetDatabase(targetPath string) (*sql.DB, error) {
-	if err := paths.EnsureDirs(); err != nil {
-		return nil, fmt.Errorf("ensuring directories: %w", err)
-	}
-
 	targetDB, err := db.Open(targetPath)
 	if err != nil {
 		return nil, fmt.Errorf("opening target database: %w", err)
@@ -225,8 +255,16 @@ func openImportTargetDatabase(targetPath string) (*sql.DB, error) {
 	return targetDB, nil
 }
 
-func printImportSummary(cmd *cobra.Command, summary importSummary) {
-	cmd.Printf(
+func printImportSummary(cmd *cobra.Command, summary importSummary) error {
+	if flagBool(cmd, "json") {
+		return writeJSON(cmd.OutOrStdout(), map[string]int{
+			"total": summary.total, "imported": summary.imported,
+			"skippedFailed": summary.skippedFailed, "skippedMissingPaths": summary.skippedMissingPath,
+			"skippedPathErrors": summary.skippedPathError, "skippedDuplicates": summary.skippedDuplicate,
+		})
+	}
+
+	_, err := fmt.Fprintf(cmd.ErrOrStderr(),
 		"Import complete: total=%d imported=%d skipped_failed=%d skipped_missing_paths=%d skipped_path_errors=%d skipped_duplicates=%d\n",
 		summary.total,
 		summary.imported,
@@ -235,6 +273,11 @@ func printImportSummary(cmd *cobra.Command, summary importSummary) {
 		summary.skippedPathError,
 		summary.skippedDuplicate,
 	)
+	if err != nil {
+		return fmt.Errorf("writing import summary: %w", err)
+	}
+
+	return nil
 }
 
 func readImportOptions(cmd *cobra.Command) (importOptions, error) {

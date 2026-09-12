@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,7 +18,6 @@ import (
 	"github.com/zigai/zgod/internal/config"
 	"github.com/zigai/zgod/internal/db"
 	"github.com/zigai/zgod/internal/history"
-	"github.com/zigai/zgod/internal/paths"
 )
 
 const (
@@ -28,14 +29,6 @@ const (
 	recordPendingFileExtension              = ".json"
 	recordPendingTempPrefix                 = ".tmp-"
 )
-
-var recordCmd = &cobra.Command{
-	Use:          "record",
-	Short:        "Record a command to history",
-	Hidden:       true,
-	SilenceUsage: true,
-	RunE:         runRecord,
-}
 
 var (
 	errPendingRecordNameExhausted = errors.New("exhausted pending history record file names")
@@ -52,23 +45,38 @@ type pendingHistoryRecord struct {
 	Hostname    string `json:"hostname"`
 }
 
-func registerRecordCommand() {
+func registerRecordCommand(root *cobra.Command) {
+	recordCmd := &cobra.Command{Use: "record", Short: "Record a command to history", Hidden: true, GroupID: "core", RunE: runRecord}
 	recordCmd.Flags().String("ts", "", "start timestamp: milliseconds, seconds (with 's' suffix), or 'now'")
-	recordCmd.Flags().Int64("duration", -1, "duration in milliseconds (-1 to auto-compute from ts)")
-	recordCmd.Flags().Int("exit-code", 0, "exit code")
+	recordCmd.Flags().Int64("duration", 0, "Duration in milliseconds (-1 or omitted: compute from ts; otherwise >=0)")
+	recordCmd.Flags().Int("exit-code", 0, "Exit status (0–4294967295; Windows also accepts signed 32-bit statuses; default 0)")
 	recordCmd.Flags().String("command", "", "command string")
 	recordCmd.Flags().String("directory", "", "working directory")
 	recordCmd.Flags().String("session", "", "session ID")
-	rootCmd.AddCommand(recordCmd)
+	recordCmd.Flags().Bool("command-stdin", false, "Read the command from stdin instead of process arguments (maximum 1 MiB)")
+	root.AddCommand(recordCmd)
 }
 
 func runRecord(cmd *cobra.Command, args []string) error {
 	command, _ := cmd.Flags().GetString("command")
+	if flagBool(cmd, "command-stdin") {
+		data, err := io.ReadAll(io.LimitReader(cmd.InOrStdin(), maxCommandBytes+1))
+		if err != nil {
+			return fmt.Errorf("reading command from stdin: %w", err)
+		}
+
+		if len(data) > maxCommandBytes {
+			return fmt.Errorf("%w: command exceeds 1 MiB", errUsage)
+		}
+
+		command = string(data)
+	}
+
 	if command == "" {
 		return nil
 	}
 
-	cfg, err := config.Load()
+	cfg, err := loadConfig(cmd)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -85,17 +93,18 @@ func runRecord(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if err = paths.EnsureDirs(); err != nil {
-		return fmt.Errorf("ensuring directories: %w", err)
-	}
-
 	dbPath, err := cfg.DatabasePath()
 	if err != nil {
 		return fmt.Errorf("resolving database path: %w", err)
 	}
 
 	nowMS := time.Now().UnixMilli()
-	timestampMS, durationMS := parseRecordTimingMS(cmd, nowMS)
+
+	timestampMS, durationMS, err := parseRecordTimingMS(cmd, nowMS)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errUsage, err)
+	}
+
 	sessionID, _ := cmd.Flags().GetString("session")
 	hostname := getHostname()
 
@@ -352,20 +361,26 @@ func shouldRecordCommand(cfg config.Config, command string, exitCode int, direct
 	return filter.ShouldRecord(command, exitCode, directory), nil
 }
 
-func parseRecordTimingMS(cmd *cobra.Command, nowMS int64) (int64, int64) {
-	tsStr, _ := cmd.Flags().GetString("ts")
-	timestampMS := parseTimestampMS(tsStr, nowMS)
+func parseRecordTimingMS(cmd *cobra.Command, nowMS int64) (int64, int64, error) {
+	timestampMS, err := parseTimestampMS(flagString(cmd, "ts"), nowMS)
+	if err != nil {
+		return 0, 0, err
+	}
 
 	durationMS, _ := cmd.Flags().GetInt64("duration")
-	if durationMS < 0 && timestampMS > 0 && timestampMS < nowMS {
-		durationMS = nowMS - timestampMS
+	if !cmd.Flags().Changed("duration") {
+		durationMS = -1
 	}
 
-	if durationMS < 0 {
-		durationMS = 0
+	if durationMS < -1 {
+		return 0, 0, fmt.Errorf("%w: --duration must be -1 or nonnegative", errUsage)
 	}
 
-	return timestampMS, durationMS
+	if durationMS == -1 {
+		durationMS = max(nowMS-timestampMS, 0)
+	}
+
+	return timestampMS, durationMS, nil
 }
 
 func getHostname() string {
@@ -373,30 +388,27 @@ func getHostname() string {
 	return h
 }
 
-// parseTimestampMS parses a timestamp string into milliseconds.
-// Accepts: "now", milliseconds (13 digits), seconds (10 digits), or seconds with "s" suffix.
-func parseTimestampMS(s string, nowMS int64) int64 {
-	if s == "" || s == "now" {
-		return nowMS
+// parseTimestampMS accepts now, Unix seconds (optional s suffix), or milliseconds.
+func parseTimestampMS(value string, nowMS int64) (int64, error) {
+	if value == "" || value == "now" {
+		return nowMS, nil
 	}
 
-	if len(s) > 1 && s[len(s)-1] == 's' {
-		sec, err := strconv.ParseInt(s[:len(s)-1], 10, 64)
-		if err != nil {
-			return nowMS
+	seconds := strings.HasSuffix(value, "s")
+	number := strings.TrimSuffix(value, "s")
+
+	parsed, err := strconv.ParseInt(number, 10, 64)
+	if err != nil || parsed < 0 {
+		return 0, fmt.Errorf("%w: --ts requires now or a nonnegative Unix timestamp", errUsage)
+	}
+
+	if seconds || parsed < recordUnixMillisecondsCutoffValue {
+		if parsed > math.MaxInt64/recordMillisecondsPerSecond {
+			return 0, fmt.Errorf("%w: --ts seconds overflow milliseconds", errUsage)
 		}
 
-		return sec * recordMillisecondsPerSecond
+		parsed *= recordMillisecondsPerSecond
 	}
 
-	val, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return nowMS
-	}
-
-	if val < recordUnixMillisecondsCutoffValue {
-		return val * recordMillisecondsPerSecond
-	}
-
-	return val
+	return parsed, nil
 }

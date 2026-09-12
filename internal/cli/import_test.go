@@ -352,13 +352,13 @@ func TestRunImportReadableSourceImportsEntries(t *testing.T) {
 	cmd.Flags().Bool("include-missing-paths", false, "")
 
 	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
 
 	if err = runImport(cmd, []string{sourcePath}); err != nil {
 		t.Fatalf("runImport() error: %v", err)
 	}
 
-	targetPath, err := resolveTargetImportPath()
+	targetPath, err := resolveTargetImportPath(&cobra.Command{})
 	if err != nil {
 		t.Fatalf("resolveTargetImportPath() error: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestRunImportDoesNotCreateTargetForInvalidSource(t *testing.T) {
 		t.Fatalf("WriteFile(%q) error: %v", sourcePath, err)
 	}
 
-	targetPath, err := resolveTargetImportPath()
+	targetPath, err := resolveTargetImportPath(&cobra.Command{})
 	if err != nil {
 		t.Fatalf("resolveTargetImportPath() error: %v", err)
 	}
@@ -403,7 +403,7 @@ func TestRunImportDoesNotCreateTargetForInvalidSource(t *testing.T) {
 	cmd.Flags().Bool("include-missing-paths", false, "")
 
 	var stdout bytes.Buffer
-	cmd.SetOut(&stdout)
+	cmd.SetErr(&stdout)
 
 	err = runImport(cmd, []string{sourcePath})
 	if err == nil {

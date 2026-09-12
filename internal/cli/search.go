@@ -15,7 +15,6 @@ import (
 
 	"github.com/zigai/zgod/internal/config"
 	"github.com/zigai/zgod/internal/db"
-	"github.com/zigai/zgod/internal/paths"
 	"github.com/zigai/zgod/internal/tui"
 )
 
@@ -28,12 +27,6 @@ const (
 
 var errUnexpectedModelType = errors.New("unexpected model type")
 
-var searchCmd = &cobra.Command{
-	Use:   "search",
-	Short: "Interactive history search",
-	RunE:  runSearch,
-}
-
 type searchContext struct {
 	cfg     config.Config
 	model   *tui.Model
@@ -42,28 +35,89 @@ type searchContext struct {
 	cleanup func()
 }
 
-func registerSearchCommand() {
+func registerSearchCommand(root *cobra.Command) {
+	searchCmd := &cobra.Command{
+		Use: "search", Short: "Search shell history", GroupID: "core", RunE: runSearch,
+		Long:    "Search interactively when stdin and stdout are terminals.\nWhen either stream is redirected, print matching commands as plain text.\nUse --json for structured records or --shell for interactive shell integration.",
+		Example: "  zgod search\n  zgod search --cwd=false --query git\n  zgod search --query git | head\n  zgod search --json --mode regex --query '^git ' --limit 20",
+	}
 	searchCmd.Flags().Bool("cwd", false, "filter by current directory")
-	searchCmd.Flags().Int("height", searchDefaultHeight, "visible result lines")
+	searchCmd.Flags().Int("height", 0, "Visible result lines (1–1000; default 15)")
 	searchCmd.Flags().String("query", "", "initial search query")
-	rootCmd.AddCommand(searchCmd)
+	searchCmd.Flags().Bool("json", false, "Print matching history records as JSON without opening the UI")
+	searchCmd.Flags().String("mode", "", "Match mode: fuzzy (approximate), regex (regular expression), glob (wildcards)")
+	searchCmd.Flags().Int("limit", 0, "Maximum matching records to print (1–100000; default 1000)")
+	searchCmd.Flags().Bool("shell", false, "Return select/execute on the first line and the selected command below; success exits 0")
+	root.AddCommand(searchCmd)
 }
 
-func runSearch(cmd *cobra.Command, args []string) error {
-	exitCode, err := doSearch(cmd)
+func runSearch(cmd *cobra.Command, _ []string) error {
+	cfg, err := searchConfig(cmd)
 	if err != nil {
 		return err
 	}
 
+	if !searchIsInteractive(cmd) {
+		return runSearchOutput(cmd, cfg)
+	}
+
+	exitCode, err := doSearch(cmd, cfg)
+	if err != nil {
+		if errors.Is(err, tea.ErrInterrupted) {
+			return exitError{code: exitInterrupted}
+		}
+
+		return err
+	}
+
 	if exitCode != 0 {
-		os.Exit(exitCode)
+		return exitError{code: exitCode}
 	}
 
 	return nil
 }
 
-func doSearch(cmd *cobra.Command) (int, error) {
-	ctx, err := prepareSearchContext(cmd)
+func searchIsInteractive(cmd *cobra.Command) bool {
+	if flagBool(cmd, "json") {
+		return false
+	}
+
+	// Shell integration captures stdout but still needs the selection UI.
+	if flagBool(cmd, "shell") {
+		return true
+	}
+
+	return inputIsTerminal(cmd) && outputIsTerminal(cmd)
+}
+
+func searchConfig(cmd *cobra.Command) (config.Config, error) {
+	opts := configOptions(cmd)
+	opts.NoCreate = true
+
+	cfg, err := config.LoadWithOptions(opts)
+	if err != nil {
+		return cfg, fmt.Errorf("loading configuration: %w", err)
+	}
+
+	if err = validateQuery(cfg.Display.DefaultMode, flagString(cmd, "query")); err != nil {
+		return cfg, err
+	}
+
+	if err = config.EnsureDefault(opts); err != nil {
+		return cfg, fmt.Errorf("creating default configuration: %w", err)
+	}
+
+	return cfg, nil
+}
+
+func doSearch(cmd *cobra.Command, cfg config.Config) (int, error) {
+	if cfg.Keys.ToggleCWD == "ctrl+d" {
+		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Warning: keys.toggle_cwd=ctrl+d is deprecated; use alt+d. Ctrl-D on empty input now cancels search."); err != nil {
+			return 0, fmt.Errorf("writing keybinding migration warning: %w", err)
+		}
+	}
+
+	ctx, err := prepareSearchContext(cmd, cfg)
 	if err != nil {
 		return 0, err
 	}
@@ -74,6 +128,7 @@ func doSearch(cmd *cobra.Command) (int, error) {
 		tea.WithInput(ctx.ttyIn),
 		tea.WithOutput(ctx.ttyOut),
 		tea.WithMouseCellMotion(),
+		tea.WithAltScreen(),
 	)
 
 	finalModel, err := p.Run()
@@ -81,19 +136,10 @@ func doSearch(cmd *cobra.Command) (int, error) {
 		return 0, fmt.Errorf("running TUI: %w", err)
 	}
 
-	return resolveSearchResult(ctx.cfg, finalModel)
+	return resolveSearchResult(cmd, ctx.cfg, finalModel)
 }
 
-func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return searchContext{}, fmt.Errorf("loading config: %w", err)
-	}
-
-	if err = paths.EnsureDirs(); err != nil {
-		return searchContext{}, fmt.Errorf("ensuring directories: %w", err)
-	}
-
+func prepareSearchContext(cmd *cobra.Command, cfg config.Config) (searchContext, error) {
 	dbPath, err := cfg.DatabasePath()
 	if err != nil {
 		return searchContext{}, fmt.Errorf("resolving database path: %w", err)
@@ -109,7 +155,12 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 	}
 
 	cwdFlag, _ := cmd.Flags().GetBool("cwd")
+
 	height, _ := cmd.Flags().GetInt("height")
+	if !cmd.Flags().Changed("height") {
+		height = searchDefaultHeight
+	}
+
 	query, _ := cmd.Flags().GetString("query")
 
 	ttyIn, ttyOut, ttyCleanup, err := openTTY()
@@ -118,7 +169,11 @@ func prepareSearchContext(cmd *cobra.Command) (searchContext, error) {
 		return searchContext{}, fmt.Errorf("opening TTY: %w", err)
 	}
 
-	profile := termenv.TrueColor
+	profile := termenv.ANSI
+	if flagBool(cmd, "no-color") || (!flagBool(cmd, "color") && (os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb")) {
+		profile = termenv.Ascii
+	}
+
 	output := termenv.NewOutput(ttyOut, termenv.WithProfile(profile))
 	termenv.SetDefaultOutput(output)
 
@@ -219,22 +274,45 @@ func openSearchDatabase(dbPath string) (*sql.DB, error) {
 	return database, nil
 }
 
-func resolveSearchResult(cfg config.Config, finalModel tea.Model) (int, error) {
+func resolveSearchResult(cmd *cobra.Command, cfg config.Config, finalModel tea.Model) (int, error) {
 	m, ok := finalModel.(*tui.Model)
 	if !ok {
 		return 0, fmt.Errorf("%w: %T", errUnexpectedModelType, finalModel)
+	}
+
+	if m.Interrupted() {
+		return exitInterrupted, nil
 	}
 
 	if m.Canceled() {
 		return searchExitCodeCanceled, nil
 	}
 
-	if selected := m.Selected(); selected != "" {
-		fmt.Print(selected)
+	selected := m.Selected()
 
+	if flagBool(cmd, "shell") {
+		action := "select"
 		if cfg.Display.InstantExecute {
-			return searchExitCodeInstantExec, nil
+			action = "execute"
 		}
+
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s", action, selected); err != nil {
+			return 0, fmt.Errorf("writing shell result: %w", err)
+		}
+
+		return 0, nil
+	}
+
+	if _, err := fmt.Fprint(cmd.OutOrStdout(), selected); err != nil {
+		return 0, fmt.Errorf("writing selection: %w", err)
+	}
+
+	if selected != "" && cfg.Display.InstantExecute {
+		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Warning: search exit code 2 is deprecated; regenerate shell integration with 'zgod init <shell>' or use 'zgod search --shell'."); err != nil {
+			return 0, fmt.Errorf("writing compatibility warning: %w", err)
+		}
+
+		return searchExitCodeInstantExec, nil
 	}
 
 	return 0, nil
