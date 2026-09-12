@@ -113,10 +113,12 @@ if (Get-Module -Name PSReadLine) {
             $currentLine = $null
             [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$currentLine, [ref]$null)
 
-            $selected = & $script:__zgod_bin search --height 15 --query $currentLine
+            $result = @(& $script:__zgod_bin search --shell --height 15 --query $currentLine)
             $rc = $LASTEXITCODE
+            $action = if ($result.Count -gt 0) { $result[0] } else { "" }
+            $selected = if ($result.Count -gt 1) { $result[1..($result.Count - 1)] -join "`n" } else { "" }
 
-            if ($rc -eq 2 -and $selected) {
+            if ($rc -eq 0 -and $action -eq "execute" -and $selected) {
                 __zgod_init
                 $ts = __zgod_get_time_ms
                 $dir = $PWD.Path
@@ -126,7 +128,7 @@ if (Get-Module -Name PSReadLine) {
                 if (__zgod_has_command) {
                     __zgod_record_async $selected $ts $exitCode $dir $script:__zgod_session_id
                 }
-            } elseif ($rc -eq 0 -and $selected) {
+            } elseif ($rc -eq 0 -and $action -eq "select" -and $selected) {
                 [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
                 [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selected)
             }

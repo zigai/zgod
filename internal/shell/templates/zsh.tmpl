@@ -89,13 +89,18 @@ __zgod_search_widget() {
         return 0
     fi
     local selected
-    selected=$("$__zgod_bin" search --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
+    selected=$("$__zgod_bin" search --shell --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
     local rc=$?
-    if [[ $rc -eq 2 ]] && [[ -n "$selected" ]]; then
+    local action=""
+    if [[ $rc -eq 0 && "$selected" == *$'\n'* ]]; then
+        action=${selected%%$'\n'*}
+        selected=${selected#*$'\n'}
+    fi
+    if [[ $rc -eq 0 && "$action" == "execute" ]] && [[ -n "$selected" ]]; then
         LBUFFER="$selected"
         RBUFFER=""
         zle accept-line
-    elif [[ $rc -eq 0 ]] && [[ -n "$selected" ]]; then
+    elif [[ $rc -eq 0 && "$action" == "select" ]] && [[ -n "$selected" ]]; then
         LBUFFER="$selected"
         RBUFFER=""
     fi

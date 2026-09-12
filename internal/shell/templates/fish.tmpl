@@ -67,12 +67,14 @@ function __zgod_search
     if not __zgod_has_command
         return
     end
-    set -l selected (command "$__zgod_bin" search --height 15 --query (commandline) </dev/tty)
+    set -l result (command "$__zgod_bin" search --shell --height 15 --query "$(commandline)" </dev/tty)
     set -l rc $status
-    if test $rc -eq 2; and test -n "$selected"
+    set -l action "$result[1]"
+    set -l selected (string join \n -- $result[2..] | string collect)
+    if test $rc -eq 0; and test "$action" = execute; and test -n "$selected"
         commandline -r "$selected"
         commandline -f execute
-    else if test $rc -eq 0; and test -n "$selected"
+    else if test $rc -eq 0; and test "$action" = select; and test -n "$selected"
         commandline -r "$selected"
     end
     commandline -f repaint

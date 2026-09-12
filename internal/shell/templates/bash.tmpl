@@ -294,9 +294,14 @@ __zgod_search() {
         return
     fi
     local selected
-    selected=$("$__zgod_bin" search --height 15 --query "$READLINE_LINE" </dev/tty)
+    selected=$("$__zgod_bin" search --shell --height 15 --query "$READLINE_LINE" </dev/tty)
     local rc=$?
-    if [[ $rc -eq 2 ]] && [[ -n "$selected" ]]; then
+    local action=""
+    if [[ $rc -eq 0 && "$selected" == *$'\n'* ]]; then
+        action=${selected%%$'\n'*}
+        selected=${selected#*$'\n'}
+    fi
+    if [[ $rc -eq 0 && "$action" == "execute" ]] && [[ -n "$selected" ]]; then
         __zgod_init
         local start_ms=$(__zgod_get_time_ms)
         local start_dir="$PWD"
@@ -307,7 +312,7 @@ __zgod_search() {
         __zgod_record_command_async "$selected" "$start_ms" "$exit_code" "$start_dir"
         __zgod_in_hook=""
         return "$exit_code"
-    elif [[ $rc -eq 0 ]] && [[ -n "$selected" ]]; then
+    elif [[ $rc -eq 0 && "$action" == "select" ]] && [[ -n "$selected" ]]; then
         READLINE_LINE="$selected"
         READLINE_POINT=${#selected}
     fi

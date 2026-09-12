@@ -236,8 +236,9 @@ import (
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "search" {
+		fmt.Println("execute")
 		fmt.Println("Write-Output instant_ps_ran")
-		os.Exit(2)
+		os.Exit(0)
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "record" {
@@ -684,8 +685,8 @@ func testInstantExecutePathsBash(t *testing.T) {
 set -eu
 
 if [ "${1:-}" = "search" ]; then
-	printf 'echo instant_ran\n'
-	exit 2
+	printf 'execute\necho instant_ran\n'
+	exit 0
 fi
 
 if [ "${1:-}" = "record" ]; then

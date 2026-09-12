@@ -93,7 +93,7 @@ func Install(s Shell, customConfigPath string) error {
 	}
 
 	if updated {
-		fmt.Printf("Updated zgod in %s\n", configPath)
+		fmt.Fprintf(os.Stderr, "Updated zgod in %s\n", configPath)
 		printRestartHint(s, configPath)
 
 		return nil
@@ -103,7 +103,7 @@ func Install(s Shell, customConfigPath string) error {
 		return err
 	}
 
-	fmt.Printf("Added zgod to %s\n", configPath)
+	fmt.Fprintf(os.Stderr, "Added zgod to %s\n", configPath)
 	printRestartHint(s, configPath)
 
 	return nil
@@ -356,8 +356,8 @@ func updateSetupLine(configPath string, contentText string, oldLine string, newL
 
 func printRestartHint(s Shell, configPath string) {
 	if s == PowerShell || s == Pwsh {
-		fmt.Println("Restart PowerShell or run: . $PROFILE")
+		fmt.Fprintln(os.Stderr, "Restart PowerShell or run: . $PROFILE")
 	} else {
-		fmt.Println("Restart your shell or run: source " + configPath)
+		fmt.Fprintln(os.Stderr, "Restart your shell or run: source "+configPath)
 	}
 }
