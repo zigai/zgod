@@ -74,7 +74,7 @@ func TestHandleNavigationPageDownMovesByVisiblePage(t *testing.T) {
 		t.Fatal("handleNavigation(pgdown) = false, want true")
 	}
 
-	if got, want := m.cursor, 7; got != want {
+	if got, want := m.cursor, 6; got != want {
 		t.Fatalf("cursor after pgdown = %d, want %d", got, want)
 	}
 }
@@ -90,7 +90,7 @@ func TestHandleNavigationPageUpMovesByVisiblePage(t *testing.T) {
 		t.Fatal("handleNavigation(pgup) = false, want true")
 	}
 
-	if got, want := m.cursor, 7; got != want {
+	if got, want := m.cursor, 8; got != want {
 		t.Fatalf("cursor after pgup = %d, want %d", got, want)
 	}
 }
@@ -171,11 +171,11 @@ func TestHandleVisibleResultShortcutAcceptsVisibleSlot(t *testing.T) {
 		t.Fatal("visible result shortcut returned nil command, want tea.Quit")
 	}
 
-	if got, want := m.cursor, 4; got != want {
+	if got, want := m.cursor, 5; got != want {
 		t.Fatalf("cursor after visible result shortcut = %d, want %d", got, want)
 	}
 
-	if got, want := m.Selected(), "command 4"; got != want {
+	if got, want := m.Selected(), "command 5"; got != want {
 		t.Fatalf("Selected() after visible result shortcut = %q, want %q", got, want)
 	}
 

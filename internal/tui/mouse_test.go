@@ -226,7 +226,7 @@ func testMouseModel(entryCount int, height int) *Model {
 }
 
 func testMouseBodyCell(m *Model, bodyX int, bodyY int) (int, int) {
-	return 1 + panelPaddingX + bodyX, m.viewOriginY() + 1 + panelPaddingY + bodyY
+	return panelBorderW/2 + panelPaddingX + bodyX, m.viewOriginY() + panelBorderH/2 + panelPaddingY + bodyY
 }
 
 func testMouseFirstResultBodyY(m *Model) int {

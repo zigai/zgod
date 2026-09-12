@@ -28,14 +28,6 @@ type Styles struct {
 }
 
 func NewStyles(theme config.ThemeConfig) Styles {
-	borderColor := parseColor(theme.BorderColor)
-	if theme.BorderColor == "" {
-		borderColor = parseColor(theme.ModeColor)
-		if theme.ModeColor == "" {
-			borderColor = lipgloss.Color("240")
-		}
-	}
-
 	matchStyle := lipgloss.NewStyle().Foreground(parseColor(theme.MatchColor))
 	if config.BoolDefault(theme.MatchBold, true) {
 		matchStyle = matchStyle.Bold(true)
@@ -66,25 +58,20 @@ func NewStyles(theme config.ThemeConfig) Styles {
 
 		Match: matchStyle,
 
-		HeaderBar: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
-			Padding(0, 1),
+		HeaderBar: lipgloss.NewStyle().Padding(0, 1),
 
-		Input: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")),
+		Input: lipgloss.NewStyle(),
 
 		Footer: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245")).
+			Foreground(lipgloss.Color("8")).
 			Padding(0, 1),
 
-		Border: lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(borderColor),
+		Border: lipgloss.NewStyle(),
 
 		Title: lipgloss.NewStyle().
 			Foreground(parseColor(theme.PromptColor)).
 			Bold(true).
-			Background(lipgloss.Color("236")).
+			Background(lipgloss.Color("0")).
 			Padding(0, 2),
 
 		HelpKey: lipgloss.NewStyle().
@@ -92,12 +79,11 @@ func NewStyles(theme config.ThemeConfig) Styles {
 			Bold(true),
 
 		HelpDesc: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245")),
+			Foreground(lipgloss.Color("8")),
 
 		Dimmed: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")),
-		Meta: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245")),
+			Foreground(lipgloss.Color("8")),
+		Meta: lipgloss.NewStyle().Faint(true),
 		ExitOk: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("10")).
 			Bold(true),
@@ -105,22 +91,26 @@ func NewStyles(theme config.ThemeConfig) Styles {
 			Foreground(lipgloss.Color("9")).
 			Bold(true),
 		ColumnHeader: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("244")).
+			Foreground(lipgloss.Color("8")).
 			Bold(true),
 		ColumnHeaderBar: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("244")),
+			Foreground(lipgloss.Color("8")),
 		SelectionBar: selectionBarStyle,
 		SelectedCmd: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("15")).
 			Bold(true),
-		Cmd: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("250")),
+		Cmd: lipgloss.NewStyle(),
 	}
 }
 
 func parseColor(s string) lipgloss.TerminalColor {
 	if s == "" {
 		return lipgloss.NoColor{}
+	}
+
+	names := map[string]string{"black": "0", "red": "1", "green": "2", "yellow": "3", "blue": "4", "magenta": "5", "cyan": "6", "white": "7", "gray": "8"}
+	if color, ok := names[s]; ok {
+		s = color
 	}
 
 	return lipgloss.Color(s)

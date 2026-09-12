@@ -140,8 +140,8 @@ func (m *Model) moveCursor(delta int) {
 
 func (m *Model) mouseBodyPosition(ev tea.MouseEvent) (int, int, bool) {
 	viewY := ev.Y - m.viewOriginY()
-	bodyY := viewY - 1 - panelPaddingY
-	bodyX := ev.X - 1 - panelPaddingX
+	bodyY := viewY - panelBorderH/2 - panelPaddingY
+	bodyX := ev.X - panelBorderW/2 - panelPaddingX
 
 	if bodyX < 0 || bodyX >= m.width || bodyY < 0 || bodyY >= m.bodyHeight() {
 		return 0, 0, false
@@ -151,11 +151,8 @@ func (m *Model) mouseBodyPosition(ev tea.MouseEvent) (int, int, bool) {
 }
 
 func (m *Model) viewOriginY() int {
-	if m.terminalHeight <= 0 {
-		return 0
-	}
-
-	return max(m.terminalHeight-m.viewHeight(), 0)
+	// Search uses the alternate screen, whose origin does not depend on height.
+	return 0
 }
 
 func (m *Model) viewHeight() int {
@@ -163,7 +160,15 @@ func (m *Model) viewHeight() int {
 }
 
 func (m *Model) bodyHeight() int {
-	return m.inputRows() + m.height + m.previewPaneRows() + m.footerRows()
+	return m.inputRows() + m.resultsHeight() + m.previewPaneRows() + m.footerRows()
+}
+
+func (m *Model) resultsHeight() int {
+	if len(m.displayEntries) == 0 {
+		return 1
+	}
+
+	return m.height
 }
 
 func (m *Model) inputRows() int {
@@ -436,7 +441,7 @@ func (m *Model) footerBodyY() int {
 		return -1
 	}
 
-	return m.inputRows() + m.height + m.previewPaneRows()
+	return m.inputRows() + m.resultsHeight() + m.previewPaneRows()
 }
 
 func (m *Model) footerShortcutLineWidth() int {

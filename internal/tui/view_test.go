@@ -95,7 +95,7 @@ func TestRenderFooterUsesDefaultConfiguredKeys(t *testing.T) {
 	for _, needle := range []string{
 		"↑↓",
 		"nav",
-		"ctrl+d",
+		"alt+d",
 		"cwd",
 		"ctrl+g",
 		"dedup",

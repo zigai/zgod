@@ -55,6 +55,7 @@ type Model struct {
 	homeDir           string
 	quitting          bool
 	canceled          bool
+	interrupted       bool
 	showHelp          bool
 	showPreview       bool
 	previewCommand    string
@@ -224,6 +225,10 @@ func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir strin
 
 func (m *Model) Selected() string {
 	return m.selected
+}
+
+func (m *Model) Interrupted() bool {
+	return m.interrupted
 }
 
 func (m *Model) Canceled() bool {
@@ -744,6 +749,21 @@ func (m *Model) handleToggle(msg tea.KeyMsg) (tea.Cmd, bool) {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if matchKey(msg, "ctrl+c") {
+		m.quitting = true
+		m.canceled = true
+		m.interrupted = true
+
+		return m, tea.Quit
+	}
+
+	if (matchKey(msg, "ctrl+d") && m.input.Value() == "") || ((m.showHelp || m.showPreview) && matchKey(msg, "q")) {
+		m.quitting = true
+		m.canceled = true
+
+		return m, tea.Quit
+	}
+
 	if m.dismissTransientViews() {
 		return m, nil
 	}
