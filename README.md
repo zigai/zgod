@@ -2,10 +2,6 @@
 
 Interactive shell history search with **fuzzy**, **regex**, and **glob** matching.
 
-<p align="center">
-  <img src="assets/zgod-ui.png" alt="zgod interactive shell history search UI" width="952">
-</p>
-
 ## Features
 
 - **Match modes:** `fuzzy` / `regex` / `glob`
@@ -13,6 +9,7 @@ Interactive shell history search with **fuzzy**, **regex**, and **glob** matchin
 - **History exclusion filters:** exclude commands from history recording
 - **Persistent storage:** history is stored locally in `SQLite`
 - **Configurable UI:** prompt, colors, layout, multiline behavior
+- **Script output:** noninteractive search in JSON or plain text
 - **Custom keybindings**
 - **Supported shells:**  `bash`, `zsh`, `fish`, and `powershell`
 
@@ -100,7 +97,8 @@ if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod 
 | `up` / `ctrl+p` | Move up |
 | `down` / `ctrl+n` / `ctrl+r` | Move down |
 | `ctrl+s` | Cycle match mode (fuzzy / glob / regex) |
-| `ctrl+d` | Toggle CWD filter |
+| `ctrl+d` | Cancel when the query is empty |
+| `alt+d` | Toggle CWD filter |
 | `ctrl+g` | Toggle deduplication |
 | `ctrl+f` | Cycle fail filter (include/exclude/only) |
 | `alt+t` | Cycle date sort (newest/oldest/off) |
@@ -111,25 +109,17 @@ if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod 
 | `ctrl+1` … `ctrl+9`, `ctrl+0` | Accept visible result 1-10 |
 | `?` | Help overlay |
 
-Mouse is also supported in compatible terminals: wheel scrolls the result list,
-hovering a result highlights it, left-clicking a result accepts it, footer
-shortcuts and top-right pills can be clicked, and clicking in the input moves the cursor.
-
 ## Configuration
 
 Default paths:
 
-- **Linux:**
-  - config file: `$XDG_CONFIG_HOME/zgod/config.toml` or `~/.config/zgod/config.toml`
-  - history database: `$XDG_DATA_HOME/zgod/history.db` or `~/.local/share/zgod/history.db`
-- **macOS:**
-  - config file: `~/Library/Application Support/zgod/config.toml`
-  - history database: `~/.local/share/zgod/history.db`
-- **Windows:**
-  - config file: `%APPDATA%\zgod\config.toml`
-  - history database: `%LOCALAPPDATA%\zgod\history.db`
+| Platform | Config | History |
+|---|---|---|
+| Linux / macOS | `~/.config/zgod/config.toml` | `~/.local/share/zgod/history.db` |
+| Windows | `%APPDATA%\zgod\config.toml` | `%LOCALAPPDATA%\zgod\history.db` |
 
-All fields are optional.
+On Linux/macOS, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` override `~/.config` and
+`~/.local/share`, respectively.
 
 ```toml
 [db]
@@ -151,13 +141,13 @@ match_color = "yellow"
 match_bold = true
 match_underline = true
 match_bg = ""
-selected_bg = "24"
+selected_bg = "4"
 selected_fg = ""
 selection_bar_show = true
 selection_bar_char = "▌ "
 selection_bar_color = "14"
 selection_full_line = true
-mode_color = "240"
+mode_color = "8"
 border_color = ""
 
 [display]
@@ -183,7 +173,7 @@ mode_next = "ctrl+s"
 mode_fuzzy = "alt+f"
 mode_regex = "alt+r"
 mode_glob = "alt+g"
-toggle_cwd = "ctrl+d"
+toggle_cwd = "alt+d"
 toggle_dedupe = "ctrl+g"
 toggle_fails = "ctrl+f"
 sort_history = "alt+t"
