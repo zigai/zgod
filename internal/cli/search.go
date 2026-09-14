@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -87,6 +89,11 @@ func searchIsInteractive(cmd *cobra.Command) bool {
 		return true
 	}
 
+	// Legacy shell integrations redirected stdout to capture selection, while stdin is /dev/tty.
+	if inputIsTerminal(cmd) && (cmd.Flags().Changed("height") || cmd.Flags().Changed("query")) {
+		return true
+	}
+
 	return inputIsTerminal(cmd) && outputIsTerminal(cmd)
 }
 
@@ -128,7 +135,6 @@ func doSearch(cmd *cobra.Command, cfg config.Config) (int, error) {
 		tea.WithInput(ctx.ttyIn),
 		tea.WithOutput(ctx.ttyOut),
 		tea.WithMouseCellMotion(),
-		tea.WithAltScreen(),
 	)
 
 	finalModel, err := p.Run()
@@ -169,14 +175,12 @@ func prepareSearchContext(cmd *cobra.Command, cfg config.Config) (searchContext,
 		return searchContext{}, fmt.Errorf("opening TTY: %w", err)
 	}
 
-	profile := termenv.ANSI
-	if flagBool(cmd, "no-color") || (!flagBool(cmd, "color") && (os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb")) {
-		profile = termenv.Ascii
-	}
+	profile := detectColorProfile(cmd, ttyOut)
 
 	output := termenv.NewOutput(ttyOut, termenv.WithProfile(profile))
 	termenv.SetDefaultOutput(output)
 
+	lipgloss.SetColorProfile(profile)
 	renderer := lipgloss.NewRenderer(ttyOut)
 	renderer.SetColorProfile(profile)
 	lipgloss.SetDefaultRenderer(renderer)
@@ -214,6 +218,34 @@ func prepareSearchContext(cmd *cobra.Command, cfg config.Config) (searchContext,
 		ttyOut:  ttyOut,
 		cleanup: cleanup,
 	}, nil
+}
+func detectColorProfile(cmd *cobra.Command, ttyOut io.Writer) termenv.Profile {
+	if flagBool(cmd, "no-color") {
+		return termenv.Ascii
+	}
+
+	if flagBool(cmd, "color") {
+		return termenv.TrueColor
+	}
+
+	out := termenv.NewOutput(ttyOut)
+	profile := out.ColorProfile()
+	if profile != termenv.Ascii {
+		return profile
+	}
+
+	// termenv doesn't recognize xterm-ghostty in its static tables.
+	// Fall back to environment indicators for modern terminals.
+	colorterm := os.Getenv("COLORTERM")
+	term := os.Getenv("TERM")
+	if colorterm == "truecolor" || colorterm == "24bit" || strings.Contains(term, "ghostty") {
+		return termenv.TrueColor
+	}
+	if strings.Contains(term, "256color") || strings.Contains(term, "xterm") {
+		return termenv.ANSI256
+	}
+
+	return out.EnvColorProfile()
 }
 
 func drainPendingRecordsForSearch(dbPath string) error {

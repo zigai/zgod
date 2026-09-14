@@ -21,16 +21,16 @@ import (
 )
 
 const (
-	panelBorderW          = 0
-	panelBorderH          = 0
+	panelBorderW          = 2
+	panelBorderH          = 2
 	panelPaddingX         = 1
 	panelPaddingY         = 0
-	resultsHeaderRows     = 2
+	resultsHeaderRows     = 1
 	minInputWidth         = 20
 	minCommandColumnWidth = 10
 	previewPaneHeight     = 4
 	defaultSelectionChar  = "▌ "
-	failIncludeIndicator  = "3"
+	failIncludeIndicator  = "214"
 )
 
 const (
@@ -153,7 +153,7 @@ func (m *Model) renderIndicators() string {
 }
 
 func (m *Model) indicatorPills() []indicatorPill {
-	const searchModeIndicatorBg = "4"
+	const searchModeIndicatorBg = "39"
 
 	pills := make([]indicatorPill, 0, 7)
 	modes := []struct {
@@ -248,8 +248,8 @@ func (m *Model) renderIndicatorPill(pill indicatorPill) string {
 	}
 
 	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8")).
-		Background(lipgloss.Color("0")).
+		Foreground(lipgloss.Color("245")).
+		Background(lipgloss.Color("237")).
 		Padding(0, 1).
 		Render(pill.label)
 }
@@ -350,8 +350,15 @@ func (m *Model) emptyStateMessage() string {
 	}
 }
 
-func (m *Model) renderEmptyState() string {
-	return m.emptyStateMessage()
+func (m *Model) renderEmptyState(headerRows int) string {
+	msg := m.emptyStateMessage()
+	fill := max(m.height-1-headerRows, 0)
+
+	if headerRows > 0 {
+		return m.renderResultsHeader() + "\n" + msg + strings.Repeat("\n", fill)
+	}
+
+	return msg + strings.Repeat("\n", fill)
 }
 
 func (m *Model) renderResults() string {
@@ -366,7 +373,7 @@ func (m *Model) renderResults() string {
 
 	start, end := m.visibleResultRange()
 	if start == end {
-		return m.renderEmptyState()
+		return m.renderEmptyState(headerRows)
 	}
 
 	cacheKey := m.resultsBlockCacheKey(layout, now)
@@ -376,7 +383,7 @@ func (m *Model) renderResults() string {
 
 	var lines []string
 	if headerRows > 0 {
-		lines = append(lines, strings.Split(m.renderResultsHeaderWithLayout(layout), "\n")...)
+		lines = append(lines, m.renderResultsHeaderWithLayout(layout))
 	}
 
 	expandMode := m.cfg.Display.MultilinePreview == "expand"
@@ -551,7 +558,7 @@ func (m *Model) renderResultLineContent(entryIdx int, entry history.ScoredEntry,
 		return exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled
 	}
 
-	dirStyled := metaStyle.Render(padRight(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir), layout.dirWidth))
+	dirStyled := metaStyle.Render(padLeft(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir), layout.dirWidth))
 
 	return exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled + styledSep + dirStyled
 }
@@ -772,10 +779,6 @@ func padRenderedCell(rendered string, width int, visibleWidth int, fullLineBg bo
 	return rendered + spaces
 }
 
-func padRight(s string, width int) string {
-	return s + strings.Repeat(" ", max(width-lipgloss.Width(s), 0))
-}
-
 func padLeft(s string, width int) string {
 	padding := width - lipgloss.Width(s)
 	if padding <= 0 {
@@ -878,9 +881,9 @@ func (m *Model) renderFooterLeft() string {
 
 func (m *Model) renderFooterShortcut(shortcut footerShortcut) string {
 	if shortcut.action != footerShortcutNone && shortcut.action == m.hoverFooterAction {
-		hover := lipgloss.NewStyle().Background(lipgloss.Color("8"))
-		key := m.styles.HelpKey.Background(lipgloss.Color("8")).Render(shortcut.key)
-		desc := m.styles.HelpDesc.Background(lipgloss.Color("8")).Render(shortcut.desc)
+		hover := lipgloss.NewStyle().Background(lipgloss.Color("240"))
+		key := m.styles.HelpKey.Background(lipgloss.Color("240")).Render(shortcut.key)
+		desc := m.styles.HelpDesc.Background(lipgloss.Color("240")).Render(shortcut.desc)
 
 		return key + hover.Render(" ") + desc
 	}
@@ -938,7 +941,7 @@ func (m *Model) renderPreviewPane() string {
 	cmd := m.displayEntries[m.cursor].Entry.Command
 
 	headerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8")).
+		Foreground(lipgloss.Color("245")).
 		Bold(true)
 	header := headerStyle.Render("─ Preview ─")
 	headerLine := header + strings.Repeat("─", max(width-lipgloss.Width(header), 0))
@@ -1018,7 +1021,7 @@ func (m *Model) renderHelp() string {
 
 	box := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("8")).
+		BorderForeground(lipgloss.Color("240")).
 		Padding(1, 2).
 		Width(boxWidth).
 		Render(boxContent)
@@ -1056,7 +1059,7 @@ func (m *Model) renderPreviewPopup() string {
 
 	box := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("8")).
+		BorderForeground(lipgloss.Color("240")).
 		Padding(1, 2).
 		Width(boxWidth).
 		Render(boxContent)
@@ -1098,6 +1101,10 @@ func (m *Model) visibleResultRange() (int, int) {
 	return start, end
 }
 
+func (m *Model) renderResultsHeader() string {
+	return m.renderResultsHeaderWithLayout(m.calcResultLayout())
+}
+
 func (m *Model) renderResultsHeaderWithLayout(layout resultLayout) string {
 	key := resultsHeaderCacheKey{
 		width:      layout.width,
@@ -1122,7 +1129,7 @@ func (m *Model) renderResultsHeaderWithLayout(layout resultLayout) string {
 	var line string
 
 	if layout.showDir {
-		dir := m.styles.ColumnHeader.Width(layout.dirWidth).Render("dir")
+		dir := m.styles.ColumnHeader.Width(layout.dirWidth).Align(lipgloss.Right).Render("dir")
 		line = prefix + strings.Join([]string{exit, dur, when, cmd, dir}, layout.sep)
 	} else {
 		line = prefix + strings.Join([]string{exit, dur, when, cmd}, layout.sep)
@@ -1132,7 +1139,7 @@ func (m *Model) renderResultsHeaderWithLayout(layout resultLayout) string {
 		line += strings.Repeat(" ", layout.width-lipgloss.Width(line))
 	}
 
-	value := m.styles.ColumnHeaderBar.Width(layout.width).Render(line) + "\n" + m.styles.Dimmed.Render(strings.Repeat("─", layout.width))
+	value := m.styles.ColumnHeaderBar.Width(layout.width).Render(line)
 	m.headerCache = cachedResultsHeader{
 		key:   key,
 		value: value,

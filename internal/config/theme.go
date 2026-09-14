@@ -27,9 +27,9 @@ func DefaultTheme() ThemeConfig {
 		Prompt:      "> ",
 		PromptColor: "cyan",
 		MatchColor:  "yellow",
-		SelectedBg:  "4",
+		SelectedBg:  "24",
 		SelectedFg:  "",
-		ModeColor:   "8",
+		ModeColor:   "240",
 		BorderColor: "",
 
 		MatchBold:      &matchBold,

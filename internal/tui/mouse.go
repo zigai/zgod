@@ -151,8 +151,11 @@ func (m *Model) mouseBodyPosition(ev tea.MouseEvent) (int, int, bool) {
 }
 
 func (m *Model) viewOriginY() int {
-	// Search uses the alternate screen, whose origin does not depend on height.
-	return 0
+	if m.terminalHeight <= 0 {
+		return 0
+	}
+
+	return max(m.terminalHeight-m.viewHeight(), 0)
 }
 
 func (m *Model) viewHeight() int {

@@ -28,6 +28,14 @@ type Styles struct {
 }
 
 func NewStyles(theme config.ThemeConfig) Styles {
+	borderColor := parseColor(theme.BorderColor)
+	if theme.BorderColor == "" {
+		borderColor = parseColor(theme.ModeColor)
+		if theme.ModeColor == "" {
+			borderColor = lipgloss.Color("240")
+		}
+	}
+
 	matchStyle := lipgloss.NewStyle().Foreground(parseColor(theme.MatchColor))
 	if config.BoolDefault(theme.MatchBold, true) {
 		matchStyle = matchStyle.Bold(true)
@@ -58,20 +66,25 @@ func NewStyles(theme config.ThemeConfig) Styles {
 
 		Match: matchStyle,
 
-		HeaderBar: lipgloss.NewStyle().Padding(0, 1),
-
-		Input: lipgloss.NewStyle(),
-
-		Footer: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
+		HeaderBar: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")).
 			Padding(0, 1),
 
-		Border: lipgloss.NewStyle(),
+		Input: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")),
+
+		Footer: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Padding(0, 1),
+
+		Border: lipgloss.NewStyle().
+			BorderStyle(lipgloss.RoundedBorder()).
+			BorderForeground(borderColor),
 
 		Title: lipgloss.NewStyle().
 			Foreground(parseColor(theme.PromptColor)).
 			Bold(true).
-			Background(lipgloss.Color("0")).
+			Background(lipgloss.Color("236")).
 			Padding(0, 2),
 
 		HelpKey: lipgloss.NewStyle().
@@ -79,11 +92,12 @@ func NewStyles(theme config.ThemeConfig) Styles {
 			Bold(true),
 
 		HelpDesc: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")),
+			Foreground(lipgloss.Color("245")),
 
 		Dimmed: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")),
-		Meta: lipgloss.NewStyle().Faint(true),
+			Foreground(lipgloss.Color("240")),
+		Meta: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")),
 		ExitOk: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("10")).
 			Bold(true),
@@ -91,15 +105,16 @@ func NewStyles(theme config.ThemeConfig) Styles {
 			Foreground(lipgloss.Color("9")).
 			Bold(true),
 		ColumnHeader: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
+			Foreground(lipgloss.Color("244")).
 			Bold(true),
 		ColumnHeaderBar: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")),
+			Foreground(lipgloss.Color("244")),
 		SelectionBar: selectionBarStyle,
 		SelectedCmd: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("15")).
 			Bold(true),
-		Cmd: lipgloss.NewStyle(),
+		Cmd: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("250")),
 	}
 }
 
