@@ -2,6 +2,10 @@
 
 Interactive shell history search with **fuzzy**, **regex**, and **glob** matching.
 
+<p align="center">
+  <img src="assets/zgod-ui.png" alt="zgod interactive shell history search UI" width="952">
+</p>
+
 ## Features
 
 - **Match modes:** `fuzzy` / `regex` / `glob`
