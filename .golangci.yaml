@@ -258,5 +258,6 @@ linters:
           - gosec
           - dogsled
           - gocognit
+          - cyclop
           - decorder
           - funcorder
