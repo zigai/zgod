@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	sqlite "modernc.org/sqlite"
+	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/zigai/zgod/internal/paths"

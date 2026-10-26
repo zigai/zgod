@@ -181,6 +181,7 @@ func prepareSearchContext(cmd *cobra.Command, cfg config.Config) (searchContext,
 	termenv.SetDefaultOutput(output)
 
 	lipgloss.SetColorProfile(profile)
+
 	renderer := lipgloss.NewRenderer(ttyOut)
 	renderer.SetColorProfile(profile)
 	lipgloss.SetDefaultRenderer(renderer)
@@ -219,6 +220,7 @@ func prepareSearchContext(cmd *cobra.Command, cfg config.Config) (searchContext,
 		cleanup: cleanup,
 	}, nil
 }
+
 func detectColorProfile(cmd *cobra.Command, ttyOut io.Writer) termenv.Profile {
 	if flagBool(cmd, "no-color") {
 		return termenv.Ascii
@@ -229,6 +231,7 @@ func detectColorProfile(cmd *cobra.Command, ttyOut io.Writer) termenv.Profile {
 	}
 
 	out := termenv.NewOutput(ttyOut)
+
 	profile := out.ColorProfile()
 	if profile != termenv.Ascii {
 		return profile
@@ -237,10 +240,12 @@ func detectColorProfile(cmd *cobra.Command, ttyOut io.Writer) termenv.Profile {
 	// termenv doesn't recognize xterm-ghostty in its static tables.
 	// Fall back to environment indicators for modern terminals.
 	colorterm := os.Getenv("COLORTERM")
+
 	term := os.Getenv("TERM")
 	if colorterm == "truecolor" || colorterm == "24bit" || strings.Contains(term, "ghostty") {
 		return termenv.TrueColor
 	}
+
 	if strings.Contains(term, "256color") || strings.Contains(term, "xterm") {
 		return termenv.ANSI256
 	}

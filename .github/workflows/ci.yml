@@ -49,7 +49,7 @@ jobs:
         run: echo "version=$(<.golangci-version)" >> "$GITHUB_OUTPUT"
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ steps.golangci-lint-version.outputs.version }}
           install-mode: binary
