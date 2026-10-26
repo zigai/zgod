@@ -32,6 +32,7 @@ const (
 
 var (
 	errPendingRecordNameExhausted = errors.New("exhausted pending history record file names")
+	errPendingRecordUnreadable    = errors.New("pending history record is unreadable")
 	recordWriteLockTimeout        = 30 * time.Second
 )
 
@@ -135,7 +136,7 @@ func insertRecordWithRetry(dbPath string, entry db.HistoryEntry) error {
 			return err
 		}
 
-		return insertRecordWithRetryLocked(dbPath, entry)
+		return insertRecordWithRetryLocked(dbPath, entry, "")
 	})
 	if isRecordWriterContention(err) {
 		if err := queuePendingRecord(dbPath, entry); err != nil {
@@ -156,7 +157,7 @@ func isRecordWriterContention(err error) bool {
 	return db.IsBusyError(err) || errors.Is(err, db.ErrDatabaseWriteLockTimeout)
 }
 
-func insertRecordWithRetryLocked(dbPath string, entry db.HistoryEntry) error {
+func insertRecordWithRetryLocked(dbPath string, entry db.HistoryEntry, pendingName string) error {
 	var lastBusyErr error
 
 	for attempt := 0; attempt <= recordBusyRetryAttempts; attempt++ {
@@ -174,7 +175,11 @@ func insertRecordWithRetryLocked(dbPath string, entry db.HistoryEntry) error {
 		}
 
 		repo := db.NewHistoryRepo(database)
-		_, err = repo.Insert(entry)
+		if pendingName == "" {
+			_, err = repo.Insert(entry)
+		} else {
+			err = repo.InsertPending(pendingName, entry)
+		}
 
 		closeErr := database.Close()
 		if err == nil {
@@ -291,7 +296,7 @@ func drainPendingRecordsLocked(dbPath string) error {
 			continue
 		}
 
-		if err = flushPendingRecordLocked(dbPath, filepath.Join(dir, name)); err != nil {
+		if err = flushPendingRecordLocked(dbPath, filepath.Join(dir, name)); err != nil && !errors.Is(err, errPendingRecordUnreadable) {
 			return err
 		}
 	}
@@ -302,20 +307,30 @@ func drainPendingRecordsLocked(dbPath string) error {
 func flushPendingRecordLocked(dbPath string, path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("reading pending history record %q: %w", path, err)
+		return fmt.Errorf("%w: reading %q: %w", errPendingRecordUnreadable, path, err)
 	}
 
 	var pending pendingHistoryRecord
 	if err = json.Unmarshal(data, &pending); err != nil {
-		return fmt.Errorf("decoding pending history record %q: %w", path, err)
+		return fmt.Errorf("%w: decoding %q: %w", errPendingRecordUnreadable, path, err)
 	}
 
-	if err = insertRecordWithRetryLocked(dbPath, pending.historyEntry()); err != nil {
+	if err = insertRecordWithRetryLocked(dbPath, pending.historyEntry(), filepath.Base(path)); err != nil {
 		return fmt.Errorf("writing pending history record %q: %w", path, err)
 	}
 
+	database, err := db.Open(dbPath)
+	if err != nil {
+		return fmt.Errorf("opening database for pending history cleanup: %w", err)
+	}
+	defer func() { _ = database.Close() }()
+
 	if err = os.Remove(path); err != nil {
 		return fmt.Errorf("removing pending history record %q: %w", path, err)
+	}
+
+	if err := db.NewHistoryRepo(database).DeletePendingReceipt(filepath.Base(path)); err != nil {
+		return fmt.Errorf("cleaning up pending history receipt: %w", err)
 	}
 
 	return nil

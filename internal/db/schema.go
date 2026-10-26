@@ -57,7 +57,15 @@ WHERE NOT EXISTS (
 PRAGMA user_version = 1;
 `
 
-const currentSchemaVersion = 1
+const pendingRecordSchema = `
+CREATE TABLE IF NOT EXISTS pending_record (
+    name TEXT PRIMARY KEY
+);
+
+PRAGMA user_version = 2;
+`
+
+const currentSchemaVersion = 2
 
 var (
 	errHistoryTableMissing    = errors.New("history table is missing")
@@ -140,8 +148,14 @@ func ensureSchema(db *sql.DB) error {
 		return nil
 	}
 
-	if _, err := db.ExecContext(context.Background(), schema); err != nil {
-		return fmt.Errorf("applying schema: %w", err)
+	if version < 1 {
+		if _, err := db.ExecContext(context.Background(), schema); err != nil {
+			return fmt.Errorf("applying schema: %w", err)
+		}
+	}
+
+	if _, err := db.ExecContext(context.Background(), pendingRecordSchema); err != nil {
+		return fmt.Errorf("applying pending record schema: %w", err)
 	}
 
 	return nil

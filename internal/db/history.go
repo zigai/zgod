@@ -87,41 +87,21 @@ func InsertIfNotExistsTx(tx *sql.Tx, entry HistoryEntry) (bool, error) {
 }
 
 func (r *HistoryRepo) Insert(entry HistoryEntry) (int64, error) {
-	ctx := context.Background()
+	return r.insert(entry, "")
+}
 
-	tx, err := r.db.BeginTx(ctx, nil)
+func (r *HistoryRepo) InsertPending(name string, entry HistoryEntry) error {
+	_, err := r.insert(entry, name)
+	return err
+}
+
+func (r *HistoryRepo) DeletePendingReceipt(name string) error {
+	_, err := r.db.ExecContext(context.Background(), `DELETE FROM pending_record WHERE name = ?`, name)
 	if err != nil {
-		return 0, fmt.Errorf("starting insert transaction: %w", err)
+		return fmt.Errorf("deleting pending history receipt: %w", err)
 	}
 
-	defer func() { _ = tx.Rollback() }()
-
-	res, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		entry.TimestampMS, entry.DurationMS, entry.ExitCode, entry.Command,
-		entry.Directory, entry.SessionID, entry.Hostname,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("inserting history entry: %w", err)
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("reading inserted history ID: %w", err)
-	}
-
-	entry.ID = id
-	if err = upsertLatestCommandTx(ctx, tx, entry); err != nil {
-		return 0, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return 0, fmt.Errorf("committing inserted history entry: %w", err)
-	}
-
-	return id, nil
+	return nil
 }
 
 func (r *HistoryRepo) Delete(id int64) error {
@@ -265,6 +245,60 @@ func (r *HistoryRepo) FetchCandidatesInDir(limit int, dedupe bool, failFilter Fa
 	}
 
 	return entries, nil
+}
+
+func (r *HistoryRepo) insert(entry HistoryEntry, pendingName string) (int64, error) {
+	ctx := context.Background()
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("starting insert transaction: %w", err)
+	}
+
+	defer func() { _ = tx.Rollback() }()
+
+	if pendingName != "" {
+		res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO pending_record (name) VALUES (?)`, pendingName)
+		if err != nil {
+			return 0, fmt.Errorf("inserting pending history receipt: %w", err)
+		}
+
+		count, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("reading pending history receipt count: %w", err)
+		}
+
+		if count == 0 {
+			return 0, nil
+		}
+	}
+
+	res, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		entry.TimestampMS, entry.DurationMS, entry.ExitCode, entry.Command,
+		entry.Directory, entry.SessionID, entry.Hostname,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("inserting history entry: %w", err)
+	}
+
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("reading inserted history ID: %w", err)
+	}
+
+	entry.ID = id
+	if err = upsertLatestCommandTx(ctx, tx, entry); err != nil {
+		return 0, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing inserted history entry: %w", err)
+	}
+
+	return id, nil
 }
 
 func (r *HistoryRepo) queryCandidates(limit int, dedupe bool, failFilter FailFilterMode, dir string) (*sql.Rows, error) {

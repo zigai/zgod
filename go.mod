@@ -13,6 +13,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.37.0
 	modernc.org/sqlite v1.44.3
+	pgregory.net/rapid v1.3.0
 )
 
 require (

@@ -1,17 +1,22 @@
 package db
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"embed"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
+
+	"pgregory.net/rapid"
 )
 
 func TestOpenAndInsert(t *testing.T) {
@@ -265,7 +270,7 @@ func TestFetchCandidatesAppliesDedupeAfterFailFilter(t *testing.T) {
 	repo := NewHistoryRepo(database)
 	entries := []HistoryEntry{
 		{TimestampMS: 1000, ExitCode: 1, Command: "echo boom"},
-		{TimestampMS: 2000, ExitCode: 2, Command: "echo boom"},
+		{TimestampMS: 2000, ExitCode: 0, Command: "echo boom"},
 		{TimestampMS: 3000, ExitCode: 0, Command: "echo ok"},
 	}
 
@@ -284,8 +289,8 @@ func TestFetchCandidatesAppliesDedupeAfterFailFilter(t *testing.T) {
 		t.Fatalf("len(FetchCandidates()) = %d, want 1", len(got))
 	}
 
-	if got[0].Command != "echo boom" {
-		t.Fatalf("FetchCandidates()[0].Command = %q, want %q", got[0].Command, "echo boom")
+	if got[0].Command != "echo boom" || got[0].TimestampMS != 1000 || got[0].ExitCode != 1 {
+		t.Fatalf("FetchCandidates()[0] = %#v, want the older failed record", got[0])
 	}
 }
 
@@ -961,5 +966,491 @@ func TestIsBusyErrorRecognizesSQLiteBusy(t *testing.T) {
 func TestIsBusyErrorReturnsFalseForNonBusyError(t *testing.T) {
 	if IsBusyError(errDatabasePathIsDirectory) {
 		t.Fatal("IsBusyError() = true, want false for non-busy error")
+	}
+}
+
+//go:embed testdata/characters.txt testdata/filename_characters.txt
+var historyFixtureFS embed.FS
+
+func historyFixtureRunes(check *rapid.T, path string) []rune {
+	check.Helper()
+
+	data, err := historyFixtureFS.ReadFile(path)
+	if err != nil {
+		check.Fatal(err)
+	}
+
+	return []rune(string(data))
+}
+
+func historyEntryGenerator() *rapid.Generator[HistoryEntry] {
+	return rapid.Custom(func(check *rapid.T) HistoryEntry {
+		text := rapid.StringOfN(rapid.RuneFrom(historyFixtureRunes(check, "testdata/characters.txt")), 0, 32, -1)
+
+		return HistoryEntry{
+			TimestampMS: rapid.Int64Range(0, 4_000_000_000_000).Draw(check, "timestamp"),
+			DurationMS:  rapid.Int64Range(0, 1_000_000).Draw(check, "duration"),
+			ExitCode:    rapid.IntRange(0, 255).Draw(check, "exit"),
+			Command:     "command " + text.Draw(check, "command"),
+			Directory:   text.Draw(check, "directory"),
+			SessionID:   text.Draw(check, "session"),
+			Hostname:    text.Draw(check, "hostname"),
+		}
+	})
+}
+
+func TestHistoryPersistenceRoundTripProperty(t *testing.T) {
+	rapid.Check(t, func(check *rapid.T) {
+		path := filepath.Join(t.TempDir(), "history.db")
+		entries := rapid.SliceOfN(historyEntryGenerator(), 0, 24).Draw(check, "entries")
+
+		database, err := Open(path)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		repo := NewHistoryRepo(database)
+		for index := range entries {
+			entries[index].ID, err = repo.Insert(entries[index])
+			if err != nil {
+				check.Fatal(err)
+			}
+		}
+
+		if err = database.Close(); err != nil {
+			check.Fatal(err)
+		}
+
+		database, err = Open(path)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		check.Cleanup(func() {
+			if closeErr := database.Close(); closeErr != nil {
+				check.Error(closeErr)
+			}
+		})
+
+		repo = NewHistoryRepo(database)
+
+		slices.SortFunc(entries, func(left, right HistoryEntry) int {
+			if order := cmp.Compare(left.TimestampMS, right.TimestampMS); order != 0 {
+				return order
+			}
+
+			return cmp.Compare(left.ID, right.ID)
+		})
+
+		got, err := repo.ListAll()
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		if !slices.Equal(got, entries) {
+			check.Fatalf("reopened history=%+v, want=%+v", got, entries)
+		}
+
+		var visited []HistoryEntry
+
+		err = repo.ForEach(check.Context(), func(entry HistoryEntry) error {
+			visited = append(visited, entry)
+			return nil
+		})
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		if !slices.Equal(visited, entries) {
+			check.Fatalf("traversal=%+v, want=%+v", visited, entries)
+		}
+	})
+}
+
+func TestHistoryCandidateLifecycleProperty(t *testing.T) {
+	rapid.Check(t, func(check *rapid.T) {
+		path := filepath.Join(t.TempDir(), "history.db")
+
+		database, err := Open(path)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		check.Cleanup(func() {
+			if closeErr := database.Close(); closeErr != nil {
+				check.Error(closeErr)
+			}
+		})
+
+		repo := NewHistoryRepo(database)
+
+		var model []HistoryEntry
+
+		check.Repeat(map[string]func(*rapid.T){
+			"insert": func(step *rapid.T) {
+				entry := historyEntryGenerator().Draw(step, "entry")
+				entry.Command = rapid.SampledFrom([]string{"alpha", "beta", "gamma", "delta"}).Draw(step, "command")
+				entry.Directory = rapid.SampledFrom([]string{"/one", "/two", ""}).Draw(step, "directory")
+				entry.TimestampMS = rapid.Int64Range(0, 5).Draw(step, "timestamp")
+
+				entry.ID, err = repo.Insert(entry)
+				if err != nil {
+					step.Fatal(err)
+				}
+
+				model = append(model, entry)
+			},
+			"delete": func(step *rapid.T) {
+				id := rapid.Int64Range(0, int64(len(model)+3)).Draw(step, "id")
+				if len(model) > 0 && rapid.Bool().Draw(step, "existing") {
+					id = rapid.SampledFrom(model).Draw(step, "entry").ID
+				}
+
+				if deleteErr := repo.Delete(id); deleteErr != nil {
+					step.Fatal(deleteErr)
+				}
+
+				model = slices.DeleteFunc(model, func(entry HistoryEntry) bool { return entry.ID == id })
+			},
+			"reopen": func(step *rapid.T) {
+				if closeErr := database.Close(); closeErr != nil {
+					step.Fatal(closeErr)
+				}
+
+				database, err = Open(path)
+				if err != nil {
+					step.Fatal(err)
+				}
+
+				repo = NewHistoryRepo(database)
+			},
+			"": func(step *rapid.T) {
+				assertHistoryRecords(step, repo, model)
+
+				limit := rapid.IntRange(0, 8).Draw(step, "limit")
+				dedupe := rapid.Bool().Draw(step, "dedupe")
+				mode := rapid.SampledFrom([]FailFilterMode{FailFilterInclude, FailFilterExclude, FailFilterOnly}).Draw(step, "fail-mode")
+				directory := rapid.SampledFrom([]string{"", "/one", "/two"}).Draw(step, "scope")
+				want := expectedHistoryCandidates(model, limit, dedupe, mode, directory)
+
+				got, fetchErr := repo.FetchCandidatesInDir(limit, dedupe, mode, directory)
+				if fetchErr != nil {
+					step.Fatal(fetchErr)
+				}
+
+				if !slices.Equal(got, want) {
+					step.Fatalf("candidates=%+v, want=%+v", got, want)
+				}
+			},
+		})
+	})
+}
+
+func assertHistoryRecords(check *rapid.T, repo *HistoryRepo, expected []HistoryEntry) {
+	check.Helper()
+
+	all, err := repo.ListAll()
+	if err != nil {
+		check.Fatal(err)
+	}
+
+	if len(all) != len(expected) {
+		check.Fatalf("history count=%d, want=%d", len(all), len(expected))
+	}
+
+	for _, entry := range expected {
+		if !slices.Contains(all, entry) {
+			check.Fatalf("lost or changed record=%+v; history=%+v", entry, all)
+		}
+	}
+}
+
+func expectedHistoryCandidates(entries []HistoryEntry, limit int, dedupe bool, mode FailFilterMode, directory string) []HistoryEntry {
+	eligible := make([]HistoryEntry, 0, len(entries))
+	for _, entry := range entries {
+		if directory != "" && entry.Directory != directory {
+			continue
+		}
+
+		if mode == FailFilterExclude && entry.ExitCode != 0 {
+			continue
+		}
+
+		if mode == FailFilterOnly && entry.ExitCode == 0 {
+			continue
+		}
+
+		entry.SessionID, entry.Hostname = "", ""
+		eligible = append(eligible, entry)
+	}
+
+	slices.SortFunc(eligible, func(left, right HistoryEntry) int {
+		if order := cmp.Compare(right.TimestampMS, left.TimestampMS); order != 0 {
+			return order
+		}
+
+		return cmp.Compare(right.ID, left.ID)
+	})
+
+	if dedupe {
+		seen := make(map[string]bool)
+		eligible = slices.DeleteFunc(eligible, func(entry HistoryEntry) bool {
+			duplicate := seen[entry.Command]
+			seen[entry.Command] = true
+
+			return duplicate
+		})
+	}
+
+	if limit > 0 && len(eligible) > limit {
+		eligible = eligible[:limit]
+	}
+
+	return eligible
+}
+
+func TestSQLiteFilenameAndReadOnlyProperty(t *testing.T) {
+	rapid.Check(t, func(check *rapid.T) {
+		name := rapid.StringOfN(rapid.RuneFrom(historyFixtureRunes(check, "testdata/filename_characters.txt")), 0, 24, -1).Draw(check, "filename")
+		path := filepath.Join(t.TempDir(), "history-"+name+".db")
+		entry := historyEntryGenerator().Draw(check, "entry")
+
+		database, err := Open(path)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		entry.ID, err = NewHistoryRepo(database).Insert(entry)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		if err = database.Close(); err != nil {
+			check.Fatal(err)
+		}
+
+		readOnly, err := OpenReadOnly(path)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		check.Cleanup(func() {
+			if closeErr := readOnly.Close(); closeErr != nil {
+				check.Error(closeErr)
+			}
+		})
+		readOnly.SetMaxIdleConns(0)
+
+		for range rapid.IntRange(1, 4).Draw(check, "connections") {
+			got, readErr := NewHistoryRepo(readOnly).ListAll()
+			if readErr != nil {
+				check.Fatal(readErr)
+			}
+
+			if !slices.Equal(got, []HistoryEntry{entry}) {
+				check.Fatalf("opened different data=%+v, want=%+v", got, entry)
+			}
+
+			if _, writeErr := NewHistoryRepo(readOnly).Insert(entry); writeErr == nil {
+				check.Fatal("read-only connection permitted insertion")
+			}
+		}
+	})
+}
+
+func TestHistorySchemaValidationProperty(t *testing.T) {
+	rapid.Check(t, func(check *rapid.T) {
+		database, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "source.db"))
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		check.Cleanup(func() {
+			if closeErr := database.Close(); closeErr != nil {
+				check.Error(closeErr)
+			}
+		})
+
+		required := []string{"id INTEGER", "ts_ms INTEGER", "duration INTEGER", "exit_code INTEGER", "command TEXT", "directory TEXT", "session_id TEXT", "hostname TEXT"}
+
+		var columns []string
+
+		for _, column := range required {
+			if rapid.Bool().Draw(check, column) {
+				columns = append(columns, column)
+			}
+		}
+
+		columns = append(columns, "extra TEXT")
+		if _, err = database.ExecContext(check.Context(), "CREATE TABLE history ("+strings.Join(columns, ",")+")"); err != nil {
+			check.Fatal(err)
+		}
+
+		err = ValidateHistorySchema(database)
+
+		wantValid := len(columns) == len(required)+1
+		if (err == nil) != wantValid {
+			check.Fatalf("columns=%v validation=%v, want valid=%t", columns, err, wantValid)
+		}
+	})
+}
+
+func assertUpgradedHistory(check *rapid.T, database *sql.DB, entries, candidates []HistoryEntry) {
+	check.Helper()
+
+	got, err := NewHistoryRepo(database).ListAll()
+	if err != nil {
+		check.Fatal(err)
+	}
+
+	slices.SortFunc(entries, func(first, second HistoryEntry) int {
+		if order := cmp.Compare(first.TimestampMS, second.TimestampMS); order != 0 {
+			return order
+		}
+
+		return cmp.Compare(first.ID, second.ID)
+	})
+
+	if !slices.Equal(got, entries) {
+		check.Fatalf("upgrade changed records: got=%#v, want=%#v", got, entries)
+	}
+
+	after, err := NewHistoryRepo(database).FetchCandidates(0, true, FailFilterInclude)
+	if err != nil || !slices.Equal(after, candidates) {
+		check.Fatalf("upgrade changed candidates: got=%#v, want=%#v, error=%v", after, candidates, err)
+	}
+}
+
+func TestHistorySchemaUpgradePreservesRecordsProperty(t *testing.T) {
+	rapid.Check(t, func(check *rapid.T) {
+		path := filepath.Join(t.TempDir(), "history.db")
+
+		database, err := Open(path)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		entries := rapid.SliceOfN(historyEntryGenerator(), 0, 12).Draw(check, "history")
+		for index, entry := range entries {
+			entries[index].ID, err = NewHistoryRepo(database).Insert(entry)
+			if err != nil {
+				_ = database.Close()
+
+				check.Fatal(err)
+			}
+		}
+
+		before, err := NewHistoryRepo(database).FetchCandidates(0, true, FailFilterInclude)
+		if err != nil {
+			_ = database.Close()
+
+			check.Fatal(err)
+		}
+
+		if _, err = database.ExecContext(t.Context(), `DROP TABLE pending_record; PRAGMA user_version = 1`); err != nil {
+			_ = database.Close()
+
+			check.Fatal(err)
+		}
+
+		if err = database.Close(); err != nil {
+			check.Fatal(err)
+		}
+
+		database, err = Open(path)
+		if err != nil {
+			check.Fatal(err)
+		}
+		defer func() { _ = database.Close() }()
+
+		assertUpgradedHistory(check, database, entries, before)
+
+		pending := historyEntryGenerator().Draw(check, "pending")
+		for range rapid.IntRange(2, 4).Draw(check, "replays") {
+			if err = NewHistoryRepo(database).InsertPending("pending.json", pending); err != nil {
+				check.Fatal(err)
+			}
+		}
+
+		got, err := NewHistoryRepo(database).ListAll()
+		if err != nil || len(got) != len(entries)+1 {
+			check.Fatalf("upgraded queue replay: records=%#v, error=%v", got, err)
+		}
+	})
+}
+
+func TestUnsupportedSchemaPreservesDataProperty(t *testing.T) {
+	rapid.Check(t, func(check *rapid.T) {
+		path := filepath.Join(t.TempDir(), "source.db")
+
+		database, err := Open(path)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		entry := historyEntryGenerator().Draw(check, "entry")
+
+		entry.ID, err = NewHistoryRepo(database).Insert(entry)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		version := rapid.IntRange(currentSchemaVersion+1, currentSchemaVersion+1000).Draw(check, "version")
+		if _, err = database.ExecContext(t.Context(), fmt.Sprintf("PRAGMA user_version=%d", version)); err != nil {
+			check.Fatal(err)
+		}
+
+		if err = database.Close(); err != nil {
+			check.Fatal(err)
+		}
+
+		rejected, openErr := Open(path)
+		if rejected != nil {
+			_ = rejected.Close()
+		}
+
+		if openErr == nil {
+			check.Fatal("future schema accepted")
+		}
+
+		database, err = sql.Open("sqlite", path)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		check.Cleanup(func() {
+			if closeErr := database.Close(); closeErr != nil {
+				check.Error(closeErr)
+			}
+		})
+
+		assertUnsupportedSchemaPreserved(check, database, version, entry)
+	})
+}
+
+func assertUnsupportedSchemaPreserved(check *rapid.T, database *sql.DB, version int, entry HistoryEntry) {
+	check.Helper()
+
+	var gotVersion int
+	if err := database.QueryRowContext(check.Context(), "PRAGMA user_version").Scan(&gotVersion); err != nil {
+		check.Fatal(err)
+	}
+
+	got, err := NewHistoryRepo(database).ListAll()
+	if err != nil {
+		check.Fatal(err)
+	}
+
+	if gotVersion != version || !reflect.DeepEqual(got, []HistoryEntry{entry}) {
+		check.Fatalf("rejected open changed version/data: version=%d records=%+v", gotVersion, got)
+	}
+}
+
+func TestFailFilterTextRoundTrip(t *testing.T) {
+	for _, mode := range []FailFilterMode{FailFilterInclude, FailFilterExclude, FailFilterOnly} {
+		got, ok := ParseFailFilterMode(mode.String())
+		if !ok || got != mode {
+			t.Fatalf("round trip=%v/%t, want=%v", got, ok, mode)
+		}
 	}
 }
