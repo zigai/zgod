@@ -621,7 +621,7 @@ func (m *Model) matchCandidates(query string) []match.Match {
 
 	if m.mode == match.ModeRegex {
 		if match.IsLiteralRegex(query) {
-			m.matchBuf = match.MatchLiteralCommandsFold(query, m.candidates, m.matchBuf)
+			m.matchBuf = match.LiteralCommandsFold(query, m.candidates, m.matchBuf)
 
 			return m.matchBuf
 		}
@@ -641,7 +641,7 @@ func (m *Model) matchCandidates(query string) []match.Match {
 			re = compiled
 		}
 
-		m.matchBuf = match.MatchRegexCommands(re, m.candidates, m.matchBuf)
+		m.matchBuf = match.RegexCommands(re, m.candidates, m.matchBuf)
 
 		return m.matchBuf
 	}

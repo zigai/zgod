@@ -64,7 +64,7 @@ func (m *RegexMatcher) MatchCommands(pattern string, candidates []string, dst []
 	}
 
 	if IsLiteralRegex(pattern) {
-		return MatchLiteralCommandsFold(pattern, candidates, dst)
+		return LiteralCommandsFold(pattern, candidates, dst)
 	}
 
 	re, err := regexp.Compile("(?i)" + pattern)
@@ -72,7 +72,7 @@ func (m *RegexMatcher) MatchCommands(pattern string, candidates []string, dst []
 		return nil
 	}
 
-	return MatchRegexCommands(re, candidates, dst)
+	return RegexCommands(re, candidates, dst)
 }
 
 func IsLiteralRegex(pattern string) bool {
@@ -90,7 +90,7 @@ func IsLiteralRegex(pattern string) bool {
 	return true
 }
 
-func MatchLiteralCommandsFold(pattern string, candidates []string, dst []Match) []Match {
+func LiteralCommandsFold(pattern string, candidates []string, dst []Match) []Match {
 	matches := dst[:0]
 	if cap(matches) == 0 {
 		matches = make([]Match, 0, min(len(candidates), defaultLiteralMatchCapacity))
@@ -127,7 +127,7 @@ func MatchLiteralCommandsFold(pattern string, candidates []string, dst []Match) 
 	return matches
 }
 
-func MatchRegexCommands(re *regexp.Regexp, candidates []string, dst []Match) []Match {
+func RegexCommands(re *regexp.Regexp, candidates []string, dst []Match) []Match {
 	matches := dst[:0]
 	if cap(matches) < len(candidates) {
 		matches = make([]Match, 0, len(candidates))
