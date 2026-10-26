@@ -1,0 +1,3 @@
+- go test ./internal/shell -run ^TestShellSearchTransportProperty$ -count=1 -v -rapid.checks=0 replays all three saved trailing-newline cases successfully; the original templates fail each case.
+- Regenerating the stale fish and zsh failure corpus from the original templates with seed 123 produces replayable generic command selections containing five trailing newlines; the Bash case preserves its original provenance.
+- just check on the final batch tree passes normal and race tests of generated bash, fish, and zsh hooks using disposable homes, quoted executable paths, exact selection bytes, exit statuses, and execution effects.
