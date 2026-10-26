@@ -1,0 +1,3 @@
+- go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --output.json.path=.cache/evidence/lint-baseline.json reports zero issues on the reviewed batch.
+- just format leaves the reviewed Go files unchanged.
+- python3 "$SKILLS_REPOSITORY/catalog/global/commit/scripts/commit.py" stamp -- just check passes on the final batch tree with Go 1.27.3 on Linux: lint reports zero issues, normal tests and race tests pass, formatting and go mod tidy produce no diff, and the executable builds.
