@@ -1,0 +1,1 @@
+- just check on the final batch tree passes normal and race tests of generated configuration round trips, sparse precedence, invalid input rejection without state changes, stdin byte boundaries, editor arguments, and import conservation and rollback.
