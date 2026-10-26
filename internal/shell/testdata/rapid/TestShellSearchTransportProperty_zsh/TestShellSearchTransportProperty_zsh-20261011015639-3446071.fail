@@ -1,0 +1,16 @@
+# 2026/10/26 22:41:52.821798 [TestShellSearchTransportProperty/zsh] [rapid] draw action: "select"
+# 2026/10/26 22:41:52.821802 [TestShellSearchTransportProperty/zsh] [rapid] draw status: 0
+# 2026/10/26 22:41:52.821807 [TestShellSearchTransportProperty/zsh] [rapid] draw command: ""
+# 2026/10/26 22:41:52.821808 [TestShellSearchTransportProperty/zsh] [rapid] draw selection-newlines: 5
+# 2026/10/26 22:41:52.832099 [TestShellSearchTransportProperty/zsh] buffer = [][]string{[]string{"observed", "command "}}, want "command \n\n\n\n\n"
+# 
+v0.4.8#133
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1f2b5a0e61c3a6
+0x0

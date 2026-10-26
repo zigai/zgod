@@ -89,8 +89,9 @@ __zgod_search_widget() {
         return 0
     fi
     local selected
-    selected=$("$__zgod_bin" search --shell --height 15 --query "$LBUFFER$RBUFFER" </dev/tty)
+    selected=$("$__zgod_bin" search --shell --height 15 --query "$LBUFFER$RBUFFER" </dev/tty; rc=$?; printf '.'; exit "$rc")
     local rc=$?
+    selected=${selected%.}
     local action=""
     if [[ $rc -eq 0 && "$selected" == *$'\n'* ]]; then
         action=${selected%%$'\n'*}

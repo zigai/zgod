@@ -1,0 +1,16 @@
+# 2026/10/26 22:42:03.507224 [TestShellSearchTransportProperty/fish] [rapid] draw action: "select"
+# 2026/10/26 22:42:03.507228 [TestShellSearchTransportProperty/fish] [rapid] draw status: 0
+# 2026/10/26 22:42:03.507233 [TestShellSearchTransportProperty/fish] [rapid] draw command: ""
+# 2026/10/26 22:42:03.507234 [TestShellSearchTransportProperty/fish] [rapid] draw selection-newlines: 5
+# 2026/10/26 22:42:03.530358 [TestShellSearchTransportProperty/fish] buffer = [][]string{[]string{"observed", "command "}}, want "command \n\n\n\n\n"
+# 
+v0.4.8#133
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1f2b5a0e61c3a6
+0x0

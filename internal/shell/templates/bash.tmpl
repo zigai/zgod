@@ -294,8 +294,9 @@ __zgod_search() {
         return
     fi
     local selected
-    selected=$("$__zgod_bin" search --shell --height 15 --query "$READLINE_LINE" </dev/tty)
+    selected=$("$__zgod_bin" search --shell --height 15 --query "$READLINE_LINE" </dev/tty; rc=$?; printf '.'; exit "$rc")
     local rc=$?
+    selected=${selected%.}
     local action=""
     if [[ $rc -eq 0 && "$selected" == *$'\n'* ]]; then
         action=${selected%%$'\n'*}

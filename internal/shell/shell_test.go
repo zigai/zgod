@@ -2,21 +2,287 @@ package shell
 
 import (
 	"context"
+	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"pgregory.net/rapid"
 )
 
 var (
 	errRecordedCommandTimeout = errors.New("timed out waiting for recorded commands")
 	errPowerShellNotAvailable = errors.New("powershell not available")
 )
+
+func captureShellArguments(arguments []string) {
+	file, err := os.OpenFile(os.Getenv("ZGOD_TEST_CAPTURE"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		os.Exit(94)
+	}
+
+	if err = json.NewEncoder(file).Encode(arguments); err != nil {
+		os.Exit(95)
+	}
+
+	if err = file.Close(); err != nil {
+		os.Exit(96)
+	}
+}
+
+func emitShellSearchResult() {
+	result, err := os.ReadFile(os.Getenv("ZGOD_TEST_RESULT_FILE"))
+	if err != nil {
+		os.Exit(91)
+	}
+
+	if _, err = os.Stdout.Write(result); err != nil {
+		os.Exit(92)
+	}
+
+	code, err := strconv.Atoi(os.Getenv("ZGOD_TEST_CODE"))
+	if err != nil {
+		os.Exit(93)
+	}
+
+	os.Exit(code)
+}
+
+func TestShellBoundaryProcess(t *testing.T) {
+	if os.Getenv("ZGOD_TEST_BOUNDARY") != "1" {
+		return
+	}
+
+	separator := 0
+
+	for index, argument := range os.Args {
+		if argument == "--" {
+			separator = index + 1
+			break
+		}
+	}
+
+	arguments := os.Args[separator:]
+	if len(arguments) == 0 {
+		os.Exit(90)
+	}
+
+	switch arguments[0] {
+	case "search":
+		emitShellSearchResult()
+	case "record":
+		os.Exit(0)
+	}
+
+	captureShellArguments(arguments)
+
+	if arguments[0] == "init" {
+		script, err := os.ReadFile(os.Getenv("ZGOD_TEST_INIT_FILE"))
+		if err != nil {
+			os.Exit(97)
+		}
+
+		if _, err = os.Stdout.Write(script); err != nil {
+			os.Exit(98)
+		}
+	}
+
+	os.Exit(0)
+}
+
+func shellBoundaryCommand(t *testing.T, check *rapid.T, shell Shell, dir, program, fixture, script string) *exec.Cmd {
+	t.Helper()
+
+	binary, err := os.Executable()
+	if err != nil {
+		check.Fatal(err)
+	}
+
+	wrapper, err := os.ReadFile("testdata/capture.sh")
+	if err != nil {
+		check.Fatal(err)
+	}
+
+	if err = os.WriteFile(program, wrapper, 0o700); err != nil {
+		check.Fatal(err)
+	}
+
+	if err = os.WriteFile(filepath.Join(dir, "init-script"), []byte(script), 0o600); err != nil {
+		check.Fatal(err)
+	}
+
+	extension := map[Shell]string{Bash: "sh", Zsh: "zsh", Fish: "fish", PowerShell: "ps1", Pwsh: "ps1"}[shell]
+
+	body, err := os.ReadFile(filepath.Join("testdata", shell.String(), fixture+"."+extension))
+	if err != nil {
+		check.Fatal(err)
+	}
+
+	command := exec.CommandContext(t.Context(), shell.String(), "-c", strings.ReplaceAll(script, "</dev/tty", "</dev/null")+"\n"+string(body))
+	command.Dir = dir
+	command.Env = append(os.Environ(),
+		"HOME="+dir, "ZDOTDIR="+dir, "XDG_CONFIG_HOME="+dir,
+		"ZGOD_TEST_BOUNDARY=1", "ZGOD_TEST_BINARY="+binary, "GORACE=atexit_sleep_ms=0",
+		"ZGOD_TEST_CAPTURE="+filepath.Join(dir, "capture.jsonl"),
+		"ZGOD_TEST_INIT_FILE="+filepath.Join(dir, "init-script"),
+		"ZGOD_TEST_EXECUTIONS="+filepath.Join(dir, "executions"),
+	)
+
+	return command
+}
+
+func readShellBoundaryCapture(check *rapid.T, dir string) [][]string {
+	data, err := os.ReadFile(filepath.Join(dir, "capture.jsonl"))
+	if err != nil {
+		check.Fatal(err)
+	}
+
+	var calls [][]string
+
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	for decoder.More() {
+		var arguments []string
+		if err = decoder.Decode(&arguments); err != nil {
+			check.Fatal(err)
+		}
+
+		calls = append(calls, arguments)
+	}
+
+	return calls
+}
+
+//go:embed testdata/characters.txt
+var shellFixtureFS embed.FS
+
+func shellTextRunes(check *rapid.T) []rune {
+	check.Helper()
+
+	data, err := shellFixtureFS.ReadFile("testdata/characters.txt")
+	if err != nil {
+		check.Fatal(err)
+	}
+
+	return []rune(string(data))
+}
+
+func TestShellPathsRoundTripProperty(t *testing.T) {
+	for _, shell := range []Shell{Bash, Zsh, Fish} {
+		t.Run(shell.String(), func(t *testing.T) {
+			if _, err := exec.LookPath(shell.String()); err != nil {
+				t.Skipf("%s not available", shell)
+			}
+
+			rapid.Check(t, func(check *rapid.T) {
+				dir := t.TempDir()
+				text := rapid.StringOfN(rapid.RuneFrom(shellTextRunes(check)), 0, 32, -1)
+				program := filepath.Join(dir, "program-"+text.Draw(check, "executable"))
+				configPath := filepath.Join(dir, "config-"+text.Draw(check, "config"))
+
+				script, err := InitScript(shell, InitOptions{BinPath: program, ConfigPath: configPath})
+				if err != nil {
+					check.Fatal(err)
+				}
+
+				command := shellBoundaryCommand(t, check, shell, dir, program, "quote", script)
+				want := [][]string{{"probe", configPath, "", program}}
+
+				if rapid.Bool().Draw(check, "setup-line") {
+					body := strings.TrimPrefix(command.Args[len(command.Args)-1], strings.ReplaceAll(script, "</dev/tty", "</dev/null")+"\n")
+					command.Args[len(command.Args)-1] = setupLineWithBin(shell, configPath, program) + "\n" + body
+					want = append([][]string{{"init", shell.String(), "--config", configPath}}, want...)
+				}
+
+				if output, err := command.CombinedOutput(); err != nil {
+					check.Fatalf("shell failed: %v: %s", err, output)
+				}
+
+				if got := readShellBoundaryCapture(check, dir); !reflect.DeepEqual(got, want) {
+					check.Fatalf("arguments = %#v, want %#v", got, want)
+				}
+			})
+		})
+	}
+}
+
+func assertShellSearchOutcome(check *rapid.T, dir string, shell Shell, action string, code int, selected string) {
+	check.Helper()
+
+	wantLine, wantExecutions := "original", ""
+	if code == 0 && action == "select" {
+		wantLine = selected
+	}
+
+	if code == 0 && action == "execute" {
+		wantLine, wantExecutions = selected, "x"
+		if shell == Bash {
+			wantLine = ""
+		}
+	}
+
+	if got := readShellBoundaryCapture(check, dir); !reflect.DeepEqual(got, [][]string{{"observed", wantLine}}) {
+		check.Fatalf("buffer = %#v, want %q", got, wantLine)
+	}
+
+	executions, err := os.ReadFile(filepath.Join(dir, "executions"))
+	if err != nil && !os.IsNotExist(err) {
+		check.Fatal(err)
+	}
+
+	if string(executions) != wantExecutions {
+		check.Fatalf("execution effects = %q, want %q", executions, wantExecutions)
+	}
+}
+
+func TestShellSearchTransportProperty(t *testing.T) {
+	for _, shell := range []Shell{Bash, Zsh, Fish} {
+		t.Run(shell.String(), func(t *testing.T) {
+			if _, err := exec.LookPath(shell.String()); err != nil {
+				t.Skipf("%s not available", shell)
+			}
+
+			rapid.Check(t, func(check *rapid.T) {
+				dir := t.TempDir()
+				program := filepath.Join(dir, "program")
+				action := rapid.SampledFrom([]string{"select", "execute", "invalid"}).Draw(check, "action")
+				code := rapid.IntRange(0, 2).Draw(check, "status")
+
+				selected := "command " + rapid.StringOfN(rapid.RuneFrom(shellTextRunes(check)), 0, 48, -1).Draw(check, "command") + strings.Repeat("\n", rapid.IntRange(0, 5).Draw(check, "selection-newlines"))
+				if action == "execute" {
+					selected = "printf x >> \"$ZGOD_TEST_EXECUTIONS\"" + strings.Repeat("\n", rapid.IntRange(0, 5).Draw(check, "trailing-newlines"))
+				}
+
+				script, err := InitScript(shell, InitOptions{BinPath: program})
+				if err != nil {
+					check.Fatal(err)
+				}
+
+				command := shellBoundaryCommand(t, check, shell, dir, program, "search", script)
+
+				resultPath := filepath.Join(dir, "result")
+				if err = os.WriteFile(resultPath, []byte(action+"\n"+selected), 0o600); err != nil {
+					check.Fatal(err)
+				}
+
+				command.Env = append(command.Env, "ZGOD_TEST_RESULT_FILE="+resultPath, "ZGOD_TEST_CODE="+strconv.Itoa(code))
+				if output, err := command.CombinedOutput(); err != nil {
+					check.Fatalf("shell failed: %v: %s", err, output)
+				}
+
+				assertShellSearchOutcome(check, dir, shell, action, code, selected)
+			})
+		})
+	}
+}
 
 func TestParse(t *testing.T) {
 	tests := []struct {
@@ -247,7 +513,7 @@ func main() {
 			f, err := os.OpenFile(captureFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 			if err == nil {
 				defer f.Close()
-				fmt.Fprintln(f, strings.Join(os.Args[1:], " "))
+				fmt.Fprintf(f, "%s\x00", strings.Join(os.Args[1:], " "))
 			}
 		}
 	}
@@ -685,7 +951,7 @@ func testInstantExecutePathsBash(t *testing.T) {
 set -eu
 
 if [ "${1:-}" = "search" ]; then
-	printf 'execute\necho instant_ran\n'
+	printf 'execute\necho instant_ran'
 	exit 0
 fi
 
@@ -713,8 +979,8 @@ if [ "${1:-}" = "record" ]; then
 				;;
 		esac
 	done
-	printf '%s\n' "$record_command" >> "$ZGOD_CAPTURE_FILE"
-	printf '%s\n' "$record_directory" >> "$ZGOD_CAPTURE_DIRECTORY_FILE"
+	printf '%s\0' "$record_command" >> "$ZGOD_CAPTURE_FILE"
+	printf '%s\0' "$record_directory" >> "$ZGOD_CAPTURE_DIRECTORY_FILE"
 	exit 0
 fi
 `
@@ -1244,9 +1510,9 @@ if [ "${1:-}" = "record" ]; then
 				;;
 		esac
 	done
-	printf '%s\n' "$record_command" >> "$ZGOD_CAPTURE_FILE"
+	printf '%s\0' "$record_command" >> "$ZGOD_CAPTURE_FILE"
 	if [ -n "${ZGOD_CAPTURE_DIRECTORY_FILE:-}" ]; then
-		printf '%s\n' "$record_directory" >> "$ZGOD_CAPTURE_DIRECTORY_FILE"
+		printf '%s\0' "$record_directory" >> "$ZGOD_CAPTURE_DIRECTORY_FILE"
 	fi
 	exit 0
 fi
@@ -1356,17 +1622,8 @@ func waitForRecordedCommands(path string) ([]string, error) {
 	for time.Now().Before(deadline) {
 		data, err := os.ReadFile(path)
 		if err == nil {
-			lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-
-			recorded := make([]string, 0, len(lines))
-			for i := range lines {
-				if lines[i] != "" {
-					recorded = append(recorded, lines[i])
-				}
-			}
-
-			if len(recorded) > 0 {
-				return recorded, nil
+			if len(data) > 0 && data[len(data)-1] == 0 {
+				return strings.Split(string(data[:len(data)-1]), "\x00"), nil
 			}
 		} else if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("reading recorded commands from %q: %w", path, err)
