@@ -1,0 +1,4 @@
+- go test ./internal/cli -run TestPendingRecord -count=1 -v passes malformed and unreadable queue handling, removal failure replay, and 100 generated durability cases.
+- python3 .cache/verify_replay.py kills a writer after committing committed.json, then runs the built .cache/zgod search --no-config --json twice; exactly two identical queued records remain in history, search returns one deduplicated result, receipts clear, and malformed input remains intact.
+- The existing removal-failure test detects two stored rows instead of one when receipt use is temporarily removed; restoring receipts passes the same scenario.
+- just check on the final batch tree passes normal and race tests, including generated schema upgrades, repeated pending replay, persistence, and candidate lifecycle cases.
