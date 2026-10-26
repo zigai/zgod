@@ -1,0 +1,2 @@
+- just check on the final batch tree passes normal and race tests for literal and regex matching and the existing TUI consumers of the renamed helpers.
+- gonaming ./internal/match ./internal/db reports no finding on the renamed helpers; existing tryLockDatabaseFile, FetchCandidates, and FetchCandidatesInDir findings remain outside this rename.
