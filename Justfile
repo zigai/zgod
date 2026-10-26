@@ -46,42 +46,25 @@ format:
 lint:
     go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{golangci_lint_version}} run
 
-# Build the binary
+# Build the binary with version info
 build:
-    go build -o zgod .
+    go build -ldflags "-X github.com/zigai/zgod/internal/cli.version=dev -X github.com/zigai/zgod/internal/cli.commit=$(git rev-parse --short HEAD) -X github.com/zigai/zgod/internal/cli.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o zgod .
 
 # Install the binary
 install:
     #!/usr/bin/env sh
     set -e
+    go_target="$HOME/.local/bin/zgod"
+    GOBIN="$HOME/.local/bin" go install -trimpath -ldflags='-s -w' .
+    echo "Installed $go_target"
     target=$(command -v zgod 2>/dev/null || true)
-    gobin=$(go env GOBIN)
-    if [ -z "$gobin" ]; then
-        gobin="$(go env GOPATH)/bin"
-    fi
-    go_target="$gobin/zgod"
-
-    if [ -n "$target" ] && [ -w "$target" ]; then
-        tmp=$(mktemp)
-        trap 'rm -f "$tmp"' EXIT
-        go build -o "$tmp" .
-        install -m 0755 "$tmp" "$target"
-        echo "Installed $target"
-    else
-        go install .
-        echo "Installed $go_target"
-        if [ -n "$target" ] && [ "$target" != "$go_target" ]; then
-            echo "Warning: shell resolves zgod to $target before $go_target" >&2
-        fi
+    if [ -n "$target" ] && [ "$target" != "$go_target" ]; then
+        echo "Warning: shell resolves zgod to $target before $go_target" >&2
     fi
 
 # Remove build artifacts
 clean:
     rm -rf zgod zgod.exe dist/
-
-# Build with version info (local dev)
-build-dev:
-    go build -ldflags "-X github.com/zigai/zgod/internal/cli.version=dev -X github.com/zigai/zgod/internal/cli.commit=$(git rev-parse --short HEAD) -X github.com/zigai/zgod/internal/cli.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o zgod .
 
 # Test goreleaser locally
 release-dry-run:
@@ -152,5 +135,4 @@ release-major: _release-check
     git tag "$new"
     git push origin "$new"
 
-alias release := release-patch
 alias fmt := format
