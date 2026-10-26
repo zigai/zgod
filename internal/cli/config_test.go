@@ -2,13 +2,16 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"pgregory.net/rapid"
 
 	"github.com/zigai/zgod/internal/paths"
 )
@@ -186,11 +189,83 @@ func TestSplitCommandLine(t *testing.T) {
 				return
 			}
 
-			if strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("splitCommandLine(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
+}
+
+func TestEditorArgumentProcess(t *testing.T) {
+	capture := os.Getenv("ZGOD_TEST_EDITOR_CAPTURE")
+	if capture == "" {
+		return
+	}
+
+	var arguments []string
+
+	for index, argument := range os.Args {
+		if argument == "--" {
+			arguments = os.Args[index+1:]
+			break
+		}
+	}
+
+	data, err := json.Marshal(arguments)
+	if err != nil {
+		os.Exit(90)
+	}
+
+	if err = os.WriteFile(capture, data, 0o600); err != nil {
+		os.Exit(91)
+	}
+
+	os.Exit(0)
+}
+
+func TestEditorArgumentRoundTripProperty(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rapid.Check(t, func(check *rapid.T) {
+		dir := t.TempDir()
+		capture := filepath.Join(dir, "arguments.json")
+		t.Setenv("ZGOD_TEST_EDITOR_CAPTURE", capture)
+		t.Setenv("GORACE", "atexit_sleep_ms=0")
+
+		text := rapid.StringOfN(rapid.RuneFrom(historyTextRunes(check)), 0, 32, -1)
+		arguments := rapid.SliceOfN(text, 0, 8).Draw(check, "arguments")
+		arguments = append(arguments, "")
+		path := filepath.Join(dir, "config-"+text.Draw(check, "config"))
+
+		words := append([]string{binary, "-test.run=TestEditorArgumentProcess", "--"}, arguments...)
+
+		escaping := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+		for index := range words {
+			words[index] = `"` + escaping.Replace(words[index]) + `"`
+		}
+
+		if err := openEditor(strings.Join(words, " "), path); err != nil {
+			check.Fatal(err)
+		}
+
+		data, err := os.ReadFile(capture)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		var got []string
+		if err = json.Unmarshal(data, &got); err != nil {
+			check.Fatal(err)
+		}
+
+		want := append(append([]string(nil), arguments...), path)
+		if !reflect.DeepEqual(got, want) {
+			check.Fatalf("editor arguments = %#v, want %#v", got, want)
+		}
+	})
 }
 
 func TestConfigEditPreservesEmptyQuotedEditorArgument(t *testing.T) {

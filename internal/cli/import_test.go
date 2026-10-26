@@ -3,12 +3,18 @@ package cli
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"pgregory.net/rapid"
 
 	"github.com/zigai/zgod/internal/db"
 )
@@ -324,6 +330,213 @@ func TestImportHistoryEntriesFiltersBeforeStaging(t *testing.T) {
 	if summary.skippedMissingPath != 1 {
 		t.Fatalf("summary.skippedMissingPath = %d, want 1", summary.skippedMissingPath)
 	}
+}
+
+func generatedImportSource(t *testing.T, check *rapid.T) ([]db.HistoryEntry, map[db.HistoryEntry]importPathCheckStatus) {
+	t.Helper()
+	dir := t.TempDir()
+
+	name := "input-" + rapid.StringMatching("[a-z]{1,16}").Draw(check, "filename")
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("input"), 0o600); err != nil {
+		check.Fatal(err)
+	}
+
+	pool := rapid.SliceOfN(historyRecordGenerator(), 1, 10).Draw(check, "pool")
+	categories := make(map[db.HistoryEntry]importPathCheckStatus)
+
+	for index := range pool {
+		entry := &pool[index]
+		entry.Directory = dir
+
+		entry.ExitCode = rapid.IntRange(0, 2).Draw(check, "exit")
+		switch rapid.IntRange(0, 3).Draw(check, "path-kind") {
+		case 0:
+			entry.Command = "cat " + name
+			categories[*entry] = importPathExists
+		case 1:
+			entry.Command = "cat missing-" + name
+			categories[*entry] = importPathMissing
+		case 2:
+			entry.Command = "cat ./" + strings.Repeat(name, 4096)
+			categories[*entry] = importPathError
+		case 3:
+			entry.Command = "touch new-" + name
+			categories[*entry] = importPathExists
+		}
+	}
+
+	entries := rapid.SliceOfN(rapid.SampledFrom(pool), 1, 20).Draw(check, "source")
+	entries = append(entries, entries[0])
+
+	return entries, categories
+}
+
+func expectedImport(original, source []db.HistoryEntry, categories map[db.HistoryEntry]importPathCheckStatus, opts importOptions) (importSummary, []db.HistoryEntry) {
+	summary := importSummary{total: len(source)}
+
+	entries := append([]db.HistoryEntry(nil), original...)
+	seen := historyRecordCounts(original)
+
+	for _, entry := range source {
+		switch {
+		case entry.ExitCode != 0 && !opts.includeFailed:
+			summary.skippedFailed++
+		case !opts.includeMissingPaths && categories[entry] == importPathMissing:
+			summary.skippedMissingPath++
+		case !opts.includeMissingPaths && categories[entry] == importPathError:
+			summary.skippedPathError++
+		case seen[entry] > 0:
+			summary.skippedDuplicate++
+		default:
+			summary.imported++
+			seen[entry]++
+			entries = append(entries, entry)
+		}
+	}
+
+	return summary, entries
+}
+
+func assertImportedRecords(check *rapid.T, stored, original, expected []db.HistoryEntry) {
+	check.Helper()
+
+	if !reflect.DeepEqual(historyRecordCounts(stored), historyRecordCounts(expected)) {
+		check.Fatalf("destination = %#v, want %#v", stored, expected)
+	}
+
+	byID := make(map[int64]db.HistoryEntry)
+	for _, entry := range stored {
+		byID[entry.ID] = entry
+	}
+
+	for _, entry := range original {
+		if byID[entry.ID] != entry {
+			check.Fatalf("original record changed: %#v", entry)
+		}
+	}
+}
+
+func TestImportConservationProperty(t *testing.T) {
+	rapid.Check(t, func(check *rapid.T) {
+		sourceEntries, categories := generatedImportSource(t, check)
+
+		original := rapid.SliceOfN(historyRecordGenerator(), 0, 4).Draw(check, "original")
+		if rapid.Bool().Draw(check, "existing-duplicate") {
+			original = append(original, sourceEntries[0])
+		}
+
+		opts := importOptions{
+			includeFailed:       rapid.Bool().Draw(check, "include-failed"),
+			includeMissingPaths: rapid.Bool().Draw(check, "include-missing"),
+		}
+		want, wantEntries := expectedImport(original, sourceEntries, categories, opts)
+		dir := t.TempDir()
+		target := openPropertyHistory(check, filepath.Join(dir, "target.db"))
+		original = storePropertyHistory(check, target, original)
+		sourcePath := filepath.Join(dir, "source.db")
+		source := openPropertyHistory(check, sourcePath)
+		storePropertyHistory(check, source, sourceEntries)
+
+		if err := source.Close(); err != nil {
+			check.Fatal(err)
+		}
+
+		before, err := os.ReadFile(sourcePath)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		source, err = openImportSourceDatabase(sourcePath)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		got, err := importSourceHistoryEntries(target, source, opts)
+		if closeErr := source.Close(); closeErr != nil {
+			check.Fatal(closeErr)
+		}
+
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		if got != want || got.total != got.imported+got.skippedDuplicate+got.skippedFailed+got.skippedMissingPath+got.skippedPathError {
+			check.Fatalf("summary = %#v, want %#v", got, want)
+		}
+
+		assertImportedRecords(check, readPropertyHistory(check, target), original, wantEntries)
+
+		after, err := os.ReadFile(sourcePath)
+		if err != nil || !bytes.Equal(before, after) {
+			check.Fatalf("source database changed, error: %v", err)
+		}
+	})
+}
+
+func failingImportStream(check *rapid.T, database *sql.DB, entries []db.HistoryEntry, phase string) historyEntryStreamer {
+	check.Helper()
+
+	if phase == "history" {
+		execPropertySQL(check, database, fmt.Sprintf(`CREATE TRIGGER reject_import BEFORE INSERT ON history WHEN NEW.command LIKE 'incoming-%d %%' BEGIN SELECT RAISE(ABORT, 'unavailable'); END`, len(entries)-1))
+	}
+
+	if phase == "cache" {
+		execPropertySQL(check, database, `CREATE TRIGGER reject_cache BEFORE INSERT ON latest_command BEGIN SELECT RAISE(ABORT, 'unavailable'); END`)
+	}
+
+	failAt := rapid.IntRange(1, len(entries)-1).Draw(check, "fail-after")
+
+	return func(_ context.Context, visit func(db.HistoryEntry) error) error {
+		for index, entry := range entries {
+			if phase == "stream" && index == failAt {
+				return io.ErrUnexpectedEOF
+			}
+
+			if err := visit(entry); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+}
+
+func TestImportRollbackProperty(t *testing.T) {
+	rapid.Check(t, func(check *rapid.T) {
+		database := openPropertyHistory(check, filepath.Join(t.TempDir(), "history.db"))
+		original := rapid.SliceOfN(historyRecordGenerator(), 0, 8).Draw(check, "original")
+		storePropertyHistory(check, database, original)
+		before := readPropertyHistory(check, database)
+		repo := db.NewHistoryRepo(database)
+
+		beforeCandidates, err := repo.FetchCandidates(0, true, db.FailFilterInclude)
+		if err != nil {
+			check.Fatal(err)
+		}
+
+		entries := rapid.SliceOfN(historyRecordGenerator(), 2, 12).Draw(check, "source")
+		for index := range entries {
+			entries[index].Command = fmt.Sprintf("incoming-%d %s", index, entries[index].Command)
+		}
+
+		phase := rapid.SampledFrom([]string{"stream", "history", "cache"}).Draw(check, "failure-phase")
+		stream := failingImportStream(check, database, entries, phase)
+
+		_, err = importHistoryEntriesFromStreamer(database, importOptions{includeFailed: true, includeMissingPaths: true}, stream)
+		if err == nil || (phase == "stream" && !errors.Is(err, io.ErrUnexpectedEOF)) {
+			check.Fatalf("failed import error = %v", err)
+		}
+
+		after := readPropertyHistory(check, database)
+		if !reflect.DeepEqual(after, before) {
+			check.Fatalf("failed import changed history: %#v, want %#v", after, before)
+		}
+
+		afterCandidates, err := repo.FetchCandidates(0, true, db.FailFilterInclude)
+		if err != nil || !reflect.DeepEqual(afterCandidates, beforeCandidates) {
+			check.Fatalf("failed import changed candidates: %#v, want %#v, error: %v", afterCandidates, beforeCandidates, err)
+		}
+	})
 }
 
 func TestRunImportReadableSourceImportsEntries(t *testing.T) {
