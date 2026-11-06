@@ -57,7 +57,11 @@ type commandTokenizer struct {
 }
 
 func commandReferencesExistingPaths(command string, workingDirectory string) (bool, error) {
-	return commandReferencesExistingPathsWithMatcher(command, workingDirectory, commandPathMatchesRequirement)
+	return commandReferencesExistingPathsWithMatcher(
+		command,
+		workingDirectory,
+		commandPathMatchesRequirement,
+	)
 }
 
 func commandReferencesExistingPathsWithMatcher(
@@ -203,7 +207,8 @@ func (e *pathExtractor) consumeCommandToken(index int, token string) bool {
 		return true
 	}
 
-	if e.commandName == "git" && index > e.commandIndex && e.gitSubcommand == "" && !strings.HasPrefix(token, "-") {
+	if e.commandName == "git" && index > e.commandIndex && e.gitSubcommand == "" &&
+		!strings.HasPrefix(token, "-") {
 		e.gitSubcommand = token
 		return true
 	}
@@ -222,17 +227,17 @@ func (e *pathExtractor) consumeFlagPath(token string) bool {
 		return true
 	}
 
-	candidate, ok := pathCandidateFromPathFlag(token)
+	directory, ok := directoryFlagValue(token)
 	if !ok {
 		return false
 	}
 
-	if candidate.value != "" {
-		addPathCandidate(e.seen, candidate.value, candidate.requirement)
+	if directory != "" {
+		addPathCandidate(e.seen, directory, pathMustExist)
 		return true
 	}
 
-	e.pendingRequirement = candidate.requirement
+	e.pendingRequirement = pathMustExist
 	e.hasPendingRequirement = true
 
 	return true
@@ -531,23 +536,20 @@ func pathCandidateFromFlagAssignment(token string, workingDirectory string) (pat
 	return pathCandidate{}, false
 }
 
-func pathCandidateFromPathFlag(token string) (pathCandidate, bool) {
+func directoryFlagValue(token string) (string, bool) {
 	if token == "-C" || token == "--directory" {
-		return pathCandidate{requirement: pathMustExist}, true
+		return "", true
 	}
 
 	if strings.HasPrefix(token, "-C") && len(token) > 2 {
-		return pathCandidate{value: token[2:], requirement: pathMustExist}, true
+		return token[2:], true
 	}
 
 	if after, ok := strings.CutPrefix(token, "--directory="); ok {
-		return pathCandidate{
-			value:       strings.TrimSpace(after),
-			requirement: pathMustExist,
-		}, true
+		return strings.TrimSpace(after), true
 	}
 
-	return pathCandidate{}, false
+	return "", false
 }
 
 func pathRequirementForFlag(name string) (pathRequirement, bool) {
@@ -561,7 +563,12 @@ func pathRequirementForFlag(name string) (pathRequirement, bool) {
 	}
 }
 
-func shouldSkipGitRefToken(commandName string, gitSubcommand string, token string, afterDoubleDash bool) bool {
+func shouldSkipGitRefToken(
+	commandName string,
+	gitSubcommand string,
+	token string,
+	afterDoubleDash bool,
+) bool {
 	if commandName != "git" || afterDoubleDash {
 		return false
 	}
@@ -630,7 +637,11 @@ func contextualPathRequirement(
 	return operandPathRequirement(commandName, index, lastOperandIndex, sedScriptConsumed)
 }
 
-func directoryChangePathRequirement(commandName string, index int, commandIndex int) (pathRequirement, bool) {
+func directoryChangePathRequirement(
+	commandName string,
+	index int,
+	commandIndex int,
+) (pathRequirement, bool) {
 	if isDirectoryChangeCommand(commandName) && index == commandIndex+1 {
 		return pathMustExist, true
 	}

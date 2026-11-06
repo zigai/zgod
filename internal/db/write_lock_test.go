@@ -20,7 +20,13 @@ func TestWithDatabaseWriteLockSerializesProcesses(t *testing.T) {
 	defer cmdCancel()
 
 	dbPath := filepath.Join(t.TempDir(), "history.db")
-	cmd := exec.CommandContext(cmdCtx, os.Args[0], "-test.run=TestDatabaseWriteLockHelperProcess", "--", dbPath)
+	cmd := exec.CommandContext(
+		cmdCtx,
+		os.Args[0],
+		"-test.run=TestDatabaseWriteLockHelperProcess",
+		"--",
+		dbPath,
+	)
 
 	cmd.Env = append(os.Environ(), databaseWriteLockHelperEnv+"=1")
 

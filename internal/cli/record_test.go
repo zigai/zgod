@@ -172,7 +172,14 @@ func TestPendingRecordErrorsDoNotBlockRecordingOrSearch(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			queued := db.HistoryEntry{TimestampMS: 1, Command: "queued", DurationMS: 3, Directory: "/work", SessionID: "session", Hostname: "host"}
+			queued := db.HistoryEntry{
+				TimestampMS: 1,
+				Command:     "queued",
+				DurationMS:  3,
+				Directory:   "/work",
+				SessionID:   "session",
+				Hostname:    "host",
+			}
 			current := db.HistoryEntry{TimestampMS: 2, Command: "current", ExitCode: 7}
 
 			if err := queuePendingRecord(dbPath, queued); err != nil {
@@ -210,7 +217,15 @@ func TestPendingRecordRemovalFailureDoesNotReplay(t *testing.T) {
 
 	dbPath := filepath.Join(t.TempDir(), "history.db")
 
-	entry := db.HistoryEntry{TimestampMS: 1, Command: "pending", DurationMS: 5, ExitCode: 2, Directory: "/work", SessionID: "session", Hostname: "host"}
+	entry := db.HistoryEntry{
+		TimestampMS: 1,
+		Command:     "pending",
+		DurationMS:  5,
+		ExitCode:    2,
+		Directory:   "/work",
+		SessionID:   "session",
+		Hostname:    "host",
+	}
 	if err := queuePendingRecord(dbPath, entry); err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +306,11 @@ func openPropertyHistory(check historyTestReporter, path string) *sql.DB {
 	return database
 }
 
-func storePropertyHistory(check historyTestReporter, database *sql.DB, entries []db.HistoryEntry) []db.HistoryEntry {
+func storePropertyHistory(
+	check historyTestReporter,
+	database *sql.DB,
+	entries []db.HistoryEntry,
+) []db.HistoryEntry {
 	check.Helper()
 
 	stored := append([]db.HistoryEntry(nil), entries...)
@@ -364,7 +383,11 @@ func historyRecordCounts(entries []db.HistoryEntry) map[db.HistoryEntry]int {
 	return counts
 }
 
-func preparePendingRecords(check *rapid.T, dbPath string, entries []db.HistoryEntry) map[string][]byte {
+func preparePendingRecords(
+	check *rapid.T,
+	dbPath string,
+	entries []db.HistoryEntry,
+) map[string][]byte {
 	check.Helper()
 
 	for _, entry := range entries {
@@ -408,7 +431,11 @@ func TestPendingRecordDurabilityProperty(t *testing.T) {
 		protected := preparePendingRecords(check, dbPath, entries)
 		dir := pendingRecordsDir(dbPath)
 		database := openPropertyHistory(check, dbPath)
-		execPropertySQL(check, database, `CREATE TRIGGER reject_record BEFORE INSERT ON history BEGIN SELECT RAISE(ABORT, 'unavailable'); END`)
+		execPropertySQL(
+			check,
+			database,
+			`CREATE TRIGGER reject_record BEFORE INSERT ON history BEGIN SELECT RAISE(ABORT, 'unavailable'); END`,
+		)
 
 		if err := drainPendingRecordsForSearch(dbPath); err == nil {
 			check.Fatal("persistence failure was not reported")
@@ -440,7 +467,9 @@ func TestPendingRecordDurabilityProperty(t *testing.T) {
 		assertProtectedPendingFiles(check, dir, protected)
 
 		var receipts int
-		if err = database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM pending_record`).Scan(&receipts); err != nil || receipts != 0 {
+		if err = database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM pending_record`).
+			Scan(&receipts); err != nil ||
+			receipts != 0 {
 			check.Fatalf("finished queue retained %d receipts, error: %v", receipts, err)
 		}
 	})

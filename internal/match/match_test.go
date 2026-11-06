@@ -108,7 +108,12 @@ func TestFuzzyMatcherIndexedMatchesFullSearchSubset(t *testing.T) {
 	}
 
 	if len(indexed) != len(want) {
-		t.Fatalf("MatchIndexed() returned %d matches, want %d: %+v", len(indexed), len(want), indexed)
+		t.Fatalf(
+			"MatchIndexed() returned %d matches, want %d: %+v",
+			len(indexed),
+			len(want),
+			indexed,
+		)
 	}
 
 	for i := range want {
@@ -200,7 +205,11 @@ func TestRegexMatcherLiteralUnicodeFoldDifferential(t *testing.T) {
 			literalMatches := m.MatchCommands(tt.pattern, candidates, nil)
 
 			if len(literalMatches) != len(fullMatches) {
-				t.Fatalf("literalMatches count = %d, fullMatches count = %d", len(literalMatches), len(fullMatches))
+				t.Fatalf(
+					"literalMatches count = %d, fullMatches count = %d",
+					len(literalMatches),
+					len(fullMatches),
+				)
 			}
 
 			for i := range fullMatches {
@@ -214,7 +223,11 @@ func TestRegexMatcherLiteralUnicodeFoldDifferential(t *testing.T) {
 				}
 
 				if literalMatches[i].MatchedRanges != nil {
-					t.Fatalf("literalMatches[%d].MatchedRanges = %+v, want nil", i, literalMatches[i].MatchedRanges)
+					t.Fatalf(
+						"literalMatches[%d].MatchedRanges = %+v, want nil",
+						i,
+						literalMatches[i].MatchedRanges,
+					)
 				}
 			}
 		})

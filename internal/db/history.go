@@ -78,7 +78,7 @@ func InsertIfNotExistsTx(tx *sql.Tx, entry HistoryEntry) (bool, error) {
 		}
 
 		entry.ID = id
-		if err = upsertLatestCommandTx(context.Background(), tx, entry); err != nil {
+		if err := upsertLatestCommandTx(context.Background(), tx, entry); err != nil {
 			return false, err
 		}
 	}
@@ -96,7 +96,11 @@ func (r *HistoryRepo) InsertPending(name string, entry HistoryEntry) error {
 }
 
 func (r *HistoryRepo) DeletePendingReceipt(name string) error {
-	_, err := r.db.ExecContext(context.Background(), `DELETE FROM pending_record WHERE name = ?`, name)
+	_, err := r.db.ExecContext(
+		context.Background(),
+		`DELETE FROM pending_record WHERE name = ?`,
+		name,
+	)
 	if err != nil {
 		return fmt.Errorf("deleting pending history receipt: %w", err)
 	}
@@ -127,7 +131,7 @@ func (r *HistoryRepo) Delete(id int64) error {
 	}
 
 	if command != "" {
-		if err = rebuildLatestCommandTx(ctx, tx, command); err != nil {
+		if err := rebuildLatestCommandTx(ctx, tx, command); err != nil {
 			return err
 		}
 	}
@@ -223,11 +227,20 @@ func (r *HistoryRepo) ForEach(ctx context.Context, visit func(HistoryEntry) erro
 	return nil
 }
 
-func (r *HistoryRepo) FetchCandidates(limit int, dedupe bool, failFilter FailFilterMode) ([]HistoryEntry, error) {
+func (r *HistoryRepo) FetchCandidates(
+	limit int,
+	dedupe bool,
+	failFilter FailFilterMode,
+) ([]HistoryEntry, error) {
 	return r.FetchCandidatesInDir(limit, dedupe, failFilter, "")
 }
 
-func (r *HistoryRepo) FetchCandidatesInDir(limit int, dedupe bool, failFilter FailFilterMode, dir string) ([]HistoryEntry, error) {
+func (r *HistoryRepo) FetchCandidatesInDir(
+	limit int,
+	dedupe bool,
+	failFilter FailFilterMode,
+	dir string,
+) ([]HistoryEntry, error) {
 	rows, err := r.queryCandidates(limit, dedupe, failFilter, dir)
 	if err != nil {
 		return nil, fmt.Errorf("querying history candidates: %w", err)
@@ -258,7 +271,11 @@ func (r *HistoryRepo) insert(entry HistoryEntry, pendingName string) (int64, err
 	defer func() { _ = tx.Rollback() }()
 
 	if pendingName != "" {
-		res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO pending_record (name) VALUES (?)`, pendingName)
+		res, err := tx.ExecContext(
+			ctx,
+			`INSERT OR IGNORE INTO pending_record (name) VALUES (?)`,
+			pendingName,
+		)
 		if err != nil {
 			return 0, fmt.Errorf("inserting pending history receipt: %w", err)
 		}
@@ -290,7 +307,7 @@ func (r *HistoryRepo) insert(entry HistoryEntry, pendingName string) (int64, err
 	}
 
 	entry.ID = id
-	if err = upsertLatestCommandTx(ctx, tx, entry); err != nil {
+	if err := upsertLatestCommandTx(ctx, tx, entry); err != nil {
 		return 0, err
 	}
 
@@ -301,7 +318,12 @@ func (r *HistoryRepo) insert(entry HistoryEntry, pendingName string) (int64, err
 	return id, nil
 }
 
-func (r *HistoryRepo) queryCandidates(limit int, dedupe bool, failFilter FailFilterMode, dir string) (*sql.Rows, error) {
+func (r *HistoryRepo) queryCandidates(
+	limit int,
+	dedupe bool,
+	failFilter FailFilterMode,
+	dir string,
+) (*sql.Rows, error) {
 	specs := candidateQuerySpecs(dedupe, failFilter, dir)
 	for _, spec := range specs {
 		query, args := spec.withLimit(limit)
@@ -437,7 +459,11 @@ func upsertLatestCommandTx(ctx context.Context, tx *sql.Tx, entry HistoryEntry) 
 }
 
 func rebuildLatestCommandTx(ctx context.Context, tx *sql.Tx, command string) error {
-	if _, err := tx.ExecContext(ctx, `DELETE FROM latest_command WHERE command = ?`, command); err != nil {
+	if _, err := tx.ExecContext(
+		ctx,
+		`DELETE FROM latest_command WHERE command = ?`,
+		command,
+	); err != nil {
 		return fmt.Errorf("clearing latest command cache for %q: %w", command, err)
 	}
 
@@ -480,7 +506,14 @@ func scanCandidateEntries(rows *sql.Rows) ([]HistoryEntry, error) {
 	for rows.Next() {
 		var e HistoryEntry
 
-		err := rows.Scan(&e.ID, &e.TimestampMS, &e.DurationMS, &e.ExitCode, &e.Command, &e.Directory)
+		err := rows.Scan(
+			&e.ID,
+			&e.TimestampMS,
+			&e.DurationMS,
+			&e.ExitCode,
+			&e.Command,
+			&e.Directory,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning history candidate row: %w", err)
 		}

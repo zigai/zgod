@@ -109,7 +109,9 @@ func (m *Model) handleMouseLeftPress(ev tea.MouseEvent) (tea.Model, tea.Cmd) {
 	}
 
 	if action, actionOK := m.indicatorAt(bodyX, bodyY); actionOK {
-		return m, m.triggerIndicatorAction(action)
+		cmd := m.triggerIndicatorAction(action)
+
+		return m, cmd
 	}
 
 	if resultIdx, resultOK := m.resultIndexAtBodyY(bodyY); resultOK {
@@ -124,7 +126,9 @@ func (m *Model) handleMouseLeftPress(ev tea.MouseEvent) (tea.Model, tea.Cmd) {
 	}
 
 	if action, actionOK := m.footerShortcutAt(bodyX, bodyY); actionOK {
-		return m, m.triggerFooterShortcut(action)
+		cmd := m.triggerFooterShortcut(action)
+
+		return m, cmd
 	}
 
 	return m, nil
@@ -219,11 +223,10 @@ func (m *Model) resultIndexAtBodyY(bodyY int) (int, bool) {
 	}
 
 	row := headerRows
-	expandMode := m.cfg.Display.MultilinePreview == "expand"
 
 	for idx := start; idx < end && row < m.height; idx++ {
 		rowCount := 1
-		if expandMode && idx == m.cursor && m.entryIsMultiline(idx) {
+		if m.expandsResult(idx) {
 			rowCount = m.expandedResultRowCount(idx, m.height-row)
 		}
 

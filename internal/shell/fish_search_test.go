@@ -26,16 +26,20 @@ func TestFishSearchProtocol(t *testing.T) {
 		{"failed partial result", "execute\necho unsafe", "2", "repaint\n"},
 		{"cancel", "", "1", "repaint\n"},
 	} {
-		t.Run(test.name, func(t *testing.T) { runFishSearchProtocol(t, test.result, test.code, test.want) })
+		t.Run(
+			test.name,
+			func(t *testing.T) { runFishSearchProtocol(t, test.result, test.code, test.want) },
+		)
 	}
 }
 
-func runFishSearchProtocol(t *testing.T, result, code, want string) {
+func runFishSearchProtocol(t *testing.T, result string, code string, want string) {
 	t.Helper()
 	dir := t.TempDir()
 	fake := filepath.Join(dir, "zgod")
 	// A search must pass an empty query as an explicit argument.
-	const program = "#!/bin/sh\n[ \"$5\" = --query ] && [ \"$#\" = 6 ] && [ -z \"$6\" ] || exit 99\nprintf '%s' \"$ZGOD_TEST_RESULT\"\nexit \"$ZGOD_TEST_CODE\"\n"
+	const program = "#!/bin/sh\n[ \"$5\" = --query ] && [ \"$#\" = 6 ] && [ -z \"$6\" ] || exit 99\n" +
+		"printf '%s' \"$ZGOD_TEST_RESULT\"\nexit \"$ZGOD_TEST_CODE\"\n"
 	if err := os.WriteFile(fake, []byte(program), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +67,12 @@ __zgod_search
 
 	command := exec.CommandContext(ctx, "fish", "-c", script)
 
-	command.Env = append(os.Environ(), "HOME="+dir, "ZGOD_TEST_RESULT="+result, "ZGOD_TEST_CODE="+code)
+	command.Env = append(
+		os.Environ(),
+		"HOME="+dir,
+		"ZGOD_TEST_RESULT="+result,
+		"ZGOD_TEST_CODE="+code,
+	)
 
 	output, err := command.CombinedOutput()
 	if err != nil {

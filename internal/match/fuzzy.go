@@ -96,7 +96,12 @@ func (m *FuzzyMatcher) MatchIndexed(pattern string, candidates []string, indexes
 	return m.MatchIndexedInto(pattern, candidates, indexes, nil)
 }
 
-func (m *FuzzyMatcher) MatchIndexedInto(pattern string, candidates []string, indexes []int, dst []Match) []Match {
+func (m *FuzzyMatcher) MatchIndexedInto(
+	pattern string,
+	candidates []string,
+	indexes []int,
+	dst []Match,
+) []Match {
 	if pattern == "" {
 		return nil
 	}

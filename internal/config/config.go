@@ -91,7 +91,7 @@ func (c Config) Validate() error {
 		return err
 	}
 
-	if err = c.validateMultilinePreview(); err != nil {
+	if err := c.validateMultilinePreview(); err != nil {
 		return err
 	}
 
@@ -115,7 +115,11 @@ func (c Config) DatabasePath() (string, error) {
 		}
 
 		if !filepath.IsAbs(path) {
-			return "", fmt.Errorf("%w %q: must be absolute or start with ~/", errInvalidDBPath, c.DB.Path)
+			return "", fmt.Errorf(
+				"%w %q: must be absolute or start with ~/",
+				errInvalidDBPath,
+				c.DB.Path,
+			)
 		}
 
 		return path, nil
@@ -159,7 +163,11 @@ func (c Config) validateDefaultScope() error {
 	case "", "normal", "cwd":
 		return nil
 	default:
-		return fmt.Errorf("%w %q: must be \"normal\" or \"cwd\"", errInvalidDefaultScope, c.Display.DefaultScope)
+		return fmt.Errorf(
+			"%w %q: must be \"normal\" or \"cwd\"",
+			errInvalidDefaultScope,
+			c.Display.DefaultScope,
+		)
 	}
 }
 
@@ -184,7 +192,11 @@ func (c Config) validateDefaultMode() error {
 
 		return nil
 	default:
-		return fmt.Errorf("%w %q: must be \"fuzzy\", \"regex\", or \"glob\"", errInvalidDefaultMode, c.Display.DefaultMode)
+		return fmt.Errorf(
+			"%w %q: must be \"fuzzy\", \"regex\", or \"glob\"",
+			errInvalidDefaultMode,
+			c.Display.DefaultMode,
+		)
 	}
 }
 

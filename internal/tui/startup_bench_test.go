@@ -34,13 +34,19 @@ func BenchmarkInitialHistoryLoadAndRender(b *testing.B) {
 		b.Fatalf("database.Begin() error: %v", err)
 	}
 
-	stmt, err := tx.Prepare(`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname) VALUES (?, ?, ?, ?, ?, '', '')`)
+	stmt, err := tx.Prepare(
+		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname) ` +
+			`VALUES (?, ?, ?, ?, ?, '', '')`,
+	)
 	if err != nil {
 		b.Fatalf("tx.Prepare() error: %v", err)
 	}
 	defer stmt.Close()
 
-	stmtLatest, err := tx.Prepare(`INSERT OR REPLACE INTO latest_command (command, history_id, ts_ms, duration, exit_code, directory) VALUES (?, ?, ?, ?, ?, ?)`)
+	stmtLatest, err := tx.Prepare(
+		`INSERT OR REPLACE INTO latest_command (command, history_id, ts_ms, duration, exit_code, directory) ` +
+			`VALUES (?, ?, ?, ?, ?, ?)`,
+	)
 	if err != nil {
 		b.Fatalf("tx.Prepare() latest error: %v", err)
 	}

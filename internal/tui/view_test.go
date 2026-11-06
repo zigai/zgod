@@ -128,7 +128,11 @@ func TestRenderFooterNerdFontDisabled(t *testing.T) {
 	}
 
 	if strings.Contains(rendered, "↑↓") {
-		t.Fatalf("renderFooter() = %q, should not contain %q when NerdFont is disabled", rendered, "↑↓")
+		t.Fatalf(
+			"renderFooter() = %q, should not contain %q when NerdFont is disabled",
+			rendered,
+			"↑↓",
+		)
 	}
 }
 
@@ -151,7 +155,11 @@ func TestRenderFooterRemappedNavigationKeys(t *testing.T) {
 	}
 
 	if strings.Contains(rendered, "↑↓") {
-		t.Fatalf("renderFooter() = %q, should not contain %q when keys are remapped", rendered, "↑↓")
+		t.Fatalf(
+			"renderFooter() = %q, should not contain %q when keys are remapped",
+			rendered,
+			"↑↓",
+		)
 	}
 }
 
@@ -180,7 +188,11 @@ func TestRenderFooterUsesRemappedKeys(t *testing.T) {
 
 	for _, needle := range []string{"ctrl+d cwd", "ctrl+g dedup", "alt+t date", "ctrl+s mode"} {
 		if strings.Contains(rendered, needle) {
-			t.Fatalf("renderFooter() = %q, should not contain stale footer hint %q", rendered, needle)
+			t.Fatalf(
+				"renderFooter() = %q, should not contain stale footer hint %q",
+				rendered,
+				needle,
+			)
 		}
 	}
 }
@@ -205,11 +217,21 @@ func TestDateSortIndicator(t *testing.T) {
 
 			got := dateSortIndicator(tc.mode)
 			if got.label != tc.wantLabel {
-				t.Fatalf("dateSortIndicator(%v).label = %q, want %q", tc.mode, got.label, tc.wantLabel)
+				t.Fatalf(
+					"dateSortIndicator(%v).label = %q, want %q",
+					tc.mode,
+					got.label,
+					tc.wantLabel,
+				)
 			}
 
 			if got.active != tc.wantActive {
-				t.Fatalf("dateSortIndicator(%v).active = %t, want %t", tc.mode, got.active, tc.wantActive)
+				t.Fatalf(
+					"dateSortIndicator(%v).active = %t, want %t",
+					tc.mode,
+					got.active,
+					tc.wantActive,
+				)
 			}
 		})
 	}
@@ -224,7 +246,12 @@ func TestFailToggleIndicator(t *testing.T) {
 		wantBG     string
 		wantActive bool
 	}{
-		{name: "include", mode: db.FailFilterInclude, wantBG: failIncludeIndicator, wantActive: true},
+		{
+			name:       "include",
+			mode:       db.FailFilterInclude,
+			wantBG:     failIncludeIndicator,
+			wantActive: true,
+		},
 		{name: "exclude", mode: db.FailFilterExclude},
 		{name: "only", mode: db.FailFilterOnly, wantBG: "9", wantActive: true},
 	}
@@ -243,7 +270,12 @@ func TestFailToggleIndicator(t *testing.T) {
 			}
 
 			if got.active != tc.wantActive {
-				t.Fatalf("failToggleIndicator(%v).active = %t, want %t", tc.mode, got.active, tc.wantActive)
+				t.Fatalf(
+					"failToggleIndicator(%v).active = %t, want %t",
+					tc.mode,
+					got.active,
+					tc.wantActive,
+				)
 			}
 		})
 	}
@@ -363,7 +395,12 @@ func TestRenderResultLineFitsWideUnicodeCommand(t *testing.T) {
 
 	rendered := m.renderResultLineWithLayout(0, false, layout, time.Unix(0, 0))
 	if got := lipgloss.Width(rendered); got > layout.width {
-		t.Fatalf("renderResultLineWithLayout() width = %d, want <= %d: %q", got, layout.width, rendered)
+		t.Fatalf(
+			"renderResultLineWithLayout() width = %d, want <= %d: %q",
+			got,
+			layout.width,
+			rendered,
+		)
 	}
 }
 

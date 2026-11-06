@@ -123,7 +123,17 @@ func parseColor(s string) lipgloss.TerminalColor {
 		return lipgloss.NoColor{}
 	}
 
-	names := map[string]string{"black": "0", "red": "1", "green": "2", "yellow": "3", "blue": "4", "magenta": "5", "cyan": "6", "white": "7", "gray": "8"}
+	names := map[string]string{
+		"black":   "0",
+		"red":     "1",
+		"green":   "2",
+		"yellow":  "3",
+		"blue":    "4",
+		"magenta": "5",
+		"cyan":    "6",
+		"white":   "7",
+		"gray":    "8",
+	}
 	if color, ok := names[s]; ok {
 		s = color
 	}

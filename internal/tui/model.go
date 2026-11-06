@@ -33,52 +33,81 @@ type historyBatchLoadedMsg struct {
 }
 
 type Model struct {
-	input             textinput.Model
-	cfg               config.Config
-	styles            Styles
-	allEntries        []db.HistoryEntry
-	candidates        []string
-	displayEntries    []history.ScoredEntry
-	cursor            int
-	width             int
-	height            int
-	maxHeight         int
-	terminalHeight    int
-	selected          string
-	mode              match.Mode
-	enabledModes      []match.Mode
-	cwdMode           bool
-	dedupe            bool
-	failFilter        db.FailFilterMode
-	historySort       historySortMode
-	cwd               string
-	homeDir           string
-	quitting          bool
-	canceled          bool
-	interrupted       bool
-	showHelp          bool
-	showPreview       bool
-	previewCommand    string
+	input  textinput.Model
+	cfg    config.Config
+	styles Styles
+	//exhaustruct:optional
+	allEntries []db.HistoryEntry
+	//exhaustruct:optional
+	candidates []string
+	//exhaustruct:optional
+	displayEntries []history.ScoredEntry
+	//exhaustruct:optional
+	cursor    int
+	width     int
+	height    int
+	maxHeight int
+	//exhaustruct:optional
+	terminalHeight int
+	//exhaustruct:optional
+	selected     string
+	mode         match.Mode
+	enabledModes []match.Mode
+	cwdMode      bool
+	dedupe       bool
+	failFilter   db.FailFilterMode
+	//exhaustruct:optional
+	historySort historySortMode
+	cwd         string
+	homeDir     string
+	//exhaustruct:optional
+	quitting bool
+	//exhaustruct:optional
+	canceled bool
+	//exhaustruct:optional
+	interrupted bool
+	//exhaustruct:optional
+	showHelp bool
+	//exhaustruct:optional
+	showPreview bool
+	//exhaustruct:optional
+	previewCommand string
+	//exhaustruct:optional
 	hoverFooterAction footerShortcutAction
 	repo              *db.HistoryRepo
-	dbError           error
-	loadingHistory    bool
-	historyComplete   bool
-	historyLoadGen    uint64
-	indicatorCache    indicatorCache
-	footerCache       footerCache
-	lastQuery         string
-	lastMode          match.Mode
-	lastEntryCount    int
-	matchBuf          []match.Match
-	indexBuf          []int
-	lineCache         map[int]cachedResultLine
-	resultsCache      cachedResultsBlock
-	headerCache       cachedResultsHeader
-	regexCache        regexRenderCache
-	searchRegex       regexRenderCache
+	//exhaustruct:optional
+	dbError        error
+	loadingHistory bool
+	//exhaustruct:optional
+	historyComplete bool
+	historyLoadGen  uint64
+	//exhaustruct:optional
+	indicatorCache indicatorCache
+	//exhaustruct:optional
+	footerCache footerCache
+	//exhaustruct:optional
+	lastQuery string
+	//exhaustruct:optional
+	lastMode match.Mode
+	//exhaustruct:optional
+	lastEntryCount int
+	//exhaustruct:optional
+	matchBuf []match.Match
+	//exhaustruct:optional
+	indexBuf []int
+	//exhaustruct:optional
+	lineCache map[int]cachedResultLine
+	//exhaustruct:optional
+	resultsCache cachedResultsBlock
+	//exhaustruct:optional
+	headerCache cachedResultsHeader
+	//exhaustruct:optional
+	regexCache regexRenderCache
+	//exhaustruct:optional
+	searchRegex regexRenderCache
 }
 
+//exhaustruct:optional
 type indicatorCache struct {
 	key   indicatorCacheKey
 	value string
@@ -94,6 +123,7 @@ type indicatorCacheKey struct {
 	historySort historySortMode
 }
 
+//exhaustruct:optional
 type footerCache struct {
 	showPreviewHint bool
 	hoveredAction   footerShortcutAction
@@ -118,6 +148,7 @@ type resultLineCacheKey struct {
 	timeBucket     int64
 }
 
+//exhaustruct:optional
 type cachedResultsBlock struct {
 	key   resultsBlockCacheKey
 	value string
@@ -155,13 +186,22 @@ type resultsHeaderCacheKey struct {
 	prefixSize int
 }
 
+//exhaustruct:optional
 type regexRenderCache struct {
 	pattern string
 	re      *regexp.Regexp
 	valid   bool
 }
 
-func NewModel(cfg config.Config, repo *db.HistoryRepo, cwd string, homeDir string, height int, cwdMode bool, initialQuery string) *Model {
+func NewModel(
+	cfg config.Config,
+	repo *db.HistoryRepo,
+	cwd string,
+	homeDir string,
+	height int,
+	cwdMode bool,
+	initialQuery string,
+) *Model {
 	width := 80
 
 	if height < 1 {
@@ -338,7 +378,9 @@ func (m *Model) handleHistoryBatchLoaded(msg historyBatchLoadedMsg) (tea.Model, 
 		return m, nil
 	}
 
-	return m, m.loadEntriesCmd(0, true, msg.generation)
+	cmd := m.loadEntriesCmd(0, true, msg.generation)
+
+	return m, cmd
 }
 
 func (m *Model) applyLoadedEntries(entries []db.HistoryEntry, err error, done bool) {
@@ -579,7 +621,11 @@ func historyEntryOlder(a db.HistoryEntry, b db.HistoryEntry) bool {
 	return a.TimestampMS < b.TimestampMS
 }
 
-func emptyQueryScoredEntry(e db.HistoryEntry, index int, opts history.ScoringOpts) history.ScoredEntry {
+func emptyQueryScoredEntry(
+	e db.HistoryEntry,
+	index int,
+	opts history.ScoringOpts,
+) history.ScoredEntry {
 	score := 0
 	if opts.CWD != "" && e.Directory == opts.CWD {
 		score += opts.CWDBonus
@@ -608,7 +654,12 @@ func (m *Model) matchCandidates(query string) []match.Match {
 
 		m.indexBuf = indexes
 
-		m.matchBuf = (&match.FuzzyMatcher{}).MatchIndexedInto(query, m.candidates, indexes, m.matchBuf)
+		m.matchBuf = (&match.FuzzyMatcher{}).MatchIndexedInto(
+			query,
+			m.candidates,
+			indexes,
+			m.matchBuf,
+		)
 
 		return m.matchBuf
 	}
@@ -669,21 +720,13 @@ func (m *Model) canIncrementalFuzzyMatch(query string) bool {
 func (m *Model) handleNavigation(msg tea.KeyMsg) bool {
 	switch {
 	case matchKey(msg, m.cfg.Keys.Up) || matchKey(msg, "ctrl+p"):
-		if m.cursor > 0 {
-			m.cursor--
-		}
+		m.moveNavigationCursor(-1)
 	case matchKey(msg, m.cfg.Keys.Down) || matchKey(msg, "ctrl+n") || matchKey(msg, "ctrl+r"):
-		if m.cursor < len(m.displayEntries)-1 {
-			m.cursor++
-		}
+		m.moveNavigationCursor(1)
 	case matchKey(msg, m.cfg.Keys.PageUp):
-		if m.cursor > 0 {
-			m.cursor = max(m.cursor-m.pageSize(), 0)
-		}
+		m.moveNavigationCursor(-m.pageSize())
 	case matchKey(msg, m.cfg.Keys.PageDown):
-		if m.cursor < len(m.displayEntries)-1 {
-			m.cursor = min(m.cursor+m.pageSize(), len(m.displayEntries)-1)
-		}
+		m.moveNavigationCursor(m.pageSize())
 	case matchKey(msg, m.cfg.Keys.Top):
 		m.cursor = 0
 	case matchKey(msg, m.cfg.Keys.Bottom):
@@ -695,6 +738,14 @@ func (m *Model) handleNavigation(msg tea.KeyMsg) bool {
 	}
 
 	return true
+}
+
+func (m *Model) moveNavigationCursor(delta int) {
+	if delta < 0 && m.cursor > 0 {
+		m.cursor = max(m.cursor+delta, 0)
+	} else if delta > 0 && m.cursor < len(m.displayEntries)-1 {
+		m.cursor = min(m.cursor+delta, len(m.displayEntries)-1)
+	}
 }
 
 func (m *Model) pageSize() int {
@@ -757,7 +808,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	if (matchKey(msg, "ctrl+d") && m.input.Value() == "") || ((m.showHelp || m.showPreview) && matchKey(msg, "q")) {
+	if (matchKey(msg, "ctrl+d") && m.input.Value() == "") ||
+		((m.showHelp || m.showPreview) && matchKey(msg, "q")) {
 		m.quitting = true
 		m.canceled = true
 

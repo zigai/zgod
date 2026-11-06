@@ -17,14 +17,39 @@ func TestSQLiteImportFromStdin(t *testing.T) {
 	targetPath := filepath.Join(dir, "target.db")
 
 	var out, diagnostics bytes.Buffer
-	executeSuccessfully(t, []string{"record", "--no-config", "--set", fmt.Sprintf("db.path=%q", sourcePath), "--command=echo imported"}, "", &out, &diagnostics)
+	executeSuccessfully(
+		t,
+		[]string{
+			"record",
+			"--no-config",
+			"--set",
+			fmt.Sprintf("db.path=%q", sourcePath),
+			"--command=echo imported",
+		},
+		"",
+		&out,
+		&diagnostics,
+	)
 
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	executeSuccessfully(t, []string{"import", "--no-config", "--set", fmt.Sprintf("db.path=%q", targetPath), "--json", "-"}, string(data), &out, &diagnostics)
+	executeSuccessfully(
+		t,
+		[]string{
+			"import",
+			"--no-config",
+			"--set",
+			fmt.Sprintf("db.path=%q", targetPath),
+			"--json",
+			"-",
+		},
+		string(data),
+		&out,
+		&diagnostics,
+	)
 
 	var summary map[string]int
 	if err = json.Unmarshal(out.Bytes(), &summary); err != nil {
@@ -36,7 +61,13 @@ func TestSQLiteImportFromStdin(t *testing.T) {
 	}
 
 	out.Reset()
-	executeSuccessfully(t, []string{"search", "--no-config", "--set", fmt.Sprintf("db.path=%q", targetPath)}, "", &out, &diagnostics)
+	executeSuccessfully(
+		t,
+		[]string{"search", "--no-config", "--set", fmt.Sprintf("db.path=%q", targetPath)},
+		"",
+		&out,
+		&diagnostics,
+	)
 
 	if out.String() != "echo imported\n" {
 		t.Fatalf("imported commands=%q", out.String())
@@ -56,7 +87,13 @@ func TestRedirectedSearchPrintsMatchingCommands(t *testing.T) {
 		{"echo ready", "1700000002000"},
 	} {
 		var out, diagnostics bytes.Buffer
-		executeSuccessfully(t, []string{"record", "--no-config", "--command", entry.command, "--ts", entry.timestamp}, "", &out, &diagnostics)
+		executeSuccessfully(
+			t,
+			[]string{"record", "--no-config", "--command", entry.command, "--ts", entry.timestamp},
+			"",
+			&out,
+			&diagnostics,
+		)
 	}
 
 	for _, test := range []struct {
@@ -68,10 +105,21 @@ func TestRedirectedSearchPrintsMatchingCommands(t *testing.T) {
 	} {
 		t.Run(test.query, func(t *testing.T) {
 			var out, diagnostics bytes.Buffer
-			executeSuccessfully(t, []string{"search", "--no-config", "--query", test.query, "--limit=1"}, "", &out, &diagnostics)
+			executeSuccessfully(
+				t,
+				[]string{"search", "--no-config", "--query", test.query, "--limit=1"},
+				"",
+				&out,
+				&diagnostics,
+			)
 
 			if out.String() != test.want || diagnostics.Len() != 0 {
-				t.Fatalf("stdout=%q stderr=%q, want %q and no diagnostics", out.String(), diagnostics.String(), test.want)
+				t.Fatalf(
+					"stdout=%q stderr=%q, want %q and no diagnostics",
+					out.String(),
+					diagnostics.String(),
+					test.want,
+				)
 			}
 		})
 	}

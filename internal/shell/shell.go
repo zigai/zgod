@@ -32,7 +32,11 @@ func Parse(name string) (Shell, error) {
 	case "pwsh":
 		return Pwsh, nil
 	default:
-		return 0, fmt.Errorf("%w: %s (supported: zsh, bash, fish, powershell, pwsh)", errUnsupportedShell, name)
+		return 0, fmt.Errorf(
+			"%w: %s (supported: zsh, bash, fish, powershell, pwsh)",
+			errUnsupportedShell,
+			name,
+		)
 	}
 }
 

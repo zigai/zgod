@@ -25,7 +25,11 @@ var (
 )
 
 func captureShellArguments(arguments []string) {
-	file, err := os.OpenFile(os.Getenv("ZGOD_TEST_CAPTURE"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	file, err := os.OpenFile(
+		os.Getenv("ZGOD_TEST_CAPTURE"),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY,
+		0o600,
+	)
 	if err != nil {
 		os.Exit(94)
 	}
@@ -99,7 +103,15 @@ func TestShellBoundaryProcess(t *testing.T) {
 	os.Exit(0)
 }
 
-func shellBoundaryCommand(t *testing.T, check *rapid.T, shell Shell, dir, program, fixture, script string) *exec.Cmd {
+func shellBoundaryCommand(
+	t *testing.T,
+	check *rapid.T,
+	shell Shell,
+	dir string,
+	program string,
+	fixture string,
+	script string,
+) *exec.Cmd {
 	t.Helper()
 
 	binary, err := os.Executable()
@@ -127,7 +139,12 @@ func shellBoundaryCommand(t *testing.T, check *rapid.T, shell Shell, dir, progra
 		check.Fatal(err)
 	}
 
-	command := exec.CommandContext(t.Context(), shell.String(), "-c", strings.ReplaceAll(script, "</dev/tty", "</dev/null")+"\n"+string(body))
+	command := exec.CommandContext(
+		t.Context(),
+		shell.String(),
+		"-c",
+		strings.ReplaceAll(script, "</dev/tty", "</dev/null")+"\n"+string(body),
+	)
 	command.Dir = dir
 	command.Env = append(os.Environ(),
 		"HOME="+dir, "ZDOTDIR="+dir, "XDG_CONFIG_HOME="+dir,
@@ -188,7 +205,10 @@ func TestShellPathsRoundTripProperty(t *testing.T) {
 				program := filepath.Join(dir, "program-"+text.Draw(check, "executable"))
 				configPath := filepath.Join(dir, "config-"+text.Draw(check, "config"))
 
-				script, err := InitScript(shell, InitOptions{BinPath: program, ConfigPath: configPath})
+				script, err := InitScript(
+					shell,
+					InitOptions{BinPath: program, ConfigPath: configPath},
+				)
 				if err != nil {
 					check.Fatal(err)
 				}
@@ -197,9 +217,19 @@ func TestShellPathsRoundTripProperty(t *testing.T) {
 				want := [][]string{{"probe", configPath, "", program}}
 
 				if rapid.Bool().Draw(check, "setup-line") {
-					body := strings.TrimPrefix(command.Args[len(command.Args)-1], strings.ReplaceAll(script, "</dev/tty", "</dev/null")+"\n")
-					command.Args[len(command.Args)-1] = setupLineWithBin(shell, configPath, program) + "\n" + body
-					want = append([][]string{{"init", shell.String(), "--config", configPath}}, want...)
+					body := strings.TrimPrefix(
+						command.Args[len(command.Args)-1],
+						strings.ReplaceAll(script, "</dev/tty", "</dev/null")+"\n",
+					)
+					command.Args[len(command.Args)-1] = setupLineWithBin(
+						shell,
+						configPath,
+						program,
+					) + "\n" + body
+					want = append(
+						[][]string{{"init", shell.String(), "--config", configPath}},
+						want...,
+					)
 				}
 
 				if output, err := command.CombinedOutput(); err != nil {
@@ -214,7 +244,14 @@ func TestShellPathsRoundTripProperty(t *testing.T) {
 	}
 }
 
-func assertShellSearchOutcome(check *rapid.T, dir string, shell Shell, action string, code int, selected string) {
+func assertShellSearchOutcome(
+	check *rapid.T,
+	dir string,
+	shell Shell,
+	action string,
+	code int,
+	selected string,
+) {
 	check.Helper()
 
 	wantLine, wantExecutions := "original", ""
@@ -229,7 +266,13 @@ func assertShellSearchOutcome(check *rapid.T, dir string, shell Shell, action st
 		}
 	}
 
-	if got := readShellBoundaryCapture(check, dir); !reflect.DeepEqual(got, [][]string{{"observed", wantLine}}) {
+	if got := readShellBoundaryCapture(
+		check,
+		dir,
+	); !reflect.DeepEqual(
+		got,
+		[][]string{{"observed", wantLine}},
+	) {
 		check.Fatalf("buffer = %#v, want %q", got, wantLine)
 	}
 
@@ -253,12 +296,21 @@ func TestShellSearchTransportProperty(t *testing.T) {
 			rapid.Check(t, func(check *rapid.T) {
 				dir := t.TempDir()
 				program := filepath.Join(dir, "program")
-				action := rapid.SampledFrom([]string{"select", "execute", "invalid"}).Draw(check, "action")
+				action := rapid.SampledFrom([]string{"select", "execute", "invalid"}).
+					Draw(check, "action")
 				code := rapid.IntRange(0, 2).Draw(check, "status")
 
-				selected := "command " + rapid.StringOfN(rapid.RuneFrom(shellTextRunes(check)), 0, 48, -1).Draw(check, "command") + strings.Repeat("\n", rapid.IntRange(0, 5).Draw(check, "selection-newlines"))
+				selected := "command " + rapid.StringOfN(rapid.RuneFrom(shellTextRunes(check)), 0, 48, -1).
+					Draw(check, "command") +
+					strings.Repeat(
+						"\n",
+						rapid.IntRange(0, 5).Draw(check, "selection-newlines"),
+					)
 				if action == "execute" {
-					selected = "printf x >> \"$ZGOD_TEST_EXECUTIONS\"" + strings.Repeat("\n", rapid.IntRange(0, 5).Draw(check, "trailing-newlines"))
+					selected = "printf x >> \"$ZGOD_TEST_EXECUTIONS\"" + strings.Repeat(
+						"\n",
+						rapid.IntRange(0, 5).Draw(check, "trailing-newlines"),
+					)
 				}
 
 				script, err := InitScript(shell, InitOptions{BinPath: program})
@@ -273,7 +325,11 @@ func TestShellSearchTransportProperty(t *testing.T) {
 					check.Fatal(err)
 				}
 
-				command.Env = append(command.Env, "ZGOD_TEST_RESULT_FILE="+resultPath, "ZGOD_TEST_CODE="+strconv.Itoa(code))
+				command.Env = append(
+					command.Env,
+					"ZGOD_TEST_RESULT_FILE="+resultPath,
+					"ZGOD_TEST_CODE="+strconv.Itoa(code),
+				)
 				if output, err := command.CombinedOutput(); err != nil {
 					check.Fatalf("shell failed: %v: %s", err, output)
 				}
@@ -327,7 +383,8 @@ func TestSetupLine(t *testing.T) {
 			name:       "bash with config",
 			shell:      Bash,
 			configPath: "/custom/config.toml",
-			want:       `if command -v zgod >/dev/null 2>&1; then eval "$(zgod init bash --config '/custom/config.toml')"; fi`,
+			want: `if command -v zgod >/dev/null 2>&1; ` +
+				`then eval "$(zgod init bash --config '/custom/config.toml')"; fi`,
 		},
 		{
 			name:       "zsh without config",
@@ -339,7 +396,8 @@ func TestSetupLine(t *testing.T) {
 			name:       "zsh with config",
 			shell:      Zsh,
 			configPath: "/custom/config.toml",
-			want:       `if command -v zgod >/dev/null 2>&1; then eval "$(zgod init zsh --config '/custom/config.toml')"; fi`,
+			want: `if command -v zgod >/dev/null 2>&1; ` +
+				`then eval "$(zgod init zsh --config '/custom/config.toml')"; fi`,
 		},
 		{
 			name:       "fish without config",
@@ -357,13 +415,15 @@ func TestSetupLine(t *testing.T) {
 			name:       "powershell without config",
 			shell:      PowerShell,
 			configPath: "",
-			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init powershell) }`,
+			want: `if (Get-Command zgod -ErrorAction SilentlyContinue) ` +
+				`{ Invoke-Expression (& zgod init powershell) }`,
 		},
 		{
 			name:       "powershell with config",
 			shell:      PowerShell,
 			configPath: "/custom/config.toml",
-			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init powershell --config '/custom/config.toml') }`,
+			want: `if (Get-Command zgod -ErrorAction SilentlyContinue) ` +
+				`{ Invoke-Expression (& zgod init powershell --config '/custom/config.toml') }`,
 		},
 		{
 			name:       "pwsh without config",
@@ -394,13 +454,15 @@ func TestSetupLineEscapesConfigPath(t *testing.T) {
 			name:       "bash",
 			shell:      Bash,
 			configPath: `/tmp/o'hare$cfg`,
-			want:       `if command -v zgod >/dev/null 2>&1; then eval "$(zgod init bash --config '/tmp/o'\''hare$cfg')"; fi`,
+			want: `if command -v zgod >/dev/null 2>&1; ` +
+				`then eval "$(zgod init bash --config '/tmp/o'\''hare$cfg')"; fi`,
 		},
 		{
 			name:       "zsh",
 			shell:      Zsh,
 			configPath: `/tmp/o'hare$cfg`,
-			want:       `if command -v zgod >/dev/null 2>&1; then eval "$(zgod init zsh --config '/tmp/o'\''hare$cfg')"; fi`,
+			want: `if command -v zgod >/dev/null 2>&1; ` +
+				`then eval "$(zgod init zsh --config '/tmp/o'\''hare$cfg')"; fi`,
 		},
 		{
 			name:       "fish",
@@ -412,7 +474,8 @@ func TestSetupLineEscapesConfigPath(t *testing.T) {
 			name:       shellNamePowerShell,
 			shell:      PowerShell,
 			configPath: `C:\tmp\o'hare`,
-			want:       `if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init powershell --config 'C:\tmp\o''hare') }`,
+			want: `if (Get-Command zgod -ErrorAction SilentlyContinue) ` +
+				`{ Invoke-Expression (& zgod init powershell --config 'C:\tmp\o''hare') }`,
 		},
 	}
 
@@ -598,7 +661,12 @@ func testInitScriptGuardsZsh(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "zsh", "-c", "source $ZDOTDIR/.zshrc; preexec 'echo hi'; precmd")
+	cmd := exec.CommandContext(
+		ctx,
+		"zsh",
+		"-c",
+		"source $ZDOTDIR/.zshrc; preexec 'echo hi'; precmd",
+	)
 	cmd.Dir = tempDir
 	cmd.Env = []string{
 		"HOME=" + tempDir,
@@ -639,7 +707,12 @@ func testInitScriptGuardsFish(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "fish", "-c", "source "+initPath+"; __zgod_preexec 'echo hi'; __zgod_postexec")
+	cmd := exec.CommandContext(
+		ctx,
+		"fish",
+		"-c",
+		"source "+initPath+"; __zgod_preexec 'echo hi'; __zgod_postexec",
+	)
 	cmd.Dir = tempDir
 	cmd.Env = []string{
 		"HOME=" + tempDir,
@@ -756,7 +829,8 @@ precmd
 		t.Fatalf("ReadFile(user.log) error: %v", err)
 	}
 
-	if !strings.Contains(string(userData), "user_preexec:git commit -m test") || !strings.Contains(string(userData), "user_precmd") {
+	if !strings.Contains(string(userData), "user_preexec:git commit -m test") ||
+		!strings.Contains(string(userData), "user_precmd") {
 		t.Fatalf("user hooks not called as expected: %q", string(userData))
 	}
 
@@ -766,7 +840,8 @@ precmd
 	}
 
 	capStr := string(captureData)
-	if !strings.Contains(capStr, "--command git commit -m test") || !strings.Contains(capStr, "--exit-code 0") {
+	if !strings.Contains(capStr, "--command git commit -m test") ||
+		!strings.Contains(capStr, "--exit-code 0") {
 		t.Fatalf("recorded output = %q, want command and exit-code", capStr)
 	}
 }
@@ -803,7 +878,12 @@ fi
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "fish", "-c", "source "+initPath+"; __zgod_preexec 'echo fish_test'; __zgod_postexec")
+	cmd := exec.CommandContext(
+		ctx,
+		"fish",
+		"-c",
+		"source "+initPath+"; __zgod_preexec 'echo fish_test'; __zgod_postexec",
+	)
 	cmd.Dir = tempDir
 	cmd.Env = append(
 		os.Environ(),
@@ -824,7 +904,8 @@ fi
 	}
 
 	capStr := string(captureData)
-	if !strings.Contains(capStr, "--command echo fish_test") || !strings.Contains(capStr, "--duration") {
+	if !strings.Contains(capStr, "--command echo fish_test") ||
+		!strings.Contains(capStr, "--duration") {
 		t.Fatalf("recorded output = %q, want command and duration", capStr)
 	}
 }
@@ -1183,12 +1264,18 @@ func TestPowerShellProfilePathDistinguishesWindowsShells(t *testing.T) {
 	home := filepath.Join("C:", "Users", "me")
 
 	classic := powerShellProfilePathForHome(home, PowerShell, "windows")
-	if !strings.Contains(classic, filepath.Join("Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1")) {
+	if !strings.Contains(
+		classic,
+		filepath.Join("Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1"),
+	) {
 		t.Fatalf("classic PowerShell profile path = %q, want WindowsPowerShell profile", classic)
 	}
 
 	modern := powerShellProfilePathForHome(home, Pwsh, "windows")
-	if !strings.Contains(modern, filepath.Join("Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")) {
+	if !strings.Contains(
+		modern,
+		filepath.Join("Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"),
+	) {
 		t.Fatalf("pwsh profile path = %q, want PowerShell profile", modern)
 	}
 }

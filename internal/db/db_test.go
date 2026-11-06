@@ -135,11 +135,15 @@ func TestRecentInDir(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	repo := NewHistoryRepo(database)
-	if _, err = repo.Insert(HistoryEntry{TimestampMS: 1000, Command: "in dir", Directory: "/home"}); err != nil {
+	if _, err = repo.Insert(
+		HistoryEntry{TimestampMS: 1000, Command: "in dir", Directory: "/home"},
+	); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err = repo.Insert(HistoryEntry{TimestampMS: 2000, Command: "other dir", Directory: "/tmp"}); err != nil {
+	if _, err = repo.Insert(
+		HistoryEntry{TimestampMS: 2000, Command: "other dir", Directory: "/tmp"},
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -321,7 +325,11 @@ func TestFetchCandidatesOrdersEqualTimestampsByNewestID(t *testing.T) {
 	}
 
 	if got[0].Command != "second" || got[1].Command != "first" {
-		t.Fatalf("FetchCandidates() order = %q, %q; want second, first", got[0].Command, got[1].Command)
+		t.Fatalf(
+			"FetchCandidates() order = %q, %q; want second, first",
+			got[0].Command,
+			got[1].Command,
+		)
 	}
 }
 
@@ -358,7 +366,11 @@ func TestFetchCandidatesInDir(t *testing.T) {
 	}
 
 	if got[0].Command != "new cwd" || got[1].Command != "old cwd" {
-		t.Fatalf("FetchCandidatesInDir() order = %q, %q; want new cwd, old cwd", got[0].Command, got[1].Command)
+		t.Fatalf(
+			"FetchCandidatesInDir() order = %q, %q; want new cwd, old cwd",
+			got[0].Command,
+			got[1].Command,
+		)
 	}
 }
 
@@ -416,7 +428,11 @@ func TestOpenDirectoryPathDoesNotChangeDirectoryPermissions(t *testing.T) {
 	}
 
 	if runtime.GOOS != "windows" && infoAfter.Mode().Perm() != infoBefore.Mode().Perm() {
-		t.Fatalf("directory permissions changed from %o to %o", infoBefore.Mode().Perm(), infoAfter.Mode().Perm())
+		t.Fatalf(
+			"directory permissions changed from %o to %o",
+			infoBefore.Mode().Perm(),
+			infoAfter.Mode().Perm(),
+		)
 	}
 }
 
@@ -586,7 +602,10 @@ func TestOpenRejectsUnsupportedSchemaWithoutDowngrading(t *testing.T) {
 		t.Fatalf("sql.Open(seed) error: %v", err)
 	}
 
-	if _, err = seedDB.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", futureVersion)); err != nil {
+	if _, err = seedDB.ExecContext(
+		ctx,
+		fmt.Sprintf("PRAGMA user_version = %d", futureVersion),
+	); err != nil {
 		t.Fatalf("setting future user_version: %v", err)
 	}
 
@@ -665,7 +684,7 @@ func TestOpenCurrentSchemaDoesNotApplySchemaUnderWriteLock(t *testing.T) {
 		t.Fatalf("Open() with current schema under write lock error: %v", err)
 	}
 
-	defer func() { _ = opened.Close() }()
+	_ = opened.Close()
 }
 
 func TestValidateHistorySchemaMissingColumns(t *testing.T) {
@@ -896,7 +915,11 @@ func TestLatestCommandCacheTracksNewestCommand(t *testing.T) {
 		dir       string
 	)
 
-	row := database.QueryRowContext(context.Background(), `SELECT history_id, directory FROM latest_command WHERE command = ?`, "repeat")
+	row := database.QueryRowContext(
+		context.Background(),
+		`SELECT history_id, directory FROM latest_command WHERE command = ?`,
+		"repeat",
+	)
 	if err = row.Scan(&historyID, &dir); err != nil {
 		t.Fatalf("reading latest_command: %v", err)
 	}
@@ -909,7 +932,11 @@ func TestLatestCommandCacheTracksNewestCommand(t *testing.T) {
 		t.Fatalf("Delete(new) error: %v", err)
 	}
 
-	row = database.QueryRowContext(context.Background(), `SELECT history_id, directory FROM latest_command WHERE command = ?`, "repeat")
+	row = database.QueryRowContext(
+		context.Background(),
+		`SELECT history_id, directory FROM latest_command WHERE command = ?`,
+		"repeat",
+	)
 	if err = row.Scan(&historyID, &dir); err != nil {
 		t.Fatalf("reading latest_command after delete: %v", err)
 	}
@@ -937,7 +964,10 @@ func TestIsBusyErrorRecognizesSQLiteBusy(t *testing.T) {
 
 	defer func() { _ = blocked.Close() }()
 
-	if _, err = locker.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS busy_test(id INTEGER PRIMARY KEY)"); err != nil {
+	if _, err = locker.ExecContext(
+		ctx,
+		"CREATE TABLE IF NOT EXISTS busy_test(id INTEGER PRIMARY KEY)",
+	); err != nil {
 		t.Fatalf("creating table for busy test: %v", err)
 	}
 
@@ -985,7 +1015,12 @@ func historyFixtureRunes(check *rapid.T, path string) []rune {
 
 func historyEntryGenerator() *rapid.Generator[HistoryEntry] {
 	return rapid.Custom(func(check *rapid.T) HistoryEntry {
-		text := rapid.StringOfN(rapid.RuneFrom(historyFixtureRunes(check, "testdata/characters.txt")), 0, 32, -1)
+		text := rapid.StringOfN(
+			rapid.RuneFrom(historyFixtureRunes(check, "testdata/characters.txt")),
+			0,
+			32,
+			-1,
+		)
 
 		return HistoryEntry{
 			TimestampMS: rapid.Int64Range(0, 4_000_000_000_000).Draw(check, "timestamp"),
@@ -1089,8 +1124,10 @@ func TestHistoryCandidateLifecycleProperty(t *testing.T) {
 		check.Repeat(map[string]func(*rapid.T){
 			"insert": func(step *rapid.T) {
 				entry := historyEntryGenerator().Draw(step, "entry")
-				entry.Command = rapid.SampledFrom([]string{"alpha", "beta", "gamma", "delta"}).Draw(step, "command")
-				entry.Directory = rapid.SampledFrom([]string{"/one", "/two", ""}).Draw(step, "directory")
+				entry.Command = rapid.SampledFrom([]string{"alpha", "beta", "gamma", "delta"}).
+					Draw(step, "command")
+				entry.Directory = rapid.SampledFrom([]string{"/one", "/two", ""}).
+					Draw(step, "directory")
 				entry.TimestampMS = rapid.Int64Range(0, 5).Draw(step, "timestamp")
 
 				entry.ID, err = repo.Insert(entry)
@@ -1110,7 +1147,10 @@ func TestHistoryCandidateLifecycleProperty(t *testing.T) {
 					step.Fatal(deleteErr)
 				}
 
-				model = slices.DeleteFunc(model, func(entry HistoryEntry) bool { return entry.ID == id })
+				model = slices.DeleteFunc(
+					model,
+					func(entry HistoryEntry) bool { return entry.ID == id },
+				)
 			},
 			"reopen": func(step *rapid.T) {
 				if closeErr := database.Close(); closeErr != nil {
@@ -1129,7 +1169,8 @@ func TestHistoryCandidateLifecycleProperty(t *testing.T) {
 
 				limit := rapid.IntRange(0, 8).Draw(step, "limit")
 				dedupe := rapid.Bool().Draw(step, "dedupe")
-				mode := rapid.SampledFrom([]FailFilterMode{FailFilterInclude, FailFilterExclude, FailFilterOnly}).Draw(step, "fail-mode")
+				mode := rapid.SampledFrom([]FailFilterMode{FailFilterInclude, FailFilterExclude, FailFilterOnly}).
+					Draw(step, "fail-mode")
 				directory := rapid.SampledFrom([]string{"", "/one", "/two"}).Draw(step, "scope")
 				want := expectedHistoryCandidates(model, limit, dedupe, mode, directory)
 
@@ -1165,7 +1206,13 @@ func assertHistoryRecords(check *rapid.T, repo *HistoryRepo, expected []HistoryE
 	}
 }
 
-func expectedHistoryCandidates(entries []HistoryEntry, limit int, dedupe bool, mode FailFilterMode, directory string) []HistoryEntry {
+func expectedHistoryCandidates(
+	entries []HistoryEntry,
+	limit int,
+	dedupe bool,
+	mode FailFilterMode,
+	directory string,
+) []HistoryEntry {
 	eligible := make([]HistoryEntry, 0, len(entries))
 	for _, entry := range entries {
 		if directory != "" && entry.Directory != directory {
@@ -1211,7 +1258,12 @@ func expectedHistoryCandidates(entries []HistoryEntry, limit int, dedupe bool, m
 
 func TestSQLiteFilenameAndReadOnlyProperty(t *testing.T) {
 	rapid.Check(t, func(check *rapid.T) {
-		name := rapid.StringOfN(rapid.RuneFrom(historyFixtureRunes(check, "testdata/filename_characters.txt")), 0, 24, -1).Draw(check, "filename")
+		name := rapid.StringOfN(
+			rapid.RuneFrom(historyFixtureRunes(check, "testdata/filename_characters.txt")),
+			0,
+			24,
+			-1,
+		).Draw(check, "filename")
 		path := filepath.Join(t.TempDir(), "history-"+name+".db")
 		entry := historyEntryGenerator().Draw(check, "entry")
 
@@ -1271,7 +1323,16 @@ func TestHistorySchemaValidationProperty(t *testing.T) {
 			}
 		})
 
-		required := []string{"id INTEGER", "ts_ms INTEGER", "duration INTEGER", "exit_code INTEGER", "command TEXT", "directory TEXT", "session_id TEXT", "hostname TEXT"}
+		required := []string{
+			"id INTEGER",
+			"ts_ms INTEGER",
+			"duration INTEGER",
+			"exit_code INTEGER",
+			"command TEXT",
+			"directory TEXT",
+			"session_id TEXT",
+			"hostname TEXT",
+		}
 
 		var columns []string
 
@@ -1282,7 +1343,10 @@ func TestHistorySchemaValidationProperty(t *testing.T) {
 		}
 
 		columns = append(columns, "extra TEXT")
-		if _, err = database.ExecContext(check.Context(), "CREATE TABLE history ("+strings.Join(columns, ",")+")"); err != nil {
+		if _, err = database.ExecContext(
+			check.Context(),
+			"CREATE TABLE history ("+strings.Join(columns, ",")+")",
+		); err != nil {
 			check.Fatal(err)
 		}
 
@@ -1295,7 +1359,12 @@ func TestHistorySchemaValidationProperty(t *testing.T) {
 	})
 }
 
-func assertUpgradedHistory(check *rapid.T, database *sql.DB, entries, candidates []HistoryEntry) {
+func assertUpgradedHistory(
+	check *rapid.T,
+	database *sql.DB,
+	entries []HistoryEntry,
+	candidates []HistoryEntry,
+) {
 	check.Helper()
 
 	got, err := NewHistoryRepo(database).ListAll()
@@ -1317,7 +1386,12 @@ func assertUpgradedHistory(check *rapid.T, database *sql.DB, entries, candidates
 
 	after, err := NewHistoryRepo(database).FetchCandidates(0, true, FailFilterInclude)
 	if err != nil || !slices.Equal(after, candidates) {
-		check.Fatalf("upgrade changed candidates: got=%#v, want=%#v, error=%v", after, candidates, err)
+		check.Fatalf(
+			"upgrade changed candidates: got=%#v, want=%#v, error=%v",
+			after,
+			candidates,
+			err,
+		)
 	}
 }
 
@@ -1347,7 +1421,10 @@ func TestHistorySchemaUpgradePreservesRecordsProperty(t *testing.T) {
 			check.Fatal(err)
 		}
 
-		if _, err = database.ExecContext(t.Context(), `DROP TABLE pending_record; PRAGMA user_version = 1`); err != nil {
+		if _, err = database.ExecContext(
+			t.Context(),
+			`DROP TABLE pending_record; PRAGMA user_version = 1`,
+		); err != nil {
 			_ = database.Close()
 
 			check.Fatal(err)
@@ -1395,8 +1472,12 @@ func TestUnsupportedSchemaPreservesDataProperty(t *testing.T) {
 			check.Fatal(err)
 		}
 
-		version := rapid.IntRange(currentSchemaVersion+1, currentSchemaVersion+1000).Draw(check, "version")
-		if _, err = database.ExecContext(t.Context(), fmt.Sprintf("PRAGMA user_version=%d", version)); err != nil {
+		version := rapid.IntRange(currentSchemaVersion+1, currentSchemaVersion+1000).
+			Draw(check, "version")
+		if _, err = database.ExecContext(
+			t.Context(),
+			fmt.Sprintf("PRAGMA user_version=%d", version),
+		); err != nil {
 			check.Fatal(err)
 		}
 
@@ -1428,11 +1509,17 @@ func TestUnsupportedSchemaPreservesDataProperty(t *testing.T) {
 	})
 }
 
-func assertUnsupportedSchemaPreserved(check *rapid.T, database *sql.DB, version int, entry HistoryEntry) {
+func assertUnsupportedSchemaPreserved(
+	check *rapid.T,
+	database *sql.DB,
+	version int,
+	entry HistoryEntry,
+) {
 	check.Helper()
 
 	var gotVersion int
-	if err := database.QueryRowContext(check.Context(), "PRAGMA user_version").Scan(&gotVersion); err != nil {
+	if err := database.QueryRowContext(check.Context(), "PRAGMA user_version").
+		Scan(&gotVersion); err != nil {
 		check.Fatal(err)
 	}
 

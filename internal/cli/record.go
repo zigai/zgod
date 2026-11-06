@@ -47,14 +47,24 @@ type pendingHistoryRecord struct {
 }
 
 func registerRecordCommand(root *cobra.Command) {
-	recordCmd := &cobra.Command{Use: "record", Short: "Record a command to history", Hidden: true, GroupID: "core", RunE: runRecord}
-	recordCmd.Flags().String("ts", "", "start timestamp: milliseconds, seconds (with 's' suffix), or 'now'")
-	recordCmd.Flags().Int64("duration", 0, "Duration in milliseconds (-1 or omitted: compute from ts; otherwise >=0)")
-	recordCmd.Flags().Int("exit-code", 0, "Exit status (0–4294967295; Windows also accepts signed 32-bit statuses; default 0)")
+	recordCmd := &cobra.Command{
+		Use:     "record",
+		Short:   "Record a command to history",
+		Hidden:  true,
+		GroupID: "core",
+		RunE:    runRecord,
+	}
+	recordCmd.Flags().
+		String("ts", "", "start timestamp: milliseconds, seconds (with 's' suffix), or 'now'")
+	recordCmd.Flags().
+		Int64("duration", 0, "Duration in milliseconds (-1 or omitted: compute from ts; otherwise >=0)")
+	recordCmd.Flags().
+		Int("exit-code", 0, "Exit status (0–4294967295; Windows also accepts signed 32-bit statuses; default 0)")
 	recordCmd.Flags().String("command", "", "command string")
 	recordCmd.Flags().String("directory", "", "working directory")
 	recordCmd.Flags().String("session", "", "session ID")
-	recordCmd.Flags().Bool("command-stdin", false, "Read the command from stdin instead of process arguments (maximum 1 MiB)")
+	recordCmd.Flags().
+		Bool("command-stdin", false, "Read the command from stdin instead of process arguments (maximum 1 MiB)")
 	root.AddCommand(recordCmd)
 }
 
@@ -296,7 +306,11 @@ func drainPendingRecordsLocked(dbPath string) error {
 			continue
 		}
 
-		if err = flushPendingRecordLocked(dbPath, filepath.Join(dir, name)); err != nil && !errors.Is(err, errPendingRecordUnreadable) {
+		if err = flushPendingRecordLocked(
+			dbPath,
+			filepath.Join(dir, name),
+		); err != nil &&
+			!errors.Is(err, errPendingRecordUnreadable) {
 			return err
 		}
 	}
@@ -315,7 +329,11 @@ func flushPendingRecordLocked(dbPath string, path string) error {
 		return fmt.Errorf("%w: decoding %q: %w", errPendingRecordUnreadable, path, err)
 	}
 
-	if err = insertRecordWithRetryLocked(dbPath, pending.historyEntry(), filepath.Base(path)); err != nil {
+	if err = insertRecordWithRetryLocked(
+		dbPath,
+		pending.historyEntry(),
+		filepath.Base(path),
+	); err != nil {
 		return fmt.Errorf("writing pending history record %q: %w", path, err)
 	}
 
@@ -367,7 +385,12 @@ func sleepBeforeRecordRetry(attempt int) {
 	}
 }
 
-func shouldRecordCommand(cfg config.Config, command string, exitCode int, directory string) (bool, error) {
+func shouldRecordCommand(
+	cfg config.Config,
+	command string,
+	exitCode int,
+	directory string,
+) (bool, error) {
 	filter, err := history.NewFilter(cfg.Filters)
 	if err != nil {
 		return false, fmt.Errorf("building filter: %w", err)

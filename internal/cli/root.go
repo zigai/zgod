@@ -33,7 +33,7 @@ func Execute() {
 	os.Exit(execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-func execute(args []string, input io.Reader, output, diagnostics io.Writer) int {
+func execute(args []string, input io.Reader, output io.Writer, diagnostics io.Writer) int {
 	root := newRootCommand()
 	root.SetArgs(args)
 	root.SetIn(input)
@@ -77,7 +77,13 @@ func reportError(cmd *cobra.Command, err error) int {
 		code = 2
 	}
 
-	if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "Error: %s\nRun '%s --help' for valid arguments and examples.\nDocs: %s\n", err, cmd.CommandPath(), documentationURL); writeErr != nil {
+	if _, writeErr := fmt.Fprintf(
+		cmd.ErrOrStderr(),
+		"Error: %s\nRun '%s --help' for valid arguments and examples.\nDocs: %s\n",
+		err,
+		cmd.CommandPath(),
+		documentationURL,
+	); writeErr != nil {
 		return 1
 	}
 
@@ -87,14 +93,22 @@ func reportError(cmd *cobra.Command, err error) int {
 func newRootCommand() *cobra.Command {
 	cobra.EnableCommandSorting = false
 	root := &cobra.Command{
-		Use:           "zgod",
-		Short:         "Local shell history search tool",
-		Long:          "Search and record local shell history.\n\nConfiguration: flags > environment > ./.zgod.toml > user config > system config > defaults.\nUse --no-config to skip configuration files, or --set section.key=value to override a TOML setting.",
+		Use:   "zgod",
+		Short: "Local shell history search tool",
+		Long: "Search and record local shell history.\n\n" +
+			"Configuration: flags > environment > ./.zgod.toml > user config > system config > defaults.\n" +
+			"Use --no-config to skip configuration files, or --set section.key=value to override a TOML setting.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if flagBool(cmd, "version") || flagBool(cmd, "legacy-version") {
-				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "zgod %s (commit: %s, built: %s)\n", version, commit, date); err != nil {
+				if _, err := fmt.Fprintf(
+					cmd.OutOrStdout(),
+					"zgod %s (commit: %s, built: %s)\n",
+					version,
+					commit,
+					date,
+				); err != nil {
 					return fmt.Errorf("writing version: %w", err)
 				}
 
@@ -113,10 +127,14 @@ func newRootCommand() *cobra.Command {
 	root.SetCompletionCommandGroupID("integration")
 	root.Flags().BoolP("version", "V", false, "Print version and build metadata")
 	root.Flags().BoolP("legacy-version", "v", false, "Deprecated version alias")
-	_ = root.Flags().MarkDeprecated("legacy-version", "use -V or --version; -v will be released in the next major version")
-	root.PersistentFlags().String("config", "", "Read this TOML file instead of discovered files (env: ZGOD_CONFIG)")
-	root.PersistentFlags().Bool("no-config", false, "Skip all disk configuration and default-file creation")
-	root.PersistentFlags().StringArray("set", nil, "Override section.key with a TOML value; repeatable; arrays replace lists")
+	_ = root.Flags().
+		MarkDeprecated("legacy-version", "use -V or --version; -v will be released in the next major version")
+	root.PersistentFlags().
+		String("config", "", "Read this TOML file instead of discovered files (env: ZGOD_CONFIG)")
+	root.PersistentFlags().
+		Bool("no-config", false, "Skip all disk configuration and default-file creation")
+	root.PersistentFlags().
+		StringArray("set", nil, "Override section.key with a TOML value; repeatable; arrays replace lists")
 	root.PersistentFlags().Bool("no-color", false, "Disable colors and styling")
 	root.PersistentFlags().Bool("color", false, "Enable base ANSI colors on interactive terminals")
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
@@ -139,7 +157,8 @@ func prepareCommand(cmd *cobra.Command) {
 	// Preserve old scripts during the public deprecation window; canonical help
 	// exposes --help only. Remove this shorthand in the next major release.
 	cmd.Flags().BoolP("help", "h", false, "Show help")
-	_ = cmd.Flags().MarkShorthandDeprecated("help", "use --help; -h will be released in the next major version")
+	_ = cmd.Flags().
+		MarkShorthandDeprecated("help", "use --help; -h will be released in the next major version")
 
 	validate := cmd.Args
 	if validate == nil {

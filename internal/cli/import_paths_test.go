@@ -38,7 +38,9 @@ func TestCommandReferencesExistingPathsFallbackOnUnterminatedQuote(t *testing.T)
 	}
 
 	if ok {
-		t.Fatal("commandReferencesExistingPaths() = true, want false for missing path in malformed quoting")
+		t.Fatal(
+			"commandReferencesExistingPaths() = true, want false for missing path in malformed quoting",
+		)
 	}
 }
 
@@ -94,7 +96,14 @@ func TestPrimaryCommandSkipsWrapperOptions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gotName, gotIndex := primaryCommand(tt.tokens)
 			if gotName != tt.wantName || gotIndex != tt.wantIndex {
-				t.Fatalf("primaryCommand(%v) = (%q, %d), want (%q, %d)", tt.tokens, gotName, gotIndex, tt.wantName, tt.wantIndex)
+				t.Fatalf(
+					"primaryCommand(%v) = (%q, %d), want (%q, %d)",
+					tt.tokens,
+					gotName,
+					gotIndex,
+					tt.wantName,
+					tt.wantIndex,
+				)
 			}
 		})
 	}

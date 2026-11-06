@@ -39,17 +39,26 @@ type searchContext struct {
 
 func registerSearchCommand(root *cobra.Command) {
 	searchCmd := &cobra.Command{
-		Use: "search", Short: "Search shell history", GroupID: "core", RunE: runSearch,
-		Long:    "Search interactively when stdin and stdout are terminals.\nWhen either stream is redirected, print matching commands as plain text.\nUse --json for structured records or --shell for interactive shell integration.",
-		Example: "  zgod search\n  zgod search --cwd=false --query git\n  zgod search --query git | head\n  zgod search --json --mode regex --query '^git ' --limit 20",
+		Use:     "search",
+		Short:   "Search shell history",
+		GroupID: "core",
+		RunE:    runSearch,
+		Long: "Search interactively when stdin and stdout are terminals.\n" +
+			"When either stream is redirected, print matching commands as plain text.\n" +
+			"Use --json for structured records or --shell for interactive shell integration.",
+		Example: "  zgod search\n  zgod search --cwd=false --query git\n  zgod search --query git | head\n" +
+			"  zgod search --json --mode regex --query '^git ' --limit 20",
 	}
 	searchCmd.Flags().Bool("cwd", false, "filter by current directory")
 	searchCmd.Flags().Int("height", 0, "Visible result lines (1–1000; default 15)")
 	searchCmd.Flags().String("query", "", "initial search query")
-	searchCmd.Flags().Bool("json", false, "Print matching history records as JSON without opening the UI")
-	searchCmd.Flags().String("mode", "", "Match mode: fuzzy (approximate), regex (regular expression), glob (wildcards)")
+	searchCmd.Flags().
+		Bool("json", false, "Print matching history records as JSON without opening the UI")
+	searchCmd.Flags().
+		String("mode", "", "Match mode: fuzzy (approximate), regex (regular expression), glob (wildcards)")
 	searchCmd.Flags().Int("limit", 0, "Maximum matching records to print (1–100000; default 1000)")
-	searchCmd.Flags().Bool("shell", false, "Return select/execute on the first line and the selected command below; success exits 0")
+	searchCmd.Flags().
+		Bool("shell", false, "Return select/execute on the first line and the selected command below; success exits 0")
 	root.AddCommand(searchCmd)
 }
 
@@ -106,7 +115,7 @@ func searchConfig(cmd *cobra.Command) (config.Config, error) {
 		return cfg, fmt.Errorf("loading configuration: %w", err)
 	}
 
-	if err = validateQuery(cfg.Display.DefaultMode, flagString(cmd, "query")); err != nil {
+	if err := validateQuery(cfg.Display.DefaultMode, flagString(cmd, "query")); err != nil {
 		return cfg, err
 	}
 
@@ -119,7 +128,10 @@ func searchConfig(cmd *cobra.Command) (config.Config, error) {
 
 func doSearch(cmd *cobra.Command, cfg config.Config) (int, error) {
 	if cfg.Keys.ToggleCWD == "ctrl+d" {
-		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Warning: keys.toggle_cwd=ctrl+d is deprecated; use alt+d. Ctrl-D on empty input now cancels search."); err != nil {
+		if _, err := fmt.Fprintln(
+			cmd.ErrOrStderr(),
+			"Warning: keys.toggle_cwd=ctrl+d is deprecated; use alt+d. Ctrl-D on empty input now cancels search.",
+		); err != nil {
 			return 0, fmt.Errorf("writing keybinding migration warning: %w", err)
 		}
 	}
@@ -345,7 +357,11 @@ func resolveSearchResult(cmd *cobra.Command, cfg config.Config, finalModel tea.M
 	}
 
 	if selected != "" && cfg.Display.InstantExecute {
-		if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Warning: search exit code 2 is deprecated; regenerate shell integration with 'zgod init <shell>' or use 'zgod search --shell'."); err != nil {
+		if _, err := fmt.Fprintln(
+			cmd.ErrOrStderr(),
+			"Warning: search exit code 2 is deprecated; "+
+				"regenerate shell integration with 'zgod init <shell>' or use 'zgod search --shell'.",
+		); err != nil {
 			return 0, fmt.Errorf("writing compatibility warning: %w", err)
 		}
 

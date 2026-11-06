@@ -9,16 +9,22 @@ get_os() {
     case "$os" in
         linux) echo "linux" ;;
         darwin) echo "darwin" ;;
-        *) echo "Unsupported OS: $os" >&2; exit 1 ;;
+        *)
+            echo "Unsupported OS: $os" >&2
+            exit 1
+            ;;
     esac
 }
 
 get_arch() {
     arch=$(uname -m)
     case "$arch" in
-        x86_64|amd64) echo "amd64" ;;
-        aarch64|arm64) echo "arm64" ;;
-        *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
+        x86_64 | amd64) echo "amd64" ;;
+        aarch64 | arm64) echo "arm64" ;;
+        *)
+            echo "Unsupported architecture: $arch" >&2
+            exit 1
+            ;;
     esac
 }
 

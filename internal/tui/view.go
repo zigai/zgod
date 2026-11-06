@@ -67,7 +67,7 @@ type resultLayout struct {
 }
 
 func failToggleIndicator(mode db.FailFilterMode) indicatorPill {
-	indicator := indicatorPill{label: "fails", action: indicatorToggleFails}
+	indicator := indicatorPill{label: "fails", bg: "", active: false, action: indicatorToggleFails}
 
 	switch mode {
 	case db.FailFilterInclude:
@@ -191,22 +191,22 @@ func (m *Model) indicatorPills() []indicatorPill {
 }
 
 func dateSortIndicator(mode historySortMode) indicatorPill {
-	indicator := indicatorPill{label: "date", bg: "12", action: indicatorToggleHistorySort}
+	label, active := "date", false
 
 	switch mode {
 	case historySortOff:
-		return indicator
 	case historySortNewest:
-		indicator.label = "newest"
-		indicator.active = true
+		label, active = "newest", true
 	case historySortOldest:
-		indicator.label = "oldest"
-		indicator.active = true
-	default:
-		return indicator
+		label, active = "oldest", true
 	}
 
-	return indicator
+	return indicatorPill{
+		label:  label,
+		bg:     "12",
+		active: active,
+		action: indicatorToggleHistorySort,
+	}
 }
 
 func (m *Model) visibleIndicatorPills(width int) []indicatorPill {
@@ -386,7 +386,6 @@ func (m *Model) renderResults() string {
 		lines = append(lines, m.renderResultsHeaderWithLayout(layout))
 	}
 
-	expandMode := m.cfg.Display.MultilinePreview == "expand"
 	for idx := start; idx < end; idx++ {
 		if len(lines) >= m.height {
 			break
@@ -394,7 +393,7 @@ func (m *Model) renderResults() string {
 
 		isSelected := idx == m.cursor
 
-		if expandMode && isSelected && m.entryIsMultiline(idx) {
+		if m.expandsResult(idx) {
 			remaining := m.height - len(lines)
 			if remaining <= 0 {
 				break
@@ -485,10 +484,16 @@ func (m *Model) calcResultLayout() resultLayout {
 	}
 }
 
-func (m *Model) renderSelectionPrefix(layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor) string {
+func (m *Model) renderSelectionPrefix(
+	layout resultLayout,
+	fullLineBg bool,
+	selBg lipgloss.TerminalColor,
+) string {
 	if !config.BoolDefault(m.cfg.Theme.SelectionBarShow, true) {
 		if fullLineBg {
-			return lipgloss.NewStyle().Background(selBg).Render(strings.Repeat(" ", layout.prefixWidth))
+			return lipgloss.NewStyle().
+				Background(selBg).
+				Render(strings.Repeat(" ", layout.prefixWidth))
 		}
 
 		return strings.Repeat(" ", layout.prefixWidth)
@@ -502,7 +507,12 @@ func (m *Model) renderSelectionPrefix(layout resultLayout, fullLineBg bool, selB
 	return barStyle.Render(layout.barChar)
 }
 
-func (m *Model) renderResultLineWithLayout(entryIdx int, isSelected bool, layout resultLayout, now time.Time) string {
+func (m *Model) renderResultLineWithLayout(
+	entryIdx int,
+	isSelected bool,
+	layout resultLayout,
+	now time.Time,
+) string {
 	if entryIdx >= len(m.displayEntries) {
 		return strings.Repeat(" ", layout.width)
 	}
@@ -525,7 +535,11 @@ func (m *Model) renderResultLineWithLayout(entryIdx int, isSelected bool, layout
 	return m.renderSelectedResultLine(line, layout)
 }
 
-func (m *Model) cachedResultLine(entryIdx int, cacheKey resultLineCacheKey, isSelected bool) (string, bool) {
+func (m *Model) cachedResultLine(
+	entryIdx int,
+	cacheKey resultLineCacheKey,
+	isSelected bool,
+) (string, bool) {
 	if isSelected {
 		return "", false
 	}
@@ -538,16 +552,32 @@ func (m *Model) cachedResultLine(entryIdx int, cacheKey resultLineCacheKey, isSe
 	return "", false
 }
 
-func (m *Model) renderResultLineContent(entryIdx int, entry history.ScoredEntry, isSelected bool, layout resultLayout, now time.Time) string {
+func (m *Model) renderResultLineContent(
+	entryIdx int,
+	entry history.ScoredEntry,
+	isSelected bool,
+	layout resultLayout,
+	now time.Time,
+) string {
 	cmd, renderedCmd := m.renderResultCommand(entryIdx, entry, isSelected, layout)
 	fullLineBg := isSelected && config.BoolDefault(m.cfg.Theme.SelectionFullLine, true)
 	selBg := parseColor(m.cfg.Theme.SelectedBg)
 	exitStyle, metaStyle := m.resultMetaStyles(entry.Entry.ExitCode, fullLineBg, selBg)
 
 	exitStyled := exitStyle.Render(formatExit(entry.Entry.ExitCode, layout.exitWidth))
-	durStyled := metaStyle.Render(formatDuration(entry.Entry.DurationMS, m.cfg.Display.DurationFormat, layout.durWidth))
-	timeStyled := metaStyle.Render(formatWhenAt(entry.Entry.TimestampMS, m.cfg.Display.TimeFormat, layout.timeWidth, now))
-	cmdStyled := padRenderedCell(renderedCmd, layout.cmdWidth, lipgloss.Width(cmd), fullLineBg, selBg)
+	durStyled := metaStyle.Render(
+		formatDuration(entry.Entry.DurationMS, m.cfg.Display.DurationFormat, layout.durWidth),
+	)
+	timeStyled := metaStyle.Render(
+		formatWhenAt(entry.Entry.TimestampMS, m.cfg.Display.TimeFormat, layout.timeWidth, now),
+	)
+	cmdStyled := padRenderedCell(
+		renderedCmd,
+		layout.cmdWidth,
+		lipgloss.Width(cmd),
+		fullLineBg,
+		selBg,
+	)
 
 	styledSep := layout.sep
 	if fullLineBg {
@@ -558,12 +588,22 @@ func (m *Model) renderResultLineContent(entryIdx int, entry history.ScoredEntry,
 		return exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled
 	}
 
-	dirStyled := metaStyle.Render(padLeft(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir), layout.dirWidth))
+	dirStyled := metaStyle.Render(
+		padLeft(
+			formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir),
+			layout.dirWidth,
+		),
+	)
 
 	return exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled + styledSep + dirStyled
 }
 
-func (m *Model) renderResultCommand(entryIdx int, entry history.ScoredEntry, isSelected bool, layout resultLayout) (string, string) {
+func (m *Model) renderResultCommand(
+	entryIdx int,
+	entry history.ScoredEntry,
+	isSelected bool,
+	layout resultLayout,
+) (string, string) {
 	cmd := entry.Entry.Command
 	matchInfo := m.cachedRenderMatchInfo(entryIdx, cmd)
 
@@ -598,7 +638,11 @@ func (m *Model) renderResultCommand(entryIdx int, entry history.ScoredEntry, isS
 	return cmd, renderedCmd
 }
 
-func (m *Model) resultMetaStyles(exitCode int, fullLineBg bool, selBg lipgloss.TerminalColor) (lipgloss.Style, lipgloss.Style) {
+func (m *Model) resultMetaStyles(
+	exitCode int,
+	fullLineBg bool,
+	selBg lipgloss.TerminalColor,
+) (lipgloss.Style, lipgloss.Style) {
 	exitStyle := m.styles.ExitOk
 	if exitCode != 0 {
 		exitStyle = m.styles.ExitFail
@@ -622,14 +666,20 @@ func (m *Model) renderSelectedResultLine(line string, layout resultLayout) strin
 	fullLine := prefix + line
 	if fullLineBg {
 		if lineWidth := lipgloss.Width(fullLine); lineWidth < layout.width {
-			fullLine += lipgloss.NewStyle().Background(selBg).Render(strings.Repeat(" ", layout.width-lineWidth))
+			fullLine += lipgloss.NewStyle().
+				Background(selBg).
+				Render(strings.Repeat(" ", layout.width-lineWidth))
 		}
 	}
 
 	return fullLine
 }
 
-func (m *Model) resultLineCacheKey(entry history.ScoredEntry, layout resultLayout, now time.Time) resultLineCacheKey {
+func (m *Model) resultLineCacheKey(
+	entry history.ScoredEntry,
+	layout resultLayout,
+	now time.Time,
+) resultLineCacheKey {
 	return resultLineCacheKey{
 		width:          layout.width,
 		cmdWidth:       layout.cmdWidth,
@@ -666,6 +716,10 @@ func (m *Model) cacheResultLine(entryIdx int, key resultLineCacheKey, line strin
 	}
 }
 
+func (m *Model) expandsResult(idx int) bool {
+	return m.cfg.Display.MultilinePreview == "expand" && idx == m.cursor && m.entryIsMultiline(idx)
+}
+
 func (m *Model) entryIsMultiline(idx int) bool {
 	if idx >= len(m.displayEntries) {
 		return false
@@ -674,7 +728,14 @@ func (m *Model) entryIsMultiline(idx int) bool {
 	return strings.Contains(m.displayEntries[idx].Entry.Command, "\n")
 }
 
-func (m *Model) renderExpandedFirstLineAt(entry *history.ScoredEntry, layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor, cmdLine string, now time.Time) string {
+func (m *Model) renderExpandedFirstLineAt(
+	entry *history.ScoredEntry,
+	layout resultLayout,
+	fullLineBg bool,
+	selBg lipgloss.TerminalColor,
+	cmdLine string,
+	now time.Time,
+) string {
 	matchInfo := &entry.MatchInfo
 	matchInfo = m.ensureRenderMatchRanges(cmdLine, matchInfo)
 	cmdLine, matchInfo = truncateWithRanges(cmdLine, matchInfo, layout.cmdWidth)
@@ -699,9 +760,19 @@ func (m *Model) renderExpandedFirstLineAt(entry *history.ScoredEntry, layout res
 	exitStyle, metaStyle := m.resultMetaStyles(entry.Entry.ExitCode, fullLineBg, selBg)
 
 	exitStyled := exitStyle.Render(formatExit(entry.Entry.ExitCode, layout.exitWidth))
-	durStyled := metaStyle.Render(formatDuration(entry.Entry.DurationMS, m.cfg.Display.DurationFormat, layout.durWidth))
-	timeStyled := metaStyle.Render(formatWhenAt(entry.Entry.TimestampMS, m.cfg.Display.TimeFormat, layout.timeWidth, now))
-	cmdStyled := padRenderedCell(renderedCmd, layout.cmdWidth, lipgloss.Width(cmdLine), fullLineBg, selBg)
+	durStyled := metaStyle.Render(
+		formatDuration(entry.Entry.DurationMS, m.cfg.Display.DurationFormat, layout.durWidth),
+	)
+	timeStyled := metaStyle.Render(
+		formatWhenAt(entry.Entry.TimestampMS, m.cfg.Display.TimeFormat, layout.timeWidth, now),
+	)
+	cmdStyled := padRenderedCell(
+		renderedCmd,
+		layout.cmdWidth,
+		lipgloss.Width(cmdLine),
+		fullLineBg,
+		selBg,
+	)
 
 	styledSep := layout.sep
 	if fullLineBg {
@@ -711,8 +782,14 @@ func (m *Model) renderExpandedFirstLineAt(entry *history.ScoredEntry, layout res
 	var line string
 
 	if layout.showDir {
-		dirStyled := metaStyle.Render(padLeft(formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir), layout.dirWidth))
-		line = exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled + styledSep + dirStyled
+		dirStyled := metaStyle.Render(
+			padLeft(
+				formatDirectory(entry.Entry.Directory, layout.dirWidth, m.homeDir),
+				layout.dirWidth,
+			),
+		)
+		line = exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep +
+			cmdStyled + styledSep + dirStyled
 	} else {
 		line = exitStyled + styledSep + durStyled + styledSep + timeStyled + styledSep + cmdStyled
 	}
@@ -722,7 +799,12 @@ func (m *Model) renderExpandedFirstLineAt(entry *history.ScoredEntry, layout res
 	return prefix + line
 }
 
-func (m *Model) renderExpandedContinuationLine(layout resultLayout, fullLineBg bool, selBg lipgloss.TerminalColor, cmdLine string) string {
+func (m *Model) renderExpandedContinuationLine(
+	layout resultLayout,
+	fullLineBg bool,
+	selBg lipgloss.TerminalColor,
+	cmdLine string,
+) string {
 	cmdStyle := m.styles.SelectedCmd
 	if fullLineBg {
 		cmdStyle = cmdStyle.Background(selBg)
@@ -741,7 +823,13 @@ func (m *Model) renderExpandedContinuationLine(layout resultLayout, fullLineBg b
 	}
 
 	padding := strings.Repeat(" ", metaWidth)
-	cmdStyled := padRenderedCell(renderedCmd, layout.cmdWidth, lipgloss.Width(cmdLine), fullLineBg, selBg)
+	cmdStyled := padRenderedCell(
+		renderedCmd,
+		layout.cmdWidth,
+		lipgloss.Width(cmdLine),
+		fullLineBg,
+		selBg,
+	)
 	lineContent := continuationChar + padding + cmdStyled
 
 	if fullLineBg {
@@ -751,7 +839,12 @@ func (m *Model) renderExpandedContinuationLine(layout resultLayout, fullLineBg b
 	return lineContent
 }
 
-func (m *Model) padLine(line string, width int, fullLineBg bool, selBg lipgloss.TerminalColor) string {
+func (m *Model) padLine(
+	line string,
+	width int,
+	fullLineBg bool,
+	selBg lipgloss.TerminalColor,
+) string {
 	lineWidth := lipgloss.Width(line)
 	if lineWidth >= width {
 		return line
@@ -765,7 +858,13 @@ func (m *Model) padLine(line string, width int, fullLineBg bool, selBg lipgloss.
 	return line + padding
 }
 
-func padRenderedCell(rendered string, width int, visibleWidth int, fullLineBg bool, bg lipgloss.TerminalColor) string {
+func padRenderedCell(
+	rendered string,
+	width int,
+	visibleWidth int,
+	fullLineBg bool,
+	bg lipgloss.TerminalColor,
+) string {
 	padding := width - visibleWidth
 	if padding <= 0 {
 		return rendered
@@ -793,7 +892,12 @@ func (m *Model) renderExpandedResultLines(entryIdx int) []string {
 	return m.renderExpandedResultLinesWithLayout(entryIdx, layout, time.Now(), 0)
 }
 
-func (m *Model) renderExpandedResultLinesWithLayout(entryIdx int, layout resultLayout, now time.Time, maxLines int) []string {
+func (m *Model) renderExpandedResultLinesWithLayout(
+	entryIdx int,
+	layout resultLayout,
+	now time.Time,
+	maxLines int,
+) []string {
 	if entryIdx >= len(m.displayEntries) {
 		return nil
 	}
@@ -1149,7 +1253,12 @@ func (m *Model) renderResultsHeaderWithLayout(layout resultLayout) string {
 	return value
 }
 
-func (m *Model) highlightMatches(text string, ranges []match.Range, baseStyle lipgloss.Style, matchStyle lipgloss.Style) string {
+func (m *Model) highlightMatches(
+	text string,
+	ranges []match.Range,
+	baseStyle lipgloss.Style,
+	matchStyle lipgloss.Style,
+) string {
 	if len(ranges) == 0 {
 		return baseStyle.Render(text)
 	}
@@ -1186,7 +1295,12 @@ func (m *Model) highlightMatches(text string, ranges []match.Range, baseStyle li
 	return b.String()
 }
 
-func highlightASCIIMatches(text string, ranges []match.Range, baseStyle lipgloss.Style, matchStyle lipgloss.Style) string {
+func highlightASCIIMatches(
+	text string,
+	ranges []match.Range,
+	baseStyle lipgloss.Style,
+	matchStyle lipgloss.Style,
+) string {
 	var b strings.Builder
 
 	pos := 0
@@ -1225,7 +1339,8 @@ func isASCII(s string) bool {
 
 func (m *Model) cachedRenderMatchInfo(entryIdx int, text string) *match.Match {
 	info := &m.displayEntries[entryIdx].MatchInfo
-	if len(info.MatchedRanges) > 0 || m.mode != match.ModeFuzzy || strings.ContainsAny(text, "\n\r\t") {
+	if len(info.MatchedRanges) > 0 || m.mode != match.ModeFuzzy ||
+		strings.ContainsAny(text, "\n\r\t") {
 		return info
 	}
 
@@ -1635,7 +1750,7 @@ func padLeftASCII(s string, width int) string {
 	return strings.Repeat(" ", padding) + s
 }
 
-func safeSub(a, b time.Time) time.Duration {
+func safeSub(a time.Time, b time.Time) time.Duration {
 	d := a.Sub(b)
 	if d == math.MinInt64 {
 		return math.MaxInt64
@@ -1776,9 +1891,16 @@ func truncateAroundMatch(runes []rune, info *match.Match, maxLen int) (string, *
 		truncatedRunes = append(truncatedRunes, []rune(ellipsis)...)
 	}
 
-	var ranges []match.Range
+	infoCopy := *info
+	infoCopy.MatchedRanges = matchRangesInWindow(info.MatchedRanges, start, end, prefixWidth)
 
-	for _, r := range info.MatchedRanges {
+	return string(truncatedRunes), &infoCopy
+}
+
+func matchRangesInWindow(ranges []match.Range, start int, end int, prefixWidth int) []match.Range {
+	var clipped []match.Range
+
+	for _, r := range ranges {
 		if r.End <= start || r.Start >= end {
 			continue
 		}
@@ -1787,14 +1909,11 @@ func truncateAroundMatch(runes []rune, info *match.Match, maxLen int) (string, *
 		rangeEnd := min(r.End, end) - start + prefixWidth
 
 		if rangeEnd > rangeStart {
-			ranges = append(ranges, match.Range{Start: rangeStart, End: rangeEnd})
+			clipped = append(clipped, match.Range{Start: rangeStart, End: rangeEnd})
 		}
 	}
 
-	infoCopy := *info
-	infoCopy.MatchedRanges = ranges
-
-	return string(truncatedRunes), &infoCopy
+	return clipped
 }
 
 func prefixRuneCountForWidth(runes []rune, width int) int {
@@ -1924,7 +2043,11 @@ func remapMatchRanges(ranges []match.Range, runeMap []int, textLen int) []match.
 	return newRanges
 }
 
-func collapseMultiline(text string, info *match.Match, collapseSymbol string) (string, *match.Match) {
+func collapseMultiline(
+	text string,
+	info *match.Match,
+	collapseSymbol string,
+) (string, *match.Match) {
 	if !strings.ContainsAny(text, "\n\r\t") {
 		return text, info
 	}

@@ -85,7 +85,7 @@ func fetchSearchOutput(cfg config.Config, cwd string) ([]db.HistoryEntry, error)
 		return nil, nil
 	}
 
-	if err = drainPendingRecordsForSearch(dbPath); err != nil {
+	if err := drainPendingRecordsForSearch(dbPath); err != nil {
 		return nil, err
 	}
 
@@ -103,7 +103,7 @@ func fetchSearchOutput(cfg config.Config, cwd string) ([]db.HistoryEntry, error)
 	failFilter, _ := db.ParseFailFilterMode(cfg.Display.DefaultFailFilter)
 
 	entries, err := history.FetchCandidates(db.NewHistoryRepo(database), history.CandidateOpts{
-		Limit: 0, Dedupe: true, FailFilter: failFilter, CWD: cwd,
+		Dedupe: true, FailFilter: failFilter, CWD: cwd,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reading history: %w", err)

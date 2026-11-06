@@ -168,7 +168,12 @@ func validateSupportedSchemaVersion(db *sql.DB) (int, error) {
 	}
 
 	if version > currentSchemaVersion {
-		return 0, fmt.Errorf("%w %d: max supported is %d", errUnsupportedSchema, version, currentSchemaVersion)
+		return 0, fmt.Errorf(
+			"%w %d: max supported is %d",
+			errUnsupportedSchema,
+			version,
+			currentSchemaVersion,
+		)
 	}
 
 	return version, nil

@@ -104,7 +104,7 @@ func configShowRaw(cmd *cobra.Command) (bool, error) {
 	return raw, nil
 }
 
-func openEditor(editor, path string) error {
+func openEditor(editor string, path string) error {
 	args, err := splitCommandLine(editor)
 	if err != nil {
 		return err
@@ -136,12 +136,21 @@ func splitCommandLine(command string) ([]string, error) {
 }
 
 func registerConfigCommand(root *cobra.Command) {
-	cmd := &cobra.Command{Use: "config", Short: "Manage configuration", GroupID: "management", RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
+	cmd := &cobra.Command{
+		Use:     "config",
+		Short:   "Manage configuration",
+		GroupID: "management",
+		RunE:    func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+	}
 	show := &cobra.Command{Use: "show", Short: "Print effective configuration", RunE: runConfigShow}
 	show.Flags().Bool("raw", false, "Print the chosen config file without validation")
 	show.Flags().Bool("json", false, "Print effective configuration as JSON")
 
-	edit := &cobra.Command{Use: "edit", Short: "Open the user configuration in an editor", RunE: runConfigEdit}
+	edit := &cobra.Command{
+		Use:   "edit",
+		Short: "Open the user configuration in an editor",
+		RunE:  runConfigEdit,
+	}
 	cmd.AddCommand(show, edit)
 	root.AddCommand(cmd)
 }

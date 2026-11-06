@@ -111,15 +111,44 @@ func invalidNumericCLIArguments(check *rapid.T) []string {
 
 		return []string{"search", "--json", "--" + flag, strconv.FormatInt(value, 10)}
 	case 1:
-		args = append(args, "--duration", strconv.FormatInt(rapid.Int64Range(math.MinInt64, -2).Draw(check, "duration"), 10))
+		args = append(
+			args,
+			"--duration",
+			strconv.FormatInt(rapid.Int64Range(math.MinInt64, -2).Draw(check, "duration"), 10),
+		)
 	case 2:
-		args = append(args, "--ts", strconv.FormatInt(rapid.Int64Range(math.MaxInt64/1000+1, math.MaxInt64).Draw(check, "seconds"), 10)+"s")
+		args = append(
+			args,
+			"--ts",
+			strconv.FormatInt(
+				rapid.Int64Range(math.MaxInt64/1000+1, math.MaxInt64).Draw(check, "seconds"),
+				10,
+			)+"s",
+		)
 	case 3:
-		args = append(args, "--exit-code", strconv.FormatInt(rapid.Int64Range(math.MaxUint32+1, math.MaxInt64).Draw(check, "exit"), 10))
+		args = append(
+			args,
+			"--exit-code",
+			strconv.FormatInt(
+				rapid.Int64Range(math.MaxUint32+1, math.MaxInt64).Draw(check, "exit"),
+				10,
+			),
+		)
 	case 4:
-		args = append(args, "--duration", strings.Repeat("9", rapid.IntRange(20, 80).Draw(check, "overflow-digits")))
+		args = append(
+			args,
+			"--duration",
+			strings.Repeat("9", rapid.IntRange(20, 80).Draw(check, "overflow-digits")),
+		)
 	default:
-		args = append(args, "--ts", strconv.FormatInt(rapid.Int64Range(math.MinInt64, -1).Draw(check, "negative-timestamp"), 10))
+		args = append(
+			args,
+			"--ts",
+			strconv.FormatInt(
+				rapid.Int64Range(math.MinInt64, -1).Draw(check, "negative-timestamp"),
+				10,
+			),
+		)
 	}
 
 	return args
@@ -151,7 +180,12 @@ func invalidCLIInvocation(check *rapid.T) ([]string, int) {
 			return []string{"config", "show", "--set", "theme.prompt=\"" + invalid}, 2
 		}
 
-		return []string{"config", "show", "--set", "display.default_mode=" + strconv.Quote(invalid)}, 1
+		return []string{
+			"config",
+			"show",
+			"--set",
+			"display.default_mode=" + strconv.Quote(invalid),
+		}, 1
 	}
 }
 
@@ -164,7 +198,11 @@ func TestCLIRejectionHasNoEffectsProperty(t *testing.T) {
 
 		if rapid.Bool().Draw(check, "existing-history") {
 			database := openPropertyHistory(check, dbPath)
-			storePropertyHistory(check, database, rapid.SliceOfN(historyRecordGenerator(), 1, 4).Draw(check, "history"))
+			storePropertyHistory(
+				check,
+				database,
+				rapid.SliceOfN(historyRecordGenerator(), 1, 4).Draw(check, "history"),
+			)
 
 			if err := database.Close(); err != nil {
 				check.Fatal(err)
@@ -184,22 +222,42 @@ func TestCLIRejectionHasNoEffectsProperty(t *testing.T) {
 		}
 
 		var out, diagnostics bytes.Buffer
-		if code := execute(args, strings.NewReader("incoming"), &out, &diagnostics); code != wantCode {
-			check.Fatalf("arguments = %q: exit=%d, want %d; stderr=%q", args, code, wantCode, diagnostics.String())
+		if code := execute(
+			args,
+			strings.NewReader("incoming"),
+			&out,
+			&diagnostics,
+		); code != wantCode {
+			check.Fatalf(
+				"arguments = %q: exit=%d, want %d; stderr=%q",
+				args,
+				code,
+				wantCode,
+				diagnostics.String(),
+			)
 		}
 
 		if out.Len() != 0 || !strings.Contains(diagnostics.String(), documentationURL) {
-			check.Fatalf("rejection streams: stdout=%q stderr=%q", out.String(), diagnostics.String())
+			check.Fatalf(
+				"rejection streams: stdout=%q stderr=%q",
+				out.String(),
+				diagnostics.String(),
+			)
 		}
 
 		after, err := snapshotFileTree(base)
 		if err != nil || !reflect.DeepEqual(before, after) {
-			check.Fatalf("rejected command changed state: before=%#v after=%#v, error: %v", before, after, err)
+			check.Fatalf(
+				"rejected command changed state: before=%#v after=%#v, error: %v",
+				before,
+				after,
+				err,
+			)
 		}
 	})
 }
 
-func assertRecordedStdin(check *rapid.T, path, command string) {
+func assertRecordedStdin(check *rapid.T, path string, command string) {
 	check.Helper()
 
 	database, err := db.OpenReadOnly(path)
@@ -214,7 +272,8 @@ func assertRecordedStdin(check *rapid.T, path, command string) {
 		check.Fatalf("valid stdin stored %d records, want 1", len(entries))
 	}
 
-	if entries[0].Command != command || entries[0].TimestampMS != 1_234_000 || entries[0].DurationMS != 0 {
+	if entries[0].Command != command || entries[0].TimestampMS != 1_234_000 ||
+		entries[0].DurationMS != 0 {
 		check.Fatalf("valid stdin was not preserved: record=%#v", entries[0])
 	}
 }
@@ -228,7 +287,13 @@ func TestRecordStdinByteLimitProperty(t *testing.T) {
 
 		size := (1 << 20) + rapid.IntRange(-64, 64).Draw(check, "size-offset")
 		letter := rapid.SampledFrom([]string{"é", "a", "$", "\n", "\t"}).Draw(check, "content")
-		command := "c" + strings.Repeat(letter, (size-1)/len(letter)) + strings.Repeat("a", (size-1)%len(letter))
+		command := "c" + strings.Repeat(
+			letter,
+			(size-1)/len(letter),
+		) + strings.Repeat(
+			"a",
+			(size-1)%len(letter),
+		)
 
 		before, err := snapshotFileTree(base)
 		if err != nil {
@@ -237,24 +302,49 @@ func TestRecordStdinByteLimitProperty(t *testing.T) {
 
 		var out, diagnostics bytes.Buffer
 
-		args := []string{"record", "--no-config", "--set", "filters.max_command_length=0", "--command-stdin", "--ts", "1234s", "--duration", "0"}
+		args := []string{
+			"record",
+			"--no-config",
+			"--set",
+			"filters.max_command_length=0",
+			"--command-stdin",
+			"--ts",
+			"1234s",
+			"--duration",
+			"0",
+		}
 
 		code := execute(args, strings.NewReader(command), &out, &diagnostics)
 		if size > 1<<20 {
 			if code != 2 || out.Len() != 0 {
-				check.Fatalf("oversized command: exit=%d stdout=%q stderr=%q", code, out.String(), diagnostics.String())
+				check.Fatalf(
+					"oversized command: exit=%d stdout=%q stderr=%q",
+					code,
+					out.String(),
+					diagnostics.String(),
+				)
 			}
 
 			after, err := snapshotFileTree(base)
 			if err != nil || !reflect.DeepEqual(after, before) {
-				check.Fatalf("oversized input changed state: before=%#v after=%#v error=%v", before, after, err)
+				check.Fatalf(
+					"oversized input changed state: before=%#v after=%#v error=%v",
+					before,
+					after,
+					err,
+				)
 			}
 
 			return
 		}
 
 		if code != 0 || out.Len() != 0 || diagnostics.Len() != 0 {
-			check.Fatalf("valid command: exit=%d stdout=%q stderr=%q", code, out.String(), diagnostics.String())
+			check.Fatalf(
+				"valid command: exit=%d stdout=%q stderr=%q",
+				code,
+				out.String(),
+				diagnostics.String(),
+			)
 		}
 
 		assertRecordedStdin(check, dbPath, command)
@@ -266,16 +356,36 @@ func TestCLIExplicitOverridesProperty(t *testing.T) {
 	t.Chdir(t.TempDir())
 	rapid.Check(t, func(check *rapid.T) {
 		hints := rapid.Bool().Draw(check, "show-hints")
-		prompt := rapid.StringOfN(rapid.RuneFrom(historyTextRunes(check)), 0, 32, -1).Draw(check, "prompt")
+		prompt := rapid.StringOfN(rapid.RuneFrom(historyTextRunes(check)), 0, 32, -1).
+			Draw(check, "prompt")
 
 		t.Setenv("ZGOD_DISPLAY_SHOW_HINTS", strconv.FormatBool(!hints))
 		t.Setenv("ZGOD_THEME_PROMPT", "lower-priority")
 
-		args := []string{"config", "show", "--json", "--no-config", "--set", "display.show_hints=" + strconv.FormatBool(hints), "--set", "theme.prompt=" + strconv.Quote(prompt)}
+		args := []string{
+			"config",
+			"show",
+			"--json",
+			"--no-config",
+			"--set",
+			"display.show_hints=" + strconv.FormatBool(hints),
+			"--set",
+			"theme.prompt=" + strconv.Quote(prompt),
+		}
 
 		var out, diagnostics bytes.Buffer
-		if code := execute(args, strings.NewReader(""), &out, &diagnostics); code != 0 || diagnostics.Len() != 0 {
-			check.Fatalf("explicit override rejected: exit=%d stderr=%q", code, diagnostics.String())
+		if code := execute(
+			args,
+			strings.NewReader(""),
+			&out,
+			&diagnostics,
+		); code != 0 ||
+			diagnostics.Len() != 0 {
+			check.Fatalf(
+				"explicit override rejected: exit=%d stderr=%q",
+				code,
+				diagnostics.String(),
+			)
 		}
 
 		var got config.Config
@@ -284,12 +394,18 @@ func TestCLIExplicitOverridesProperty(t *testing.T) {
 		}
 
 		if got.Display.ShowHints != hints || got.Theme.Prompt != prompt {
-			check.Fatalf("CLI overrides lost: hints=%t prompt=%q, want %t %q", got.Display.ShowHints, got.Theme.Prompt, hints, prompt)
+			check.Fatalf(
+				"CLI overrides lost: hints=%t prompt=%q, want %t %q",
+				got.Display.ShowHints,
+				got.Theme.Prompt,
+				hints,
+				prompt,
+			)
 		}
 	})
 }
 
-func searchBoundsAccept(height, limit int) bool {
+func searchBoundsAccept(height int, limit int) bool {
 	return height >= 1 && height <= 1000 && limit >= 1 && limit <= 100000
 }
 
@@ -299,22 +415,47 @@ func TestSearchNumericBoundariesProperty(t *testing.T) {
 		base := setCLITestHomes(t)
 		t.Setenv("ZGOD_DB_PATH", filepath.Join(base, "history.db"))
 
-		height := rapid.SampledFrom([]int{1, 1000}).Draw(check, "height-boundary") + rapid.IntRange(-2, 2).Draw(check, "height-offset")
-		limit := rapid.SampledFrom([]int{1, 100000}).Draw(check, "limit-boundary") + rapid.IntRange(-2, 2).Draw(check, "limit-offset")
+		height := rapid.SampledFrom([]int{1, 1000}).
+			Draw(check, "height-boundary") +
+			rapid.IntRange(-2, 2).
+				Draw(check, "height-offset")
+		limit := rapid.SampledFrom([]int{1, 100000}).
+			Draw(check, "limit-boundary") +
+			rapid.IntRange(-2, 2).
+				Draw(check, "limit-offset")
 		valid := searchBoundsAccept(height, limit)
 
 		var out, diagnostics bytes.Buffer
 
-		args := []string{"search", "--no-config", "--json", "--height", strconv.Itoa(height), "--limit", strconv.Itoa(limit)}
+		args := []string{
+			"search",
+			"--no-config",
+			"--json",
+			"--height",
+			strconv.Itoa(height),
+			"--limit",
+			strconv.Itoa(limit),
+		}
 
 		code := execute(args, strings.NewReader(""), &out, &diagnostics)
 		if !valid {
 			if code != 2 || out.Len() != 0 {
-				check.Fatalf("invalid bounds accepted: height=%d limit=%d exit=%d", height, limit, code)
+				check.Fatalf(
+					"invalid bounds accepted: height=%d limit=%d exit=%d",
+					height,
+					limit,
+					code,
+				)
 			}
 		} else {
 			if code != 0 || diagnostics.Len() != 0 {
-				check.Fatalf("valid bounds rejected: height=%d limit=%d exit=%d stderr=%q", height, limit, code, diagnostics.String())
+				check.Fatalf(
+					"valid bounds rejected: height=%d limit=%d exit=%d stderr=%q",
+					height,
+					limit,
+					code,
+					diagnostics.String(),
+				)
 			}
 
 			var records []historyRecord
@@ -349,7 +490,8 @@ func TestVersionAndHelpStreams(t *testing.T) {
 		t.Fatalf("legacy version exit=%d: %s", code, &diagnostics)
 	}
 
-	if !strings.Contains(diagnostics.String(), "deprecated") || !strings.Contains(out.String(), "zgod") {
+	if !strings.Contains(diagnostics.String(), "deprecated") ||
+		!strings.Contains(out.String(), "zgod") {
 		t.Fatalf("legacy version stdout=%q stderr=%q", out.String(), diagnostics.String())
 	}
 }
@@ -362,7 +504,14 @@ func TestNoConfigRecordAndJSONSearch(t *testing.T) {
 
 	var out, diagnostics bytes.Buffer
 
-	args := []string{"record", "--no-config", "--command-stdin", "--duration=0", "--directory", "/elsewhere"}
+	args := []string{
+		"record",
+		"--no-config",
+		"--command-stdin",
+		"--duration=0",
+		"--directory",
+		"/elsewhere",
+	}
 	executeSuccessfully(t, args, command, &out, &diagnostics)
 
 	t.Run("record streams", func(t *testing.T) {
@@ -380,7 +529,16 @@ func TestNoConfigRecordAndJSONSearch(t *testing.T) {
 		t.Fatalf("--no-config wrote configuration: %v", err)
 	}
 
-	args = []string{"search", "--no-config", "--json", "--mode=regex", "--query=hello", "--set", "display.default_scope=\"cwd\"", "--cwd=false"}
+	args = []string{
+		"search",
+		"--no-config",
+		"--json",
+		"--mode=regex",
+		"--query=hello",
+		"--set",
+		"display.default_scope=\"cwd\"",
+		"--cwd=false",
+	}
 	executeSuccessfully(t, args, "", &out, &diagnostics)
 
 	var records []historyRecord
@@ -397,7 +555,13 @@ func TestNoConfigRecordAndJSONSearch(t *testing.T) {
 	}
 }
 
-func executeSuccessfully(t *testing.T, args []string, input string, out, diagnostics *bytes.Buffer) {
+func executeSuccessfully(
+	t *testing.T,
+	args []string,
+	input string,
+	out *bytes.Buffer,
+	diagnostics *bytes.Buffer,
+) {
 	t.Helper()
 
 	if code := execute(args, strings.NewReader(input), out, diagnostics); code != 0 {
@@ -411,7 +575,12 @@ func TestConfiguredRegexIsValidatedBeforeCreatingDefaults(t *testing.T) {
 	t.Setenv("ZGOD_DISPLAY_DEFAULT_MODE", "regex")
 
 	var out, diagnostics bytes.Buffer
-	if code := execute([]string{"search", "--json", "--query", "["}, strings.NewReader(""), &out, &diagnostics); code != 2 {
+	if code := execute(
+		[]string{"search", "--json", "--query", "["},
+		strings.NewReader(""),
+		&out,
+		&diagnostics,
+	); code != 2 {
 		t.Fatalf("exit=%d: %s", code, &diagnostics)
 	}
 

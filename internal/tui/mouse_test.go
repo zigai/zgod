@@ -107,7 +107,11 @@ func TestHandleMouseFooterShortcutCyclesMode(t *testing.T) {
 	m.width = 200
 	m.input.Width = max(m.width-4, 1)
 	m.terminalHeight = m.viewHeight() + 3
-	x, y := testMouseBodyCell(m, testMouseFooterShortcutBodyX(t, m, footerShortcutModeNext), m.footerBodyY())
+	x, y := testMouseBodyCell(
+		m,
+		testMouseFooterShortcutBodyX(t, m, footerShortcutModeNext),
+		m.footerBodyY(),
+	)
 
 	_, cmd := m.handleMouse(tea.MouseMsg{
 		X:      x,
@@ -161,7 +165,11 @@ func TestHandleMouseHoverHighlightsFooterShortcut(t *testing.T) {
 	m.width = 200
 	m.input.Width = max(m.width-4, 1)
 	m.terminalHeight = m.viewHeight() + 3
-	x, y := testMouseBodyCell(m, testMouseFooterShortcutBodyX(t, m, footerShortcutModeNext), m.footerBodyY())
+	x, y := testMouseBodyCell(
+		m,
+		testMouseFooterShortcutBodyX(t, m, footerShortcutModeNext),
+		m.footerBodyY(),
+	)
 
 	_, _ = m.handleMouse(tea.MouseMsg{
 		X:      x,

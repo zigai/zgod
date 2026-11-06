@@ -105,12 +105,16 @@ func mergeConfigSources(cfg *Config, opts LoadOptions) (string, error) {
 
 	for _, file := range files {
 		if file == paths.LegacyConfigFile() {
-			if _, err = fmt.Fprintf(os.Stderr, "Warning: config %s is deprecated; move it to the XDG zgod/config.toml path.\n", file); err != nil {
+			if _, err = fmt.Fprintf(
+				os.Stderr,
+				"Warning: config %s is deprecated; move it to the XDG zgod/config.toml path.\n",
+				file,
+			); err != nil {
 				return "", fmt.Errorf("writing config migration warning: %w", err)
 			}
 		}
 
-		if err = mergeConfigFile(cfg, file); err != nil {
+		if err := mergeConfigFile(cfg, file); err != nil {
 			return "", err
 		}
 	}
@@ -255,14 +259,20 @@ func mergeEnvironment(cfg *Config) error {
 	return nil
 }
 
-func environmentAssignment(section, key string, fieldType reflect.Type, value string) (string, error) {
+func environmentAssignment(
+	section string,
+	key string,
+	fieldType reflect.Type,
+	value string,
+) (string, error) {
 	if fieldType.Kind() == reflect.Pointer {
 		fieldType = fieldType.Elem()
 	}
 
 	if fieldType.Kind() == reflect.String {
 		var output bytes.Buffer
-		if err := toml.NewEncoder(&output).Encode(map[string]map[string]string{section: {key: value}}); err != nil {
+		if err := toml.NewEncoder(&output).
+			Encode(map[string]map[string]string{section: {key: value}}); err != nil {
 			return "", fmt.Errorf("encoding environment setting: %w", err)
 		}
 
@@ -321,7 +331,10 @@ func saveConfigFile(path string, cfg Config, replace bool) error {
 }
 
 func writeConfig(file *os.File, cfg Config, commented bool) error {
-	const intro = "# zgod configuration. All fields are optional.\n# Overrides: CLI --set > ZGOD_SECTION_KEY > ./.zgod.toml > this file > system config.\n# Arrays replace lower-priority lists. Boolean values can be true or false.\n# Docs: https://github.com/zigai/zgod#configuration\n\n"
+	const intro = "# zgod configuration. All fields are optional.\n" +
+		"# Overrides: CLI --set > ZGOD_SECTION_KEY > ./.zgod.toml > this file > system config.\n" +
+		"# Arrays replace lower-priority lists. Boolean values can be true or false.\n" +
+		"# Docs: https://github.com/zigai/zgod#configuration\n\n"
 	if _, err := file.WriteString(intro); err != nil {
 		return fmt.Errorf("writing config comments: %w", err)
 	}

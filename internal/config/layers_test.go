@@ -18,22 +18,36 @@ func TestConfigurationLayersAndExplicitPresence(t *testing.T) {
 	userPath := setTestHomes(t, dir)
 	t.Chdir(dir)
 
-	if err := os.WriteFile(userPath, []byte("[display]\ncwd_boost=10\nshow_hints=false\n[filters]\nexit_code=[1,2]\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		userPath,
+		[]byte("[display]\ncwd_boost=10\nshow_hints=false\n[filters]\nexit_code=[1,2]\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := os.WriteFile(filepath.Join(dir, ".zgod.toml"), []byte("[display]\ncwd_boost=20\n[filters]\nexit_code=[3]\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(dir, ".zgod.toml"),
+		[]byte("[display]\ncwd_boost=20\n[filters]\nexit_code=[3]\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Setenv("ZGOD_DISPLAY_CWD_BOOST", "30")
 	t.Setenv("ZGOD_DISPLAY_SHOW_HINTS", "true")
 
-	opts := LoadOptions{Path: "", NoConfig: false, NoCreate: true, Overrides: []string{"display.cwd_boost=0", "display.show_hints=false"}}
+	opts := LoadOptions{
+		Path:      "",
+		NoConfig:  false,
+		NoCreate:  true,
+		Overrides: []string{"display.cwd_boost=0", "display.show_hints=false"},
+	}
 
 	cfg := loadTestConfiguration(t, opts)
 
-	if cfg.Display.CWDBoost != 0 || cfg.Display.ShowHints || !reflect.DeepEqual(cfg.Filters.ExitCode, []int{3}) {
+	if cfg.Display.CWDBoost != 0 || cfg.Display.ShowHints ||
+		!reflect.DeepEqual(cfg.Filters.ExitCode, []int{3}) {
 		t.Fatalf("CLI presence/local replacement failed: %+v %+v", cfg.Display, cfg.Filters)
 	}
 
@@ -59,7 +73,10 @@ func TestConfigurationLayersAndExplicitPresence(t *testing.T) {
 
 func TestGeneratedDefaultsPreserveLowerPriorityValues(t *testing.T) {
 	path := setTestHomes(t, t.TempDir())
-	loadTestConfiguration(t, LoadOptions{Path: "", NoConfig: false, NoCreate: false, Overrides: nil})
+	loadTestConfiguration(
+		t,
+		LoadOptions{Path: "", NoConfig: false, NoCreate: false, Overrides: nil},
+	)
 
 	lower := Default()
 	lower.Display.CWDBoost = 123
@@ -91,11 +108,22 @@ func TestNoConfigSkipsInvalidFilesAndDoesNotCreateDefaults(t *testing.T) {
 	t.Chdir(dir)
 	t.Setenv("ZGOD_CONFIG", filepath.Join(dir, "missing", "explicit.toml"))
 
-	if err := os.WriteFile(filepath.Join(dir, ".zgod.toml"), []byte("invalid = ["), 0o600); err != nil {
+	if err := os.WriteFile(
+		filepath.Join(dir, ".zgod.toml"),
+		[]byte("invalid = ["),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 
-	cfg, err := LoadWithOptions(LoadOptions{Path: "", NoConfig: true, NoCreate: false, Overrides: []string{"display.show_hints=false", "filters.exit_code=[]"}})
+	cfg, err := LoadWithOptions(
+		LoadOptions{
+			Path:      "",
+			NoConfig:  true,
+			NoCreate:  false,
+			Overrides: []string{"display.show_hints=false", "filters.exit_code=[]"},
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +150,13 @@ func TestInvalidEnvironmentDoesNotCreateConfig(t *testing.T) {
 	}
 }
 
-func configurationLayer(t *testing.T, check *rapid.T, layer string, cfg Config, want *Config) (map[string]map[string]any, []string) {
+func configurationLayer(
+	t *testing.T,
+	check *rapid.T,
+	layer string,
+	cfg Config,
+	want *Config,
+) (map[string]map[string]any, []string) {
 	t.Helper()
 
 	sections := reflect.TypeFor[Config]()
@@ -206,7 +240,10 @@ func TestSparseConfigurationPrecedenceProperty(t *testing.T) {
 
 		for _, layer := range []string{"user", "local", "environment", "override"} {
 			cfg := canonicalConfiguration(configurationGenerator().Draw(check, layer))
-			cfg.DB.Path = filepath.Join(dir, "history-"+rapid.StringMatching("[a-z]{0,16}").Draw(check, layer+".db-path"))
+			cfg.DB.Path = filepath.Join(
+				dir,
+				"history-"+rapid.StringMatching("[a-z]{0,16}").Draw(check, layer+".db-path"),
+			)
 			values, assignments := configurationLayer(t, check, layer, cfg, &want)
 			overrides = append(overrides, assignments...)
 

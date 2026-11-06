@@ -35,11 +35,20 @@ func DefaultScoringOpts(cwd string) ScoringOpts {
 	}
 }
 
-func ScoreAndSort(entries []db.HistoryEntry, matches []match.Match, opts ScoringOpts) []ScoredEntry {
+func ScoreAndSort(
+	entries []db.HistoryEntry,
+	matches []match.Match,
+	opts ScoringOpts,
+) []ScoredEntry {
 	return ScoreAndSortInto(nil, entries, matches, opts)
 }
 
-func ScoreAndSortInto(dst []ScoredEntry, entries []db.HistoryEntry, matches []match.Match, opts ScoringOpts) []ScoredEntry {
+func ScoreAndSortInto(
+	dst []ScoredEntry,
+	entries []db.HistoryEntry,
+	matches []match.Match,
+	opts ScoringOpts,
+) []ScoredEntry {
 	scored := dst[:0]
 	if cap(scored) < len(matches) {
 		scored = make([]ScoredEntry, 0, len(matches))
@@ -62,7 +71,12 @@ func ScoreAndSortInto(dst []ScoredEntry, entries []db.HistoryEntry, matches []ma
 	return scored
 }
 
-func scoreInMatchOrder(scored []ScoredEntry, entries []db.HistoryEntry, matches []match.Match, opts ScoringOpts) bool {
+func scoreInMatchOrder(
+	scored []ScoredEntry,
+	entries []db.HistoryEntry,
+	matches []match.Match,
+	opts ScoringOpts,
+) bool {
 	partitionCWD := opts.CWD != "" && opts.CWDBonus > opts.RecencyBase
 	if !partitionCWD && opts.CWD != "" && opts.CWDBonus != 0 {
 		return false
@@ -90,7 +104,12 @@ func scoreInMatchOrder(scored []ScoredEntry, entries []db.HistoryEntry, matches 
 	return true
 }
 
-func cwdPartitionStart(entries []db.HistoryEntry, matches []match.Match, opts ScoringOpts, partitionCWD bool) int {
+func cwdPartitionStart(
+	entries []db.HistoryEntry,
+	matches []match.Match,
+	opts ScoringOpts,
+	partitionCWD bool,
+) int {
 	if !partitionCWD {
 		return 0
 	}

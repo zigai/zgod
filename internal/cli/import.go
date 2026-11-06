@@ -42,9 +42,11 @@ const (
 )
 
 var (
-	errImportSourceEqualsTarget = errors.New("source database must be different from target database")
-	errImportSourceRequired     = errors.New("source database path is required")
-	errImportSourceNotFound     = errors.New("source database does not exist")
+	errImportSourceEqualsTarget = errors.New(
+		"source database must be different from target database",
+	)
+	errImportSourceRequired = errors.New("source database path is required")
+	errImportSourceNotFound = errors.New("source database does not exist")
 )
 
 type importOptions struct {
@@ -98,7 +100,13 @@ type importPathCheckResult struct {
 }
 
 func registerImportCommand(root *cobra.Command) {
-	importCmd := &cobra.Command{Use: "import <source-db-path|->", Short: "Import history from a SQLite database or stdin", GroupID: "management", Args: cobra.ExactArgs(1), RunE: runImport}
+	importCmd := &cobra.Command{
+		Use:     "import <source-db-path|->",
+		Short:   "Import history from a SQLite database or stdin",
+		GroupID: "management",
+		Args:    cobra.ExactArgs(1),
+		RunE:    runImport,
+	}
 	importCmd.Flags().Bool("include-failed", false, "Include commands with non-zero exit code")
 	importCmd.Flags().Bool(
 		"include-missing-paths",
@@ -258,14 +266,19 @@ func openImportTargetDatabase(targetPath string) (*sql.DB, error) {
 func printImportSummary(cmd *cobra.Command, summary importSummary) error {
 	if flagBool(cmd, "json") {
 		return writeJSON(cmd.OutOrStdout(), map[string]int{
-			"total": summary.total, "imported": summary.imported,
-			"skippedFailed": summary.skippedFailed, "skippedMissingPaths": summary.skippedMissingPath,
-			"skippedPathErrors": summary.skippedPathError, "skippedDuplicates": summary.skippedDuplicate,
+			"total":               summary.total,
+			"imported":            summary.imported,
+			"skippedFailed":       summary.skippedFailed,
+			"skippedMissingPaths": summary.skippedMissingPath,
+			"skippedPathErrors":   summary.skippedPathError,
+			"skippedDuplicates":   summary.skippedDuplicate,
 		})
 	}
 
-	_, err := fmt.Fprintf(cmd.ErrOrStderr(),
-		"Import complete: total=%d imported=%d skipped_failed=%d skipped_missing_paths=%d skipped_path_errors=%d skipped_duplicates=%d\n",
+	_, err := fmt.Fprintf(
+		cmd.ErrOrStderr(),
+		"Import complete: total=%d imported=%d skipped_failed=%d skipped_missing_paths=%d "+
+			"skipped_path_errors=%d skipped_duplicates=%d\n",
 		summary.total,
 		summary.imported,
 		summary.skippedFailed,
@@ -344,7 +357,8 @@ func isPermissionDeniedError(err error) bool {
 
 	message := strings.ToLower(err.Error())
 
-	return strings.Contains(message, "permission denied") || strings.Contains(message, "access is denied")
+	return strings.Contains(message, "permission denied") ||
+		strings.Contains(message, "access is denied")
 }
 
 func importSourcePermissionHint() string {
@@ -393,7 +407,11 @@ func pathsReferToSameFile(sourcePath string, targetPath string) (bool, error) {
 	return sourcePath == targetPath, nil
 }
 
-func importSourceHistoryEntries(targetDB *sql.DB, sourceDB *sql.DB, opts importOptions) (importSummary, error) {
+func importSourceHistoryEntries(
+	targetDB *sql.DB,
+	sourceDB *sql.DB,
+	opts importOptions,
+) (importSummary, error) {
 	sourceRepo := db.NewHistoryRepo(sourceDB)
 
 	return importHistoryEntriesFromStreamer(targetDB, opts, sourceRepo.ForEach)
@@ -445,7 +463,7 @@ func importHistoryEntriesFromStreamer(
 		}
 	}()
 
-	if err = resetImportStageTx(ctx, tx); err != nil {
+	if err := resetImportStageTx(ctx, tx); err != nil {
 		return importSummary{}, err
 	}
 
@@ -464,12 +482,12 @@ func importHistoryEntriesFromStreamer(
 	summary.skippedDuplicate += stageResult.stagedCount - imported
 
 	if stageResult.stagedCount > 0 {
-		if err = upsertLatestCommandsForImportStageTx(ctx, tx); err != nil {
+		if err := upsertLatestCommandsForImportStageTx(ctx, tx); err != nil {
 			return importSummary{}, err
 		}
 	}
 
-	if err = dropImportStageTx(ctx, tx); err != nil {
+	if err := dropImportStageTx(ctx, tx); err != nil {
 		return importSummary{}, err
 	}
 
@@ -669,7 +687,10 @@ func newImportPathCheckCache() *importPathCheckCache {
 	}
 }
 
-func (c *importPathCheckCache) commandPathStatus(command string, workingDirectory string) importPathCheckStatus {
+func (c *importPathCheckCache) commandPathStatus(
+	command string,
+	workingDirectory string,
+) importPathCheckStatus {
 	key := importCommandPathKey{
 		command:          command,
 		workingDirectory: workingDirectory,
@@ -678,7 +699,11 @@ func (c *importPathCheckCache) commandPathStatus(command string, workingDirector
 		return status
 	}
 
-	exists, err := commandReferencesExistingPathsWithMatcher(command, workingDirectory, c.pathMatchesRequirement)
+	exists, err := commandReferencesExistingPathsWithMatcher(
+		command,
+		workingDirectory,
+		c.pathMatchesRequirement,
+	)
 	status := importPathExists
 
 	switch {
@@ -693,7 +718,10 @@ func (c *importPathCheckCache) commandPathStatus(command string, workingDirector
 	return status
 }
 
-func (c *importPathCheckCache) pathMatchesRequirement(path string, requirement pathRequirement) (bool, error) {
+func (c *importPathCheckCache) pathMatchesRequirement(
+	path string,
+	requirement pathRequirement,
+) (bool, error) {
 	key := importResolvedPathKey{
 		path:        path,
 		requirement: requirement,

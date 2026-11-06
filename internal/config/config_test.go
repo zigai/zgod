@@ -273,12 +273,15 @@ func configurationGenerator() *rapid.Generator[Config] {
 		cfg := Default()
 		text := rapid.StringOfN(rapid.RuneFrom(configurationTextRunes(check)), 0, 24, -1)
 		cfg.Filters.IgnoreSpace = rapid.Bool().Draw(check, "ignore-space")
-		cfg.Filters.ExitCode = rapid.SliceOfN(rapid.IntRange(0, 255), 0, 8).Draw(check, "exit-codes")
+		cfg.Filters.ExitCode = rapid.SliceOfN(rapid.IntRange(0, 255), 0, 8).
+			Draw(check, "exit-codes")
 		cfg.Filters.CommandGlob = rapid.SliceOfN(text, 0, 4).Draw(check, "command-globs")
 		literalRegex := rapid.Map(text, regexp.QuoteMeta)
 		cfg.Filters.CommandRegex = rapid.SliceOfN(literalRegex, 0, 4).Draw(check, "command-regexes")
-		cfg.Filters.DirectoryRegex = rapid.SliceOfN(literalRegex, 0, 4).Draw(check, "directory-regexes")
-		cfg.Filters.DirectoryGlob = rapid.SliceOfN(rapid.StringMatching("[a-z]{0,12}"), 0, 4).Draw(check, "directory-globs")
+		cfg.Filters.DirectoryRegex = rapid.SliceOfN(literalRegex, 0, 4).
+			Draw(check, "directory-regexes")
+		cfg.Filters.DirectoryGlob = rapid.SliceOfN(rapid.StringMatching("[a-z]{0,12}"), 0, 4).
+			Draw(check, "directory-globs")
 
 		cfg.Filters.MaxCommandLength = rapid.IntRange(0, 1024).Draw(check, "max-command-length")
 		for _, target := range []any{&cfg.Theme, &cfg.Keys} {
@@ -297,12 +300,18 @@ func configurationGenerator() *rapid.Generator[Config] {
 			}
 		}
 
-		cfg.Display.TimeFormat = rapid.SampledFrom([]string{"", "relative", "absolute"}).Draw(check, "time-format")
-		cfg.Display.DurationFormat = rapid.SampledFrom([]string{"", "auto", "ms", "s"}).Draw(check, "duration-format")
-		cfg.Display.DefaultScope = rapid.SampledFrom([]string{"", "normal", "cwd"}).Draw(check, "scope")
-		cfg.Display.DefaultMode = rapid.SampledFrom([]string{"", "fuzzy", "regex", "glob"}).Draw(check, "mode")
-		cfg.Display.DefaultFailFilter = rapid.SampledFrom([]string{"include", "exclude", "only"}).Draw(check, "fail-filter")
-		cfg.Display.MultilinePreview = rapid.SampledFrom([]string{"", "popup", "preview_pane", "expand", "collapsed"}).Draw(check, "preview")
+		cfg.Display.TimeFormat = rapid.SampledFrom([]string{"", "relative", "absolute"}).
+			Draw(check, "time-format")
+		cfg.Display.DurationFormat = rapid.SampledFrom([]string{"", "auto", "ms", "s"}).
+			Draw(check, "duration-format")
+		cfg.Display.DefaultScope = rapid.SampledFrom([]string{"", "normal", "cwd"}).
+			Draw(check, "scope")
+		cfg.Display.DefaultMode = rapid.SampledFrom([]string{"", "fuzzy", "regex", "glob"}).
+			Draw(check, "mode")
+		cfg.Display.DefaultFailFilter = rapid.SampledFrom([]string{"include", "exclude", "only"}).
+			Draw(check, "fail-filter")
+		cfg.Display.MultilinePreview = rapid.SampledFrom([]string{"", "popup", "preview_pane", "expand", "collapsed"}).
+			Draw(check, "preview")
 		cfg.Display.MultilineCollapse = text.Draw(check, "collapse")
 		cfg.Display.StartupLimit = rapid.IntRange(0, 100_000).Draw(check, "startup-limit")
 		cfg.Display.CWDBoost = rapid.IntRange(-100, 100).Draw(check, "cwd-boost")
@@ -317,7 +326,12 @@ func configurationGenerator() *rapid.Generator[Config] {
 }
 
 func canonicalConfiguration(cfg Config) Config {
-	for _, field := range []**bool{&cfg.Theme.MatchBold, &cfg.Theme.MatchUnderline, &cfg.Theme.SelectionBarShow, &cfg.Theme.SelectionFullLine} {
+	for _, field := range []**bool{
+		&cfg.Theme.MatchBold,
+		&cfg.Theme.MatchUnderline,
+		&cfg.Theme.SelectionBarShow,
+		&cfg.Theme.SelectionFullLine,
+	} {
 		if *field == nil {
 			enabled := true
 			*field = &enabled
@@ -372,7 +386,8 @@ func TestConfigurationSaveLoadProperty(t *testing.T) {
 func TestEnvironmentStringPreservationProperty(t *testing.T) {
 	setTestHomes(t, t.TempDir())
 	rapid.Check(t, func(check *rapid.T) {
-		value := rapid.StringOfN(rapid.RuneFrom(configurationTextRunes(check)), 0, 48, -1).Draw(check, "value")
+		value := rapid.StringOfN(rapid.RuneFrom(configurationTextRunes(check)), 0, 48, -1).
+			Draw(check, "value")
 		t.Setenv("ZGOD_THEME_PROMPT", value)
 
 		got, err := LoadWithOptions(LoadOptions{NoConfig: true, NoCreate: true})
@@ -391,7 +406,8 @@ func TestConfigurationUnknownKeysHaveNoEffectsProperty(t *testing.T) {
 	defaultPath := setTestHomes(t, dir)
 	rapid.Check(t, func(check *rapid.T) {
 		key := "unknown_" + rapid.StringMatching("[a-z]{1,24}").Draw(check, "key")
-		section := rapid.SampledFrom([]string{"db", "filters", "theme", "display", "keys"}).Draw(check, "section")
+		section := rapid.SampledFrom([]string{"db", "filters", "theme", "display", "keys"}).
+			Draw(check, "section")
 		value := rapid.Int().Draw(check, "value")
 		path := filepath.Join(t.TempDir(), "invalid.toml")
 
@@ -422,7 +438,8 @@ func TestConfigurationUnknownKeysHaveNoEffectsProperty(t *testing.T) {
 
 func TestConfigurationInputSizeProperty(t *testing.T) {
 	rapid.Check(t, func(check *rapid.T) {
-		size := rapid.OneOf(rapid.IntRange(0, 1<<20), rapid.IntRange((1<<20)-4096, (1<<20)+4096)).Draw(check, "size")
+		size := rapid.OneOf(rapid.IntRange(0, 1<<20), rapid.IntRange((1<<20)-4096, (1<<20)+4096)).
+			Draw(check, "size")
 		path := filepath.Join(t.TempDir(), "config.toml")
 
 		content := strings.Repeat(" ", size)

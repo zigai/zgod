@@ -446,13 +446,19 @@ func TestNewModelSearchesBeyondTenThousandEntries(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	stmtHist, err := tx.Prepare(`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname) VALUES (?, 0, 0, ?, '', '', '')`)
+	stmtHist, err := tx.Prepare(
+		`INSERT INTO history (ts_ms, duration, exit_code, command, directory, session_id, hostname) ` +
+			`VALUES (?, 0, 0, ?, '', '', '')`,
+	)
 	if err != nil {
 		t.Fatalf("Prepare history error: %v", err)
 	}
 	defer stmtHist.Close()
 
-	stmtLatest, err := tx.Prepare(`INSERT INTO latest_command (command, history_id, ts_ms, duration, exit_code, directory) VALUES (?, ?, ?, 0, 0, '')`)
+	stmtLatest, err := tx.Prepare(
+		`INSERT INTO latest_command (command, history_id, ts_ms, duration, exit_code, directory) ` +
+			`VALUES (?, ?, ?, 0, 0, '')`,
+	)
 	if err != nil {
 		t.Fatalf("Prepare latest_command error: %v", err)
 	}
@@ -542,7 +548,9 @@ func TestHistoryLoadsInLimitedBatchThenFullSet(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	for i, command := range []string{"old target", "middle command", "new command"} {
-		if _, err = repo.Insert(db.HistoryEntry{TimestampMS: int64(i + 1), Command: command}); err != nil {
+		if _, err = repo.Insert(
+			db.HistoryEntry{TimestampMS: int64(i + 1), Command: command},
+		); err != nil {
 			t.Fatalf("repo.Insert(%q) error: %v", command, err)
 		}
 	}
@@ -599,7 +607,9 @@ func TestInitialQueryDefersFallbackUntilFullHistoryLoads(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	for i, command := range []string{"old unique target", "new filler", "newer filler"} {
-		if _, err = repo.Insert(db.HistoryEntry{TimestampMS: int64(i + 1), Command: command}); err != nil {
+		if _, err = repo.Insert(
+			db.HistoryEntry{TimestampMS: int64(i + 1), Command: command},
+		); err != nil {
 			t.Fatalf("repo.Insert(%q) error: %v", command, err)
 		}
 	}
@@ -620,7 +630,11 @@ func TestInitialQueryDefersFallbackUntilFullHistoryLoads(t *testing.T) {
 	}
 
 	if !m.loadingHistory || m.historyComplete {
-		t.Fatalf("load state after limited batch = loadingHistory:%v historyComplete:%v, want true/false", m.loadingHistory, m.historyComplete)
+		t.Fatalf(
+			"load state after limited batch = loadingHistory:%v historyComplete:%v, want true/false",
+			m.loadingHistory,
+			m.historyComplete,
+		)
 	}
 
 	acceptCmd, handled := m.handleControlKeys(tea.KeyMsg{Type: tea.KeyEnter})
@@ -629,7 +643,12 @@ func TestInitialQueryDefersFallbackUntilFullHistoryLoads(t *testing.T) {
 	}
 
 	if acceptCmd != nil || m.quitting || m.Selected() != "" {
-		t.Fatalf("accept while full load pending returned cmd:%v quitting:%v selected:%q, want no selection", acceptCmd, m.quitting, m.Selected())
+		t.Fatalf(
+			"accept while full load pending returned cmd:%v quitting:%v selected:%q, want no selection",
+			acceptCmd,
+			m.quitting,
+			m.Selected(),
+		)
 	}
 
 	runHistoryLoadCmd(t, m, next)
@@ -657,7 +676,9 @@ func TestLimitedBatchCompletesWhenFewerThanLimitLoaded(t *testing.T) {
 
 	repo := db.NewHistoryRepo(database)
 	for i, command := range []string{"one", "two", "three"} {
-		if _, err = repo.Insert(db.HistoryEntry{TimestampMS: int64(i + 1), Command: command}); err != nil {
+		if _, err = repo.Insert(
+			db.HistoryEntry{TimestampMS: int64(i + 1), Command: command},
+		); err != nil {
 			t.Fatalf("repo.Insert(%q) error: %v", command, err)
 		}
 	}
@@ -670,7 +691,9 @@ func TestLimitedBatchCompletesWhenFewerThanLimitLoaded(t *testing.T) {
 	next := runHistoryLoadCmd(t, m, cmd)
 
 	if next != nil {
-		t.Fatal("next history load command is non-nil, want no full reload when limited batch is complete")
+		t.Fatal(
+			"next history load command is non-nil, want no full reload when limited batch is complete",
+		)
 	}
 
 	if m.loadingHistory {

@@ -153,7 +153,11 @@ func TestImportHistoryEntriesSkipsMissingRequiredPaths(t *testing.T) {
 	}
 
 	if summary.skippedMissingPath != len(entries) {
-		t.Fatalf("summary.skippedMissingPath = %d, want %d", summary.skippedMissingPath, len(entries))
+		t.Fatalf(
+			"summary.skippedMissingPath = %d, want %d",
+			summary.skippedMissingPath,
+			len(entries),
+		)
 	}
 }
 
@@ -283,7 +287,11 @@ func TestImportHistoryEntriesUpdatesLatestCommandForNewestStagedRow(t *testing.T
 		directory   string
 	)
 
-	row := database.QueryRowContext(context.Background(), `SELECT ts_ms, directory FROM latest_command WHERE command = ?`, "repeat")
+	row := database.QueryRowContext(
+		context.Background(),
+		`SELECT ts_ms, directory FROM latest_command WHERE command = ?`,
+		"repeat",
+	)
 	if err = row.Scan(&timestampMS, &directory); err != nil {
 		t.Fatalf("reading latest_command: %v", err)
 	}
@@ -332,7 +340,10 @@ func TestImportHistoryEntriesFiltersBeforeStaging(t *testing.T) {
 	}
 }
 
-func generatedImportSource(t *testing.T, check *rapid.T) ([]db.HistoryEntry, map[db.HistoryEntry]importPathCheckStatus) {
+func generatedImportSource(
+	t *testing.T,
+	check *rapid.T,
+) ([]db.HistoryEntry, map[db.HistoryEntry]importPathCheckStatus) {
 	t.Helper()
 	dir := t.TempDir()
 
@@ -371,7 +382,12 @@ func generatedImportSource(t *testing.T, check *rapid.T) ([]db.HistoryEntry, map
 	return entries, categories
 }
 
-func expectedImport(original, source []db.HistoryEntry, categories map[db.HistoryEntry]importPathCheckStatus, opts importOptions) (importSummary, []db.HistoryEntry) {
+func expectedImport(
+	original []db.HistoryEntry,
+	source []db.HistoryEntry,
+	categories map[db.HistoryEntry]importPathCheckStatus,
+	opts importOptions,
+) (importSummary, []db.HistoryEntry) {
 	summary := importSummary{total: len(source)}
 
 	entries := append([]db.HistoryEntry(nil), original...)
@@ -397,7 +413,12 @@ func expectedImport(original, source []db.HistoryEntry, categories map[db.Histor
 	return summary, entries
 }
 
-func assertImportedRecords(check *rapid.T, stored, original, expected []db.HistoryEntry) {
+func assertImportedRecords(
+	check *rapid.T,
+	stored []db.HistoryEntry,
+	original []db.HistoryEntry,
+	expected []db.HistoryEntry,
+) {
 	check.Helper()
 
 	if !reflect.DeepEqual(historyRecordCounts(stored), historyRecordCounts(expected)) {
@@ -460,7 +481,9 @@ func TestImportConservationProperty(t *testing.T) {
 			check.Fatal(err)
 		}
 
-		if got != want || got.total != got.imported+got.skippedDuplicate+got.skippedFailed+got.skippedMissingPath+got.skippedPathError {
+		if got != want ||
+			got.total != got.imported+got.skippedDuplicate+got.skippedFailed+
+				got.skippedMissingPath+got.skippedPathError {
 			check.Fatalf("summary = %#v, want %#v", got, want)
 		}
 
@@ -473,15 +496,32 @@ func TestImportConservationProperty(t *testing.T) {
 	})
 }
 
-func failingImportStream(check *rapid.T, database *sql.DB, entries []db.HistoryEntry, phase string) historyEntryStreamer {
+func failingImportStream(
+	check *rapid.T,
+	database *sql.DB,
+	entries []db.HistoryEntry,
+	phase string,
+) historyEntryStreamer {
 	check.Helper()
 
 	if phase == "history" {
-		execPropertySQL(check, database, fmt.Sprintf(`CREATE TRIGGER reject_import BEFORE INSERT ON history WHEN NEW.command LIKE 'incoming-%d %%' BEGIN SELECT RAISE(ABORT, 'unavailable'); END`, len(entries)-1))
+		execPropertySQL(
+			check,
+			database,
+			fmt.Sprintf(
+				`CREATE TRIGGER reject_import BEFORE INSERT ON history WHEN NEW.command LIKE 'incoming-%d %%' `+
+					`BEGIN SELECT RAISE(ABORT, 'unavailable'); END`,
+				len(entries)-1,
+			),
+		)
 	}
 
 	if phase == "cache" {
-		execPropertySQL(check, database, `CREATE TRIGGER reject_cache BEFORE INSERT ON latest_command BEGIN SELECT RAISE(ABORT, 'unavailable'); END`)
+		execPropertySQL(
+			check,
+			database,
+			`CREATE TRIGGER reject_cache BEFORE INSERT ON latest_command BEGIN SELECT RAISE(ABORT, 'unavailable'); END`,
+		)
 	}
 
 	failAt := rapid.IntRange(1, len(entries)-1).Draw(check, "fail-after")
@@ -519,10 +559,15 @@ func TestImportRollbackProperty(t *testing.T) {
 			entries[index].Command = fmt.Sprintf("incoming-%d %s", index, entries[index].Command)
 		}
 
-		phase := rapid.SampledFrom([]string{"stream", "history", "cache"}).Draw(check, "failure-phase")
+		phase := rapid.SampledFrom([]string{"stream", "history", "cache"}).
+			Draw(check, "failure-phase")
 		stream := failingImportStream(check, database, entries, phase)
 
-		_, err = importHistoryEntriesFromStreamer(database, importOptions{includeFailed: true, includeMissingPaths: true}, stream)
+		_, err = importHistoryEntriesFromStreamer(
+			database,
+			importOptions{includeFailed: true, includeMissingPaths: true},
+			stream,
+		)
 		if err == nil || (phase == "stream" && !errors.Is(err, io.ErrUnexpectedEOF)) {
 			check.Fatalf("failed import error = %v", err)
 		}
@@ -534,7 +579,12 @@ func TestImportRollbackProperty(t *testing.T) {
 
 		afterCandidates, err := repo.FetchCandidates(0, true, db.FailFilterInclude)
 		if err != nil || !reflect.DeepEqual(afterCandidates, beforeCandidates) {
-			check.Fatalf("failed import changed candidates: %#v, want %#v, error: %v", afterCandidates, beforeCandidates, err)
+			check.Fatalf(
+				"failed import changed candidates: %#v, want %#v, error: %v",
+				afterCandidates,
+				beforeCandidates,
+				err,
+			)
 		}
 	})
 }
@@ -550,7 +600,9 @@ func TestRunImportReadableSourceImportsEntries(t *testing.T) {
 	}
 
 	sourceRepo := db.NewHistoryRepo(sourceDB)
-	if _, err = sourceRepo.Insert(db.HistoryEntry{TimestampMS: 1000, Command: "echo imported"}); err != nil {
+	if _, err = sourceRepo.Insert(
+		db.HistoryEntry{TimestampMS: 1000, Command: "echo imported"},
+	); err != nil {
 		_ = sourceDB.Close()
 
 		t.Fatalf("Insert(source) error: %v", err)

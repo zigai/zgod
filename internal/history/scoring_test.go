@@ -22,7 +22,11 @@ func TestScoreAndSortUsesRecencyOrderForTies(t *testing.T) {
 	got := ScoreAndSort(entries, matches, ScoringOpts{})
 
 	if got[0].Entry.Command != "newer" || got[1].Entry.Command != "older" {
-		t.Fatalf("ScoreAndSort() order = %q, %q; want newer, older", got[0].Entry.Command, got[1].Entry.Command)
+		t.Fatalf(
+			"ScoreAndSort() order = %q, %q; want newer, older",
+			got[0].Entry.Command,
+			got[1].Entry.Command,
+		)
 	}
 }
 

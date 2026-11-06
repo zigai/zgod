@@ -139,7 +139,10 @@ func sqliteDSN(dbPath string, opts sqliteDSNOptions) (string, error) {
 	}
 
 	uriPath := filepath.ToSlash(absolutePath)
-	if volume := filepath.VolumeName(absolutePath); volume != "" && !strings.HasPrefix(uriPath, "/") {
+	if volume := filepath.VolumeName(
+		absolutePath,
+	); volume != "" &&
+		!strings.HasPrefix(uriPath, "/") {
 		uriPath = "/" + uriPath
 	}
 
@@ -221,7 +224,12 @@ func ensureSQLiteJournalModeWAL(db *sql.DB) error {
 		return nil
 	}
 
-	if err = applySQLitePragmaWithRetry(db, writePragma, sqliteJournalModeRetryCount, sqliteJournalModeRetryBackoff); err != nil {
+	if err = applySQLitePragmaWithRetry(
+		db,
+		writePragma,
+		sqliteJournalModeRetryCount,
+		sqliteJournalModeRetryBackoff,
+	); err != nil {
 		return fmt.Errorf("applying sqlite pragma %q: %w", writePragma, err)
 	}
 
@@ -240,7 +248,12 @@ func readSQLitePragmaString(db *sql.DB, pragma string) (string, error) {
 	return value, nil
 }
 
-func applySQLitePragmaWithRetry(db *sql.DB, pragma string, retries int, backoff time.Duration) error {
+func applySQLitePragmaWithRetry(
+	db *sql.DB,
+	pragma string,
+	retries int,
+	backoff time.Duration,
+) error {
 	ctx := context.Background()
 
 	var lastErr error

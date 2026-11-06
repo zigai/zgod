@@ -6,7 +6,9 @@ import (
 	"github.com/zigai/zgod/internal/db"
 )
 
+//exhaustruct:optional
 type CandidateOpts struct {
+	//exhaustruct:optional
 	Limit      int
 	Dedupe     bool
 	FailFilter db.FailFilterMode

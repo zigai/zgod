@@ -18,16 +18,27 @@ func (c Config) validateValues() error {
 		{"display.duration_format", c.Display.DurationFormat, []string{"", "auto", "ms", "s"}},
 	} {
 		if !slices.Contains(setting.choices, setting.value) {
-			return fmt.Errorf("%w: %s must be one of %q", errInvalidSetting, setting.key, setting.choices)
+			return fmt.Errorf(
+				"%w: %s must be one of %q",
+				errInvalidSetting,
+				setting.key,
+				setting.choices,
+			)
 		}
 	}
 
 	if c.Display.StartupLimit < 0 {
-		return fmt.Errorf("%w: display.startup_limit must be nonnegative (0 loads all history)", errInvalidSetting)
+		return fmt.Errorf(
+			"%w: display.startup_limit must be nonnegative (0 loads all history)",
+			errInvalidSetting,
+		)
 	}
 
 	if c.Filters.MaxCommandLength < 0 {
-		return fmt.Errorf("%w: filters.max_command_length must be nonnegative (0 disables the limit)", errInvalidSetting)
+		return fmt.Errorf(
+			"%w: filters.max_command_length must be nonnegative (0 disables the limit)",
+			errInvalidSetting,
+		)
 	}
 
 	return c.validateFilterPatterns()
@@ -50,7 +61,10 @@ func (c Config) validateFilterPatterns() error {
 
 	for _, pattern := range c.Filters.DirectoryGlob {
 		if !doublestar.ValidatePattern(pattern) {
-			return fmt.Errorf("%w: filters.directory_glob contains an invalid glob", errInvalidSetting)
+			return fmt.Errorf(
+				"%w: filters.directory_glob contains an invalid glob",
+				errInvalidSetting,
+			)
 		}
 	}
 

@@ -18,7 +18,12 @@ func TestInvalidValuesDoNotCreateDefaults(t *testing.T) {
 		t.Run(assignment, func(t *testing.T) {
 			path := setTestHomes(t, t.TempDir())
 
-			opts := LoadOptions{Path: "", NoConfig: false, NoCreate: false, Overrides: []string{assignment}}
+			opts := LoadOptions{
+				Path:      "",
+				NoConfig:  false,
+				NoCreate:  false,
+				Overrides: []string{assignment},
+			}
 			if _, err := LoadWithOptions(opts); err == nil {
 				t.Fatal("invalid value accepted")
 			}

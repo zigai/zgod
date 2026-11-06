@@ -148,7 +148,12 @@ func RegexCommands(re *regexp.Regexp, candidates []string, dst []Match) []Match 
 	return matches
 }
 
-func matchLiteralCandidateFold(c string, patternASCII bool, lowerPattern string, getRe func() *regexp.Regexp) bool {
+func matchLiteralCandidateFold(
+	c string,
+	patternASCII bool,
+	lowerPattern string,
+	getRe func() *regexp.Regexp,
+) bool {
 	if patternASCII {
 		ok, ascii := containsFoldASCII(c, lowerPattern)
 		if ascii {

@@ -66,12 +66,12 @@ func Install(s Shell, customConfigPath string) error {
 	line := setupLineWithBin(s, customConfigPath, CurrentExecutablePath())
 	legacyLine := setupLine(s, customConfigPath)
 
-	if err = ensureNoLegacyFishInstall(s, configPath, line); err != nil {
+	if err := ensureNoLegacyFishInstall(s, configPath, line); err != nil {
 		return err
 	}
 
 	if legacyLine != line {
-		if err = ensureNoLegacyFishInstall(s, configPath, legacyLine); err != nil {
+		if err := ensureNoLegacyFishInstall(s, configPath, legacyLine); err != nil {
 			return err
 		}
 	}
@@ -99,7 +99,7 @@ func Install(s Shell, customConfigPath string) error {
 		return nil
 	}
 
-	if err = writeSetupLine(configPath, content, line); err != nil {
+	if err := writeSetupLine(configPath, content, line); err != nil {
 		return err
 	}
 
@@ -159,7 +159,12 @@ func templateName(s Shell) string {
 func powerShellProfilePathForHome(home string, s Shell, goos string) string {
 	if goos == "windows" {
 		if s == PowerShell {
-			return filepath.Join(home, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1")
+			return filepath.Join(
+				home,
+				"Documents",
+				"WindowsPowerShell",
+				"Microsoft.PowerShell_profile.ps1",
+			)
 		}
 
 		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
@@ -204,22 +209,41 @@ func setupLine(s Shell, customConfigPath string) string {
 	switch s {
 	case Bash, Zsh:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`if command -v zgod >/dev/null 2>&1; then eval "$(zgod init %s --config %s)"; fi`, shellName, bashQuote(customConfigPath))
+			return fmt.Sprintf(
+				`if command -v zgod >/dev/null 2>&1; then eval "$(zgod init %s --config %s)"; fi`,
+				shellName,
+				bashQuote(customConfigPath),
+			)
 		}
 
-		return fmt.Sprintf(`if command -v zgod >/dev/null 2>&1; then eval "$(zgod init %s)"; fi`, shellName)
+		return fmt.Sprintf(
+			`if command -v zgod >/dev/null 2>&1; then eval "$(zgod init %s)"; fi`,
+			shellName,
+		)
 	case Fish:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`type -q zgod; and zgod init %s --config %s | source`, shellName, fishQuote(customConfigPath))
+			return fmt.Sprintf(
+				`type -q zgod; and zgod init %s --config %s | source`,
+				shellName,
+				fishQuote(customConfigPath),
+			)
 		}
 
 		return fmt.Sprintf(`type -q zgod; and zgod init %s | source`, shellName)
 	case PowerShell, Pwsh:
 		if customConfigPath != "" {
-			return fmt.Sprintf(`if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init %s --config %s) }`, shellName, powerShellQuote(customConfigPath))
+			return fmt.Sprintf(
+				`if (Get-Command zgod -ErrorAction SilentlyContinue) `+
+					`{ Invoke-Expression (& zgod init %s --config %s) }`,
+				shellName,
+				powerShellQuote(customConfigPath),
+			)
 		}
 
-		return fmt.Sprintf(`if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init %s) }`, shellName)
+		return fmt.Sprintf(
+			`if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod init %s) }`,
+			shellName,
+		)
 	}
 
 	return ""
@@ -236,10 +260,21 @@ func setupLineWithBin(s Shell, customConfigPath string, binPath string) string {
 		}
 
 		if customConfigPath != "" {
-			return fmt.Sprintf(`if command -v %s >/dev/null 2>&1; then eval "$(%s init %s --config %s)"; fi`, bin, bin, shellName, bashQuote(customConfigPath))
+			return fmt.Sprintf(
+				`if command -v %s >/dev/null 2>&1; then eval "$(%s init %s --config %s)"; fi`,
+				bin,
+				bin,
+				shellName,
+				bashQuote(customConfigPath),
+			)
 		}
 
-		return fmt.Sprintf(`if command -v %s >/dev/null 2>&1; then eval "$(%s init %s)"; fi`, bin, bin, shellName)
+		return fmt.Sprintf(
+			`if command -v %s >/dev/null 2>&1; then eval "$(%s init %s)"; fi`,
+			bin,
+			bin,
+			shellName,
+		)
 	case Fish:
 		bin := binPath
 
@@ -248,10 +283,23 @@ func setupLineWithBin(s Shell, customConfigPath string, binPath string) string {
 		}
 
 		if customConfigPath != "" {
-			return fmt.Sprintf(`if test -x %s; or type -q %s; %s init %s --config %s | source; end`, bin, bin, bin, shellName, fishQuote(customConfigPath))
+			return fmt.Sprintf(
+				`if test -x %s; or type -q %s; %s init %s --config %s | source; end`,
+				bin,
+				bin,
+				bin,
+				shellName,
+				fishQuote(customConfigPath),
+			)
 		}
 
-		return fmt.Sprintf(`if test -x %s; or type -q %s; %s init %s | source; end`, bin, bin, bin, shellName)
+		return fmt.Sprintf(
+			`if test -x %s; or type -q %s; %s init %s | source; end`,
+			bin,
+			bin,
+			bin,
+			shellName,
+		)
 	case PowerShell, Pwsh:
 		bin := binPath
 
@@ -260,10 +308,25 @@ func setupLineWithBin(s Shell, customConfigPath string, binPath string) string {
 		}
 
 		if customConfigPath != "" {
-			return fmt.Sprintf(`if ((Test-Path -LiteralPath %s -PathType Leaf) -or (Get-Command %s -ErrorAction SilentlyContinue)) { Invoke-Expression (& %s init %s --config %s) }`, bin, bin, bin, shellName, powerShellQuote(customConfigPath))
+			return fmt.Sprintf(
+				`if ((Test-Path -LiteralPath %s -PathType Leaf) -or (Get-Command %s -ErrorAction SilentlyContinue)) `+
+					`{ Invoke-Expression (& %s init %s --config %s) }`,
+				bin,
+				bin,
+				bin,
+				shellName,
+				powerShellQuote(customConfigPath),
+			)
 		}
 
-		return fmt.Sprintf(`if ((Test-Path -LiteralPath %s -PathType Leaf) -or (Get-Command %s -ErrorAction SilentlyContinue)) { Invoke-Expression (& %s init %s) }`, bin, bin, bin, shellName)
+		return fmt.Sprintf(
+			`if ((Test-Path -LiteralPath %s -PathType Leaf) -or (Get-Command %s -ErrorAction SilentlyContinue)) `+
+				`{ Invoke-Expression (& %s init %s) }`,
+			bin,
+			bin,
+			bin,
+			shellName,
+		)
 	}
 
 	return ""
@@ -309,7 +372,7 @@ func writeSetupLine(configPath string, content []byte, line string) error {
 	return nil
 }
 
-func ensureNoLegacyFishInstall(s Shell, configPath, line string) error {
+func ensureNoLegacyFishInstall(s Shell, configPath string, line string) error {
 	if s != Fish {
 		return nil
 	}
@@ -340,7 +403,12 @@ func ensureNoLegacyFishInstall(s Shell, configPath, line string) error {
 	return nil
 }
 
-func updateSetupLine(configPath string, contentText string, oldLine string, newLine string) (bool, error) {
+func updateSetupLine(
+	configPath string,
+	contentText string,
+	oldLine string,
+	newLine string,
+) (bool, error) {
 	if oldLine == newLine || !strings.Contains(contentText, oldLine) {
 		return false, nil
 	}

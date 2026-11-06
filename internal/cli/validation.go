@@ -51,16 +51,26 @@ func validateCommand(cmd *cobra.Command) error {
 func validateConfigCommand(cmd *cobra.Command, overrides []string) error {
 	switch cmd.Name() {
 	case "show":
-		if flagBool(cmd, "raw") && (flagBool(cmd, "json") || flagBool(cmd, "no-config") || len(overrides) != 0) {
-			return fmt.Errorf("%w: --raw requires a config file and cannot be combined with --json or --set", errUsage)
+		if flagBool(cmd, "raw") &&
+			(flagBool(cmd, "json") || flagBool(cmd, "no-config") || len(overrides) != 0) {
+			return fmt.Errorf(
+				"%w: --raw requires a config file and cannot be combined with --json or --set",
+				errUsage,
+			)
 		}
 	case "edit":
 		if flagBool(cmd, "no-config") || len(overrides) != 0 {
-			return fmt.Errorf("%w: config edit requires a disk file; omit --no-config and --set", errUsage)
+			return fmt.Errorf(
+				"%w: config edit requires a disk file; omit --no-config and --set",
+				errUsage,
+			)
 		}
 
 		if !inputIsTerminal(cmd) {
-			return fmt.Errorf("%w: config edit needs interactive stdin; use 'zgod config show' to inspect configuration", errUsage)
+			return fmt.Errorf(
+				"%w: config edit needs interactive stdin; use 'zgod config show' to inspect configuration",
+				errUsage,
+			)
 		}
 	}
 
@@ -73,7 +83,10 @@ func validateSearch(cmd *cobra.Command) error {
 	}
 
 	if flagBool(cmd, "shell") && !inputIsTerminal(cmd) {
-		return fmt.Errorf("%w: --shell needs terminal stdin; omit --shell to print matching commands", errUsage)
+		return fmt.Errorf(
+			"%w: --shell needs terminal stdin; omit --shell to print matching commands",
+			errUsage,
+		)
 	}
 
 	return validateQuery(flagString(cmd, "mode"), flagString(cmd, "query"))
@@ -102,7 +115,7 @@ func validateSearchOptions(cmd *cobra.Command) error {
 	return nil
 }
 
-func validateQuery(mode, query string) error {
+func validateQuery(mode string, query string) error {
 	if mode == "glob" && !doublestar.ValidatePattern(query) {
 		return fmt.Errorf("%w: invalid glob query", errUsage)
 	}
@@ -137,7 +150,11 @@ func validateRecord(cmd *cobra.Command) error {
 	}
 
 	if code < minimumExitCode || int64(code) > math.MaxUint32 {
-		return fmt.Errorf("%w: --exit-code must be between %d and 4294967295", errUsage, minimumExitCode)
+		return fmt.Errorf(
+			"%w: --exit-code must be between %d and 4294967295",
+			errUsage,
+			minimumExitCode,
+		)
 	}
 
 	return nil
@@ -166,7 +183,10 @@ func configOptions(cmd *cobra.Command) config.LoadOptions {
 		}
 
 		if cmd.Flags().Changed("mode") {
-			overrides = append(overrides, fmt.Sprintf("display.default_mode = %q", flagString(cmd, "mode")))
+			overrides = append(
+				overrides,
+				fmt.Sprintf("display.default_mode = %q", flagString(cmd, "mode")),
+			)
 		}
 	}
 
