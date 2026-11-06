@@ -7,10 +7,19 @@ formatters:
   enable:
     - goimports
     - gofumpt
+    - golines
   settings:
+    gofumpt:
+      extra:
+        balance-calls: true
+    golines:
+      max-len: 100
+      reformat-tags: false
     goimports:
       local-prefixes:
         - github.com/zigai/zgod
+  exclusions:
+    paths:
 
 linters:
   enable:
@@ -64,6 +73,7 @@ linters:
     - interfacebloat
     - intrange
     - iotamixing
+    - lll
     - loggercheck
     - maintidx
     - makezero
@@ -112,6 +122,9 @@ linters:
     - zerologlint
 
   settings:
+    thelper:
+      benchmark:
+        begin: false
     embeddedstructfieldcheck:
       forbid-mutex: true
     errcheck:
@@ -120,7 +133,6 @@ linters:
     exhaustive:
       check:
         - switch
-        - map
 
     gochecksumtype:
       default-signifies-exhaustive: false
@@ -145,7 +157,11 @@ linters:
     goconst:
       min-occurrences: 16
 
+    lll:
+      line-length: 120
+      tab-width: 4
     gocritic:
+      enabled-tags: [diagnostic]
       settings:
         captLocal:
           paramsOnly: false
@@ -215,6 +231,8 @@ linters:
         - name: indent-error-flow
         - name: superfluous-else
         - name: modifies-parameter
+        - name: enforce-repeated-arg-type-style
+          arguments: ["full"]
         - name: unreachable-code
           disabled: true
         - name: redefines-builtin-id
@@ -224,6 +242,27 @@ linters:
       packages:
         - github.com/jmoiron/sqlx
 
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+          yaml: snake
+          toml: snake
+    exhaustruct_v5:
+      allow-empty-returns: true
+      # Types whose zero fields mean "use the default". Mark such types in
+      # this module with //exhaustruct:optional instead of listing them here.
+      ignore-patterns:
+        - "^github\\.com/spf13/cobra\\..+$"
+        - "^github\\.com/spf13/pflag\\..+$"
+        - "^github\\.com/urfave/cli(/v[0-9]+)?\\..+$"
+        - "^net/http\\.(Client|Server|Transport)$"
+        - "^net\\.(Dialer|ListenConfig)$"
+        - "^net/url\\.URL$"
+        - "^crypto/tls\\.Config$"
+        - "^log/slog\\.HandlerOptions$"
+        - "^os/exec\\.Cmd$"
+        - "^syscall\\.SysProcAttr$"
     staticcheck:
       checks:
         - all
@@ -232,13 +271,14 @@ linters:
         - -QF1008
 
     nolintlint:
-      allow-no-explanation: [funlen, gocognit, golines]
+      allow-no-explanation: [gocognit, golines]
       require-explanation: true
       require-specific: true
 
     gosec:
       excludes:
-        - G204 # exec.Command from $EDITOR is user-controlled by design
+        - G306 # file perms
+        - G204 # subprocess launched with variable
         - G301 # directory perms
         - G302 # file perms
         - G304 # file path from variable
@@ -254,25 +294,8 @@ linters:
       - text: 'shadow: declaration of "err" shadows declaration at'
         linters: [govet]
 
-      - source: "cobra\\."
-        linters: [exhaustruct_v5]
-      - source: "TODO"
-        linters: [godot]
-
-      - path: "internal/cli/.*\\.go"
-        source: "cobra\\."
-        linters: [exhaustruct_v5]
-
-      - path: "internal/cli/import_paths\\.go"
-        source: "pathCandidate\\{"
-        linters: [exhaustruct_v5]
-
-      - path: "internal/db/db\\.go"
-        source: "url\\.URL\\{"
-        linters: [exhaustruct_v5]
-
       - path: "internal/tui/.*\\.go"
-        linters: [cyclop, exhaustruct_v5, mnd]
+        linters: [mnd]
 
       - path: "_test\\.go"
         linters:
@@ -286,6 +309,50 @@ linters:
           - cyclop
           - decorder
           - funcorder
+          - dupl
+          - maintidx
+
+      # Test-helper packages (named like httptest) only build fixtures.
+      - path: "(^|/)[a-z0-9]+test/"
+        linters: [exhaustruct_v5]
+
+      # Existing camel-case JSON names are consumed by CLI clients and persisted pending records.
+      - path: "^internal/cli/output\\.go$"
+        linters: [tagliatelle]
+        text: "^json\\(snake\\):"
+        source: "^\\s*(?:DurationMS\\ \\ int64\\ \\ `json:\"durationMs\"`|ExitCode\\ \\ \\ \\ int\\ \\ \\ \\ `json:\"exitCode\"`|TimestampMS\\ int64\\ \\ `json:\"timestampMs\"`)$"
+
+      # Existing camel-case JSON names are consumed by CLI clients and persisted pending records.
+      - path: "^internal/cli/record\\.go$"
+        linters: [tagliatelle]
+        text: "^json\\(snake\\):"
+        source: "^\\s*(?:ExitCode\\ \\ \\ \\ int\\ \\ \\ \\ `json:\"exitCode\"`|SessionID\\ \\ \\ string\\ `json:\"sessionId\"`|TimestampMS\\ int64\\ \\ `json:\"tsMs\"`)$"
+
+      # Existing camel-case JSON names are consumed by CLI clients and persisted pending records.
+      - path: "^internal/config/config\\.go$"
+        linters: [tagliatelle]
+        text: "^json\\(snake\\):"
+        source: "^\\s*(?:CommandGlob\\ \\ \\ \\ \\ \\ \\[\\]string\\ `json:\"commandGlob\"\\ \\ \\ \\ \\ \\ toml:\"command_glob\"`|CommandRegex\\ \\ \\ \\ \\ \\[\\]string\\ `json:\"commandRegex\"\\ \\ \\ \\ \\ toml:\"command_regex\"`|DirectoryGlob\\ \\ \\ \\ \\[\\]string\\ `json:\"directoryGlob\"\\ \\ \\ \\ toml:\"directory_glob\"`|DirectoryRegex\\ \\ \\ \\[\\]string\\ `json:\"directoryRegex\"\\ \\ \\ toml:\"directory_regex\"`|ExitCode\\ \\ \\ \\ \\ \\ \\ \\ \\ \\[\\]int\\ \\ \\ \\ `json:\"exitCode\"\\ \\ \\ \\ \\ \\ \\ \\ \\ toml:\"exit_code\"`|IgnoreSpace\\ \\ \\ \\ \\ \\ bool\\ \\ \\ \\ \\ `json:\"ignoreSpace\"\\ \\ \\ \\ \\ \\ toml:\"ignore_space\"`|MaxCommandLength\\ int\\ \\ \\ \\ \\ \\ `json:\"maxCommandLength\"\\ toml:\"max_command_length\"`)$"
+
+      # Existing camel-case JSON names are consumed by CLI clients and persisted pending records.
+      - path: "^internal/config/display\\.go$"
+        linters: [tagliatelle]
+        text: "^json\\(snake\\):"
+        source: "^\\s*(?:CWDBoost\\ \\ \\ \\ \\ \\ \\ \\ \\ \\ int\\ \\ \\ \\ `json:\"cwdBoost\"\\ \\ \\ \\ \\ \\ \\ \\ \\ \\ toml:\"cwd_boost\"`|DefaultFailFilter\\ string\\ `json:\"defaultFailFilter\"\\ toml:\"default_fail_filter\"`|DefaultMode\\ \\ \\ \\ \\ \\ \\ string\\ `json:\"defaultMode\"\\ \\ \\ \\ \\ \\ \\ toml:\"default_mode\"`|DefaultScope\\ \\ \\ \\ \\ \\ string\\ `json:\"defaultScope\"\\ \\ \\ \\ \\ \\ toml:\"default_scope\"`|DurationFormat\\ \\ \\ \\ string\\ `json:\"durationFormat\"\\ \\ \\ \\ toml:\"duration_format\"`|EnableFuzzy\\ \\ \\ \\ \\ \\ \\ bool\\ \\ \\ `json:\"enableFuzzy\"\\ \\ \\ \\ \\ \\ \\ toml:\"enable_fuzzy\"`|EnableGlob\\ \\ \\ \\ \\ \\ \\ \\ bool\\ \\ \\ `json:\"enableGlob\"\\ \\ \\ \\ \\ \\ \\ \\ toml:\"enable_glob\"`|EnableRegex\\ \\ \\ \\ \\ \\ \\ bool\\ \\ \\ `json:\"enableRegex\"\\ \\ \\ \\ \\ \\ \\ toml:\"enable_regex\"`|HideMultiline\\ \\ \\ \\ \\ bool\\ \\ \\ `json:\"hideMultiline\"\\ \\ \\ \\ \\ toml:\"hide_multiline\"`|InstantExecute\\ \\ \\ \\ bool\\ \\ \\ `json:\"instantExecute\"\\ \\ \\ \\ toml:\"instant_execute\"`|MultilineCollapse\\ string\\ `json:\"multilineCollapse\"\\ toml:\"multiline_collapse\"`|MultilinePreview\\ \\ string\\ `json:\"multilinePreview\"\\ \\ toml:\"multiline_preview\"`|NerdFont\\ \\ \\ \\ \\ \\ \\ \\ \\ \\ bool\\ \\ \\ `json:\"nerdFont\"\\ \\ \\ \\ \\ \\ \\ \\ \\ \\ toml:\"nerd_font\"`|ShowDirectory\\ \\ \\ \\ \\ bool\\ \\ \\ `json:\"showDirectory\"\\ \\ \\ \\ \\ toml:\"show_directory\"`|ShowHints\\ \\ \\ \\ \\ \\ \\ \\ \\ bool\\ \\ \\ `json:\"showHints\"\\ \\ \\ \\ \\ \\ \\ \\ \\ toml:\"show_hints\"`|StartupLimit\\ \\ \\ \\ \\ \\ int\\ \\ \\ \\ `json:\"startupLimit\"\\ \\ \\ \\ \\ \\ toml:\"startup_limit\"`|TimeFormat\\ \\ \\ \\ \\ \\ \\ \\ string\\ `json:\"timeFormat\"\\ \\ \\ \\ \\ \\ \\ \\ toml:\"time_format\"`)$"
+
+      # Existing camel-case JSON names are consumed by CLI clients and persisted pending records.
+      - path: "^internal/config/keys\\.go$"
+        linters: [tagliatelle]
+        text: "^json\\(snake\\):"
+        source: "^\\s*(?:ModeFuzzy\\ \\ \\ \\ \\ \\ string\\ `json:\"modeFuzzy\"\\ \\ \\ \\ \\ \\ toml:\"mode_fuzzy\"`|ModeGlob\\ \\ \\ \\ \\ \\ \\ string\\ `json:\"modeGlob\"\\ \\ \\ \\ \\ \\ \\ toml:\"mode_glob\"`|ModeNext\\ \\ \\ \\ \\ \\ \\ string\\ `json:\"modeNext\"\\ \\ \\ \\ \\ \\ \\ toml:\"mode_next\"`|ModeRegex\\ \\ \\ \\ \\ \\ string\\ `json:\"modeRegex\"\\ \\ \\ \\ \\ \\ toml:\"mode_regex\"`|PageDown\\ \\ \\ \\ \\ \\ \\ string\\ `json:\"pageDown\"\\ \\ \\ \\ \\ \\ \\ toml:\"page_down\"`|PageUp\\ \\ \\ \\ \\ \\ \\ \\ \\ string\\ `json:\"pageUp\"\\ \\ \\ \\ \\ \\ \\ \\ \\ toml:\"page_up\"`|PreviewCommand\\ string\\ `json:\"previewCommand\"\\ toml:\"preview_command\"`|SortHistory\\ \\ \\ \\ string\\ `json:\"sortHistory\"\\ \\ \\ \\ toml:\"sort_history\"`|ToggleCWD\\ \\ \\ \\ \\ \\ string\\ `json:\"toggleCwd\"\\ \\ \\ \\ \\ \\ toml:\"toggle_cwd\"`|ToggleDedupe\\ \\ \\ string\\ `json:\"toggleDedupe\"\\ \\ \\ toml:\"toggle_dedupe\"`|ToggleFails\\ \\ \\ \\ string\\ `json:\"toggleFails\"\\ \\ \\ \\ toml:\"toggle_fails\"`)$"
+
+      # Existing camel-case JSON names are consumed by CLI clients and persisted pending records.
+      - path: "^internal/config/theme\\.go$"
+        linters: [tagliatelle]
+        text: "^json\\(snake\\):"
+        source: "^\\s*(?:BorderColor\\ \\ \\ \\ \\ \\ \\ string\\ `json:\"borderColor\"\\ \\ \\ \\ \\ \\ \\ toml:\"border_color\"`|MatchBg\\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ string\\ `json:\"matchBg\"\\ \\ \\ \\ \\ \\ \\ \\ \\ \\ \\ toml:\"match_bg\"`|MatchBold\\ \\ \\ \\ \\ \\ \\ \\ \\ \\*bool\\ \\ `json:\"matchBold\"\\ \\ \\ \\ \\ \\ \\ \\ \\ toml:\"match_bold\"`|MatchColor\\ \\ \\ \\ \\ \\ \\ \\ string\\ `json:\"matchColor\"\\ \\ \\ \\ \\ \\ \\ \\ toml:\"match_color\"`|MatchUnderline\\ \\ \\ \\ \\*bool\\ \\ `json:\"matchUnderline\"\\ \\ \\ \\ toml:\"match_underline\"`|ModeColor\\ \\ \\ \\ \\ \\ \\ \\ \\ string\\ `json:\"modeColor\"\\ \\ \\ \\ \\ \\ \\ \\ \\ toml:\"mode_color\"`|PromptColor\\ \\ \\ \\ \\ \\ \\ string\\ `json:\"promptColor\"\\ \\ \\ \\ \\ \\ \\ toml:\"prompt_color\"`|SelectedBg\\ \\ \\ \\ \\ \\ \\ \\ string\\ `json:\"selectedBg\"\\ \\ \\ \\ \\ \\ \\ \\ toml:\"selected_bg\"`|SelectedFg\\ \\ \\ \\ \\ \\ \\ \\ string\\ `json:\"selectedFg\"\\ \\ \\ \\ \\ \\ \\ \\ toml:\"selected_fg\"`|SelectionBarChar\\ \\ string\\ `json:\"selectionBarChar\"\\ \\ toml:\"selection_bar_char\"`|SelectionBarColor\\ string\\ `json:\"selectionBarColor\"\\ toml:\"selection_bar_color\"`|SelectionBarShow\\ \\ \\*bool\\ \\ `json:\"selectionBarShow\"\\ \\ toml:\"selection_bar_show\"`|SelectionFullLine\\ \\*bool\\ \\ `json:\"selectionFullLine\"\\ toml:\"selection_full_line\"`)$"
+      - path: "(?:(^|/)(node_modules|third_party|forks|vendor|testdata|fixtures|__fixtures__|snapshots|__snapshots__|__image_snapshots__|golden|corpus|fuzz_corpus|baselines|generated|\\.tmp|\\.gameops|\\.stryker-tmp|\\.cache)(/|$))"
+        linters: [whitespace]
 
 issues:
   max-issues-per-linter: 0
