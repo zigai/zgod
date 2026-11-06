@@ -15,7 +15,7 @@ Interactive shell history search with **fuzzy**, **regex**, and **glob** matchin
 - **Configurable UI:** prompt, colors, layout, multiline behavior
 - **Script output:** noninteractive search in JSON or plain text
 - **Custom keybindings**
-- **Supported shells:**  `bash`, `zsh`, `fish`, and `powershell`
+- **Supported shells:** `bash`, `zsh`, `fish`, and `powershell`
 
 ## Usage
 
@@ -94,33 +94,33 @@ if (Get-Command zgod -ErrorAction SilentlyContinue) { Invoke-Expression (& zgod 
 
 ## Keybindings
 
-| Key | Action |
-|---|---|
-| `enter` | Accept selection |
-| `esc` / `ctrl+c` | Cancel |
-| `up` / `ctrl+p` | Move up |
-| `down` / `ctrl+n` / `ctrl+r` | Move down |
-| `ctrl+s` | Cycle match mode (fuzzy / glob / regex) |
-| `ctrl+d` | Cancel when the query is empty |
-| `alt+d` | Toggle CWD filter |
-| `ctrl+g` | Toggle deduplication |
-| `ctrl+f` | Cycle fail filter (include/exclude/only) |
-| `alt+t` | Cycle date sort (newest/oldest/off) |
-| `alt+f` | Fuzzy mode |
-| `alt+r` | Regex mode |
-| `alt+g` | Glob mode |
-| `alt+p` | Preview multiline command (popup mode only) |
-| `ctrl+1` … `ctrl+9`, `ctrl+0` | Accept visible result 1-10 |
-| `?` | Help overlay |
+| Key                           | Action                                      |
+| ----------------------------- | ------------------------------------------- |
+| `enter`                       | Accept selection                            |
+| `esc` / `ctrl+c`              | Cancel                                      |
+| `up` / `ctrl+p`               | Move up                                     |
+| `down` / `ctrl+n` / `ctrl+r`  | Move down                                   |
+| `ctrl+s`                      | Cycle match mode (fuzzy / glob / regex)     |
+| `ctrl+d`                      | Cancel when the query is empty              |
+| `alt+d`                       | Toggle CWD filter                           |
+| `ctrl+g`                      | Toggle deduplication                        |
+| `ctrl+f`                      | Cycle fail filter (include/exclude/only)    |
+| `alt+t`                       | Cycle date sort (newest/oldest/off)         |
+| `alt+f`                       | Fuzzy mode                                  |
+| `alt+r`                       | Regex mode                                  |
+| `alt+g`                       | Glob mode                                   |
+| `alt+p`                       | Preview multiline command (popup mode only) |
+| `ctrl+1` … `ctrl+9`, `ctrl+0` | Accept visible result 1-10                  |
+| `?`                           | Help overlay                                |
 
 ## Configuration
 
 Default paths:
 
-| Platform | Config | History |
-|---|---|---|
+| Platform      | Config                       | History                          |
+| ------------- | ---------------------------- | -------------------------------- |
 | Linux / macOS | `~/.config/zgod/config.toml` | `~/.local/share/zgod/history.db` |
-| Windows | `%APPDATA%\zgod\config.toml` | `%LOCALAPPDATA%\zgod\history.db` |
+| Windows       | `%APPDATA%\zgod\config.toml` | `%LOCALAPPDATA%\zgod\history.db` |
 
 On Linux/macOS, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` override `~/.config` and
 `~/.local/share`, respectively.

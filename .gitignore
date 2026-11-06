@@ -36,3 +36,6 @@ zgod
 
 # GoReleaser
 dist/
+
+/bin/
+coverage/
