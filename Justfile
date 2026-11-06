@@ -30,8 +30,9 @@ fix: && format
 
 # Format every supported first-party file type
 format:
-    @golangci-lint run --fix --enable-only whitespace --issues-exit-code=0
+    @golangci-lint run --allow-parallel-runners --fix --enable-only whitespace --issues-exit-code=0
     @golangci-lint fmt
+    @git ls-files -co --exclude-standard -z | while IFS= read -r -d '' file; do if [[ -f $file ]]; then printf '%s\0' "$file"; fi; done | xargs -0 -r oxfmt --no-error-on-unmatched-pattern '!**/*.md' '!**/testdata/**'
     @git ls-files -co --exclude-standard -z | while IFS= read -r -d '' file; do if [[ -f $file ]]; then printf '%s\0' "$file"; fi; done | xargs -0 -r shfmt -f | xargs -r -d '\n' shfmt -w
     @git ls-files -co --exclude-standard -- Justfile justfile "*.just" | while IFS= read -r file; do just --justfile "$file" --fmt; done
     @just markdown fmt
@@ -53,11 +54,13 @@ clean: (remove "bin" "zgod" "zgod.exe" "dist" "coverage.out" "*.test" "*.prof" "
 
 # Check the same files and tools without writing
 formatcheck:
-    @golangci-lint run --enable-only whitespace
+    @golangci-lint run --allow-parallel-runners --enable-only whitespace
     @golangci-lint fmt --diff
+    @git ls-files -co --exclude-standard -z | while IFS= read -r -d '' file; do if [[ -f $file ]]; then printf '%s\0' "$file"; fi; done | xargs -0 -r oxfmt --check --no-error-on-unmatched-pattern '!**/*.md' '!**/testdata/**'
     @git ls-files -co --exclude-standard -z | while IFS= read -r -d '' file; do if [[ -f $file ]]; then printf '%s\0' "$file"; fi; done | xargs -0 -r shfmt -f | xargs -r -d '\n' shfmt -d
     @git ls-files -co --exclude-standard -- Justfile justfile "*.just" | while IFS= read -r file; do just --justfile "$file" --fmt --check; done
     @just markdown check
+    @git ls-files -co --exclude-standard -z | while IFS= read -r -d '' file; do if [[ -f $file ]]; then printf '%s\0' "$file"; fi; done | xargs -0 -r editorconfig-checker -disable-indent-size -disable-indentation -disable-max-line-length -disable-charset -exclude '/testdata/'
 
 # Compile the project without installing it
 build-check:
