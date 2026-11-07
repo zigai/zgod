@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -482,6 +483,12 @@ func TestVersionAndHelpStreams(t *testing.T) {
 
 		if out.Len() == 0 || diagnostics.Len() != 0 {
 			t.Fatalf("%s stdout=%q stderr=%q", arg, out.String(), diagnostics.String())
+		}
+
+		if arg != "--help" &&
+			!regexp.MustCompile(`^zgod \S+ \([^(),\s]+(?:, dirty)?\)\n$`).
+				MatchString(out.String()) {
+			t.Fatalf("%s version output=%q", arg, out.String())
 		}
 	}
 

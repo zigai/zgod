@@ -21,7 +21,7 @@ builds:
       - -s -w
       - -X github.com/zigai/zgod/internal/cli.version={{.Version}}
       - -X github.com/zigai/zgod/internal/cli.commit={{.ShortCommit}}
-      - -X github.com/zigai/zgod/internal/cli.date={{.Date}}
+      - -X github.com/zigai/zgod/internal/cli.dirty=false
 
 archives:
   - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"

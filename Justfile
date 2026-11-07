@@ -43,11 +43,15 @@ lint:
 
 # Build the binary with version info
 build:
-    go build -ldflags "-X github.com/zigai/zgod/internal/cli.version=dev -X github.com/zigai/zgod/internal/cli.commit=$(git rev-parse --short HEAD) -X github.com/zigai/zgod/internal/cli.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o bin/zgod .
+    #!/usr/bin/env sh
+    set -e
+    version=$(git describe --tags --dirty)
+    commit=$(git rev-parse --short HEAD)
+    go build -ldflags "-X github.com/zigai/zgod/internal/cli.version=${version} -X github.com/zigai/zgod/internal/cli.commit=${commit}" -o bin/zgod .
 
 # Install the command to ~/.local/bin
-install: && (report-install home_directory() / ".local/bin/zgod")
-    GOBIN="$HOME/.local/bin" go install -trimpath -ldflags='-s -w' .
+install: build && (report-install home_directory() / ".local/bin/zgod")
+    install -Dm755 bin/zgod "$HOME/.local/bin/zgod"
 
 # Remove generated output and caches
 clean: (remove "bin" "zgod" "zgod.exe" "dist" "coverage.out" "*.test" "*.prof" "coverage")

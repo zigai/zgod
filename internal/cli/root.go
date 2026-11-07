@@ -17,7 +17,7 @@ const (
 var (
 	version  = "dev"
 	commit   = "none"
-	date     = "unknown"
+	dirty    = ""
 	errUsage = errors.New("invalid usage")
 )
 
@@ -104,10 +104,8 @@ func newRootCommand() *cobra.Command {
 			if flagBool(cmd, "version") || flagBool(cmd, "legacy-version") {
 				if _, err := fmt.Fprintf(
 					cmd.OutOrStdout(),
-					"zgod %s (commit: %s, built: %s)\n",
-					version,
-					commit,
-					date,
+					"%s\n",
+					versionText(),
 				); err != nil {
 					return fmt.Errorf("writing version: %w", err)
 				}
