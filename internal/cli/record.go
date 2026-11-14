@@ -234,17 +234,12 @@ func queuePendingRecord(dbPath string, entry db.HistoryEntry) error {
 		tmpPath := filepath.Join(dir, recordPendingTempPrefix+name)
 		finalPath := filepath.Join(dir, name)
 
-		if err = writePendingRecordFile(tmpPath, data); errors.Is(err, os.ErrExist) {
+		if err = publishPendingRecordFile(tmpPath, finalPath, data); errors.Is(err, os.ErrExist) {
 			continue
 		}
 
 		if err != nil {
 			return err
-		}
-
-		if err = os.Rename(tmpPath, finalPath); err != nil {
-			_ = os.Remove(tmpPath)
-			return fmt.Errorf("publishing pending history record %q: %w", finalPath, err)
 		}
 
 		return nil
@@ -262,6 +257,48 @@ func pendingRecordFileName(entry db.HistoryEntry, attempt int) string {
 		attempt,
 		recordPendingFileExtension,
 	)
+}
+
+func publishPendingRecordFile(tmpPath string, finalPath string, data []byte) error {
+	if err := writePendingRecordFile(tmpPath, data); err != nil {
+		return err
+	}
+
+	// The exclusive temporary name prevents another publisher from racing this destination check.
+	_, err := os.Lstat(finalPath)
+	if err == nil {
+		if removeErr := os.Remove(tmpPath); removeErr != nil {
+			return fmt.Errorf(
+				"removing temporary pending history record %q: %w",
+				tmpPath,
+				removeErr,
+			)
+		}
+
+		return fmt.Errorf("pending history record %q already exists: %w", finalPath, os.ErrExist)
+	}
+
+	if !errors.Is(err, os.ErrNotExist) {
+		removeErr := os.Remove(tmpPath)
+
+		return fmt.Errorf(
+			"checking pending history record %q: %w",
+			finalPath,
+			errors.Join(err, removeErr),
+		)
+	}
+
+	if err = os.Rename(tmpPath, finalPath); err != nil {
+		removeErr := os.Remove(tmpPath)
+
+		return fmt.Errorf(
+			"publishing pending history record %q: %w",
+			finalPath,
+			errors.Join(err, removeErr),
+		)
+	}
+
+	return nil
 }
 
 func writePendingRecordFile(path string, data []byte) error {

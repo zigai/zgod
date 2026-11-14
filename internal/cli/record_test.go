@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +16,36 @@ import (
 
 	"github.com/zigai/zgod/internal/db"
 )
+
+func TestPublishPendingRecordDoesNotOverwriteExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	tmpPath := filepath.Join(dir, ".tmp-record.json")
+
+	finalPath := filepath.Join(dir, "record.json")
+	if err := os.WriteFile(finalPath, []byte("first"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := publishPendingRecordFile(
+		tmpPath,
+		finalPath,
+		[]byte("second"),
+	); !errors.Is(
+		err,
+		os.ErrExist,
+	) {
+		t.Fatalf("publication error = %v, want file exists", err)
+	}
+
+	data, err := os.ReadFile(finalPath)
+	if err != nil || string(data) != "first" {
+		t.Fatalf("existing record = %q, error: %v", data, err)
+	}
+
+	if _, err = os.Lstat(tmpPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary record remains: %v", err)
+	}
+}
 
 func TestInsertRecordWithRetryWaitsForBusyDatabase(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "history.db")

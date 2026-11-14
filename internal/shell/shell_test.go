@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -140,11 +141,9 @@ func shellBoundaryCommand(
 		check.Fatal(err)
 	}
 
-	command := exec.CommandContext(
-		t.Context(),
-		shell.String(),
-		"-c",
-		strings.ReplaceAll(script, "</dev/tty", "</dev/null")+"\n"+string(body),
+	command := exec.CommandContext(t.Context(), shell.String())
+	command.Stdin = strings.NewReader(
+		strings.ReplaceAll(script, "</dev/tty", "</dev/null") + "\n" + string(body),
 	)
 	command.Dir = dir
 	command.Env = append(os.Environ(),
@@ -226,15 +225,20 @@ func TestShellPathsRoundTripProperty(t *testing.T) {
 				want := [][]string{{"probe", configPath, "", program}}
 
 				if rapid.Bool().Draw(check, "setup-line") {
+					input, readErr := io.ReadAll(command.Stdin)
+					if readErr != nil {
+						check.Fatal(readErr)
+					}
+
 					body := strings.TrimPrefix(
-						command.Args[len(command.Args)-1],
+						string(input),
 						strings.ReplaceAll(script, "</dev/tty", "</dev/null")+"\n",
 					)
-					command.Args[len(command.Args)-1] = setupLineWithBin(
+					command.Stdin = strings.NewReader(setupLineWithBin(
 						shell,
 						configPath,
 						program,
-					) + "\n" + body
+					) + "\n" + body)
 					want = append(
 						[][]string{{"init", shell.String(), "--config", configPath}},
 						want...,
@@ -547,7 +551,7 @@ func runPowerShellScript(t *testing.T, scriptContent string) string {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("running powershell failed: %v\n%s", err, output)
+		t.Fatalf("running powershell failed: %v (context: %v)\n%s", err, ctx.Err(), output)
 	}
 
 	return string(output)
@@ -1136,7 +1140,30 @@ func testInstantExecutePathsPowerShell(t *testing.T) {
 		t.Fatalf("InitScript error: %v", err)
 	}
 
+	initScript = strings.Replace(
+		initScript,
+		"$result = @(",
+		`[Console]::Error.WriteLine("stage: before search process")
+            $result = @(`,
+		1,
+	)
+	initScript = strings.Replace(
+		initScript,
+		"$rc = $LASTEXITCODE",
+		`[Console]::Error.WriteLine("stage: after search process")
+            $rc = $LASTEXITCODE`,
+		1,
+	)
+	initScript = strings.Replace(
+		initScript,
+		"__zgod_record_async $selected $ts",
+		`[Console]::Error.WriteLine("stage: before record process")
+                    __zgod_record_async $selected $ts`,
+		1,
+	)
+
 	scriptContent := fmt.Sprintf(`
+[Console]::Error.WriteLine("stage: before Add-Type")
 Add-Type @"
 namespace Microsoft.PowerShell {
     public class PSConsoleReadLine {
@@ -1149,6 +1176,7 @@ namespace Microsoft.PowerShell {
     }
 }
 "@
+[Console]::Error.WriteLine("stage: after Add-Type")
 function Get-Module {
     param($Name)
     if ($Name -eq "PSReadLine") { return [PSCustomObject]@{ Name = "PSReadLine" } }
@@ -1158,8 +1186,11 @@ function Set-PSReadLineKeyHandler { param($Chord, $ScriptBlock) }
 function Set-PSReadLineOption { param($AddToHistoryHandler) }
 $env:PATH = %q + [System.IO.Path]::PathSeparator + $env:PATH
 $env:ZGOD_CAPTURE_FILE = %q
+[Console]::Error.WriteLine("stage: before init")
 %s
+[Console]::Error.WriteLine("stage: before search")
 __zgod_search
+[Console]::Error.WriteLine("stage: after search")
 `, tempDir, capturePath, initScript)
 
 	output := runPowerShellScript(t, scriptContent)
