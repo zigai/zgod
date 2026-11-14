@@ -1127,7 +1127,8 @@ fi
 }
 
 func testInstantExecutePathsPowerShell(t *testing.T) {
-	if _, err := findPowerShell(); err != nil {
+	psBin, err := findPowerShell()
+	if err != nil {
 		t.Skip("powershell not available")
 	}
 
@@ -1135,36 +1136,9 @@ func testInstantExecutePathsPowerShell(t *testing.T) {
 	capturePath := filepath.Join(tempDir, "capture.log")
 	installFakeZgod(t, tempDir)
 
-	initScript, err := InitScript(PowerShell, InitOptions{BinPath: "zgod"})
-	if err != nil {
-		t.Fatalf("InitScript error: %v", err)
-	}
-
-	initScript = strings.Replace(
-		initScript,
-		"$result = @(",
-		`[Console]::Error.WriteLine("stage: before search process")
-            $result = @(`,
-		1,
-	)
-	initScript = strings.Replace(
-		initScript,
-		"$rc = $LASTEXITCODE",
-		`[Console]::Error.WriteLine("stage: after search process")
-            $rc = $LASTEXITCODE`,
-		1,
-	)
-	initScript = strings.Replace(
-		initScript,
-		"__zgod_record_async $selected $ts",
-		`[Console]::Error.WriteLine("stage: before record process")
-                    __zgod_record_async $selected $ts`,
-		1,
-	)
-
-	scriptContent := fmt.Sprintf(`
-[Console]::Error.WriteLine("stage: before Add-Type")
-Add-Type @"
+	assemblyPath := filepath.Join(tempDir, "psreadline-test.dll")
+	compileScript := fmt.Sprintf(`
+$source = @'
 namespace Microsoft.PowerShell {
     public class PSConsoleReadLine {
         public static void GetBufferState(out string input, out int cursor) {
@@ -1175,8 +1149,29 @@ namespace Microsoft.PowerShell {
         public static void Insert(string s) {}
     }
 }
-"@
-[Console]::Error.WriteLine("stage: after Add-Type")
+'@
+Add-Type -TypeDefinition $source -OutputAssembly %s -ErrorAction Stop
+`, powerShellQuote(assemblyPath))
+
+	compile := exec.CommandContext(
+		t.Context(),
+		psBin,
+		"-NoProfile",
+		"-NonInteractive",
+		"-Command",
+		compileScript,
+	)
+	if output, compileErr := compile.CombinedOutput(); compileErr != nil {
+		t.Fatalf("compiling PowerShell test assembly: %v\n%s", compileErr, output)
+	}
+
+	initScript, err := InitScript(PowerShell, InitOptions{BinPath: "zgod"})
+	if err != nil {
+		t.Fatalf("InitScript error: %v", err)
+	}
+
+	scriptContent := fmt.Sprintf(`
+Add-Type -Path %s
 function Get-Module {
     param($Name)
     if ($Name -eq "PSReadLine") { return [PSCustomObject]@{ Name = "PSReadLine" } }
@@ -1186,12 +1181,9 @@ function Set-PSReadLineKeyHandler { param($Chord, $ScriptBlock) }
 function Set-PSReadLineOption { param($AddToHistoryHandler) }
 $env:PATH = %q + [System.IO.Path]::PathSeparator + $env:PATH
 $env:ZGOD_CAPTURE_FILE = %q
-[Console]::Error.WriteLine("stage: before init")
 %s
-[Console]::Error.WriteLine("stage: before search")
 __zgod_search
-[Console]::Error.WriteLine("stage: after search")
-`, tempDir, capturePath, initScript)
+`, powerShellQuote(assemblyPath), tempDir, capturePath, initScript)
 
 	output := runPowerShellScript(t, scriptContent)
 	if !strings.Contains(output, "instant_ps_ran") {
