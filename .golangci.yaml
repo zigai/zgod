@@ -19,7 +19,7 @@ formatters:
       local-prefixes:
         - github.com/zigai/zgod
   exclusions:
-    paths:
+    paths: []
 
 linters:
   enable:

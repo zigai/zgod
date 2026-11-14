@@ -368,8 +368,18 @@ func generatedImportSource(
 			entry.Command = "cat missing-" + name
 			categories[*entry] = importPathMissing
 		case 2:
-			entry.Command = "cat ./" + strings.Repeat(name, 4096)
-			categories[*entry] = importPathError
+			longName := strings.Repeat(name, 4096)
+			entry.Command = "cat ./" + longName
+
+			_, err := os.Stat(filepath.Join(dir, longName))
+			switch {
+			case errors.Is(err, os.ErrNotExist):
+				categories[*entry] = importPathMissing
+			case err != nil:
+				categories[*entry] = importPathError
+			default:
+				check.Fatal("expected long path lookup to fail")
+			}
 		case 3:
 			entry.Command = "touch new-" + name
 			categories[*entry] = importPathExists

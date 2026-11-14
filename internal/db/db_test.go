@@ -1258,8 +1258,15 @@ func expectedHistoryCandidates(
 
 func TestSQLiteFilenameAndReadOnlyProperty(t *testing.T) {
 	rapid.Check(t, func(check *rapid.T) {
+		runes := historyFixtureRunes(check, "testdata/filename_characters.txt")
+		if runtime.GOOS == "windows" {
+			runes = slices.DeleteFunc(runes, func(r rune) bool {
+				return strings.ContainsRune(`<>:"/\|?*`, r) || r < 32
+			})
+		}
+
 		name := rapid.StringOfN(
-			rapid.RuneFrom(historyFixtureRunes(check, "testdata/filename_characters.txt")),
+			rapid.RuneFrom(runes),
 			0,
 			24,
 			-1,

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -201,9 +202,17 @@ func TestShellPathsRoundTripProperty(t *testing.T) {
 
 			rapid.Check(t, func(check *rapid.T) {
 				dir := t.TempDir()
-				text := rapid.StringOfN(rapid.RuneFrom(shellTextRunes(check)), 0, 32, -1)
-				program := filepath.Join(dir, "program-"+text.Draw(check, "executable"))
-				configPath := filepath.Join(dir, "config-"+text.Draw(check, "config"))
+
+				runes := shellTextRunes(check)
+				if runtime.GOOS == "windows" {
+					runes = slices.DeleteFunc(runes, func(r rune) bool {
+						return strings.ContainsRune(`<>:"/\|?*`, r) || r < 32
+					})
+				}
+
+				text := rapid.StringOfN(rapid.RuneFrom(runes), 0, 32, -1)
+				program := filepath.Join(dir, "program-"+text.Draw(check, "executable")+"-end")
+				configPath := filepath.Join(dir, "config-"+text.Draw(check, "config")+"-end")
 
 				script, err := InitScript(
 					shell,
