@@ -44,6 +44,29 @@ func TestCommandReferencesExistingPathsFallbackOnUnterminatedQuote(t *testing.T)
 	}
 }
 
+func TestCommandReferencesExistingPathsFallbackKeepsUnterminatedQuotedPath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(dir, "file with spaces.txt"),
+		[]byte("data"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, command := range []string{`cat "file with spaces.txt`, `cat 'file with spaces.txt`} {
+		ok, err := commandReferencesExistingPaths(command, dir)
+		if err != nil || !ok {
+			t.Fatalf(
+				"commandReferencesExistingPaths(%q) = %v, %v; want true, nil",
+				command,
+				ok,
+				err,
+			)
+		}
+	}
+}
+
 func TestSplitCommandTokensPreservesWindowsBackslashes(t *testing.T) {
 	tokens, err := splitCommandTokens(`type C:\Users\me\file.txt`)
 	if err != nil {

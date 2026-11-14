@@ -69,10 +69,8 @@ func commandReferencesExistingPathsWithMatcher(
 	workingDirectory string,
 	matchesRequirement func(string, pathRequirement) (bool, error),
 ) (bool, error) {
-	tokens, err := splitCommandTokens(command)
-	if err != nil {
-		tokens = strings.Fields(command)
-	}
+	// Historical commands can be incomplete; retain the tokens parsed before a quoting error.
+	tokens, _ := splitCommandTokens(command)
 
 	n := 0
 
@@ -871,15 +869,15 @@ func splitCommandTokens(command string) ([]string, error) {
 		tokenizer.hasToken = true
 	}
 
+	tokenizer.appendToken()
+
 	if tokenizer.inSingleQuote {
-		return nil, errUnterminatedSingleQuote
+		return tokenizer.tokens, errUnterminatedSingleQuote
 	}
 
 	if tokenizer.inDoubleQuote {
-		return nil, errUnterminatedDoubleQuote
+		return tokenizer.tokens, errUnterminatedDoubleQuote
 	}
-
-	tokenizer.appendToken()
 
 	return tokenizer.tokens, nil
 }
